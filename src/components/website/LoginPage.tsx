@@ -106,10 +106,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {[
               { email: 'test@gonnng.com', label: 'Jason Tyler (Test User)' },
-              { email: 'qa@gonnng.com', label: 'Quinton Adams (QA Lead)' },
-              { email: 'creator@gonnng.com', label: 'Clara Monet (Creator)' },
-              { email: 'dev@gonnng.com', label: 'David Vance (Developer)' },
-              { email: 'product@gonnng.com', label: 'Penelope Reed (Product)' },
+              // { email: 'qa@gonnng.com', label: 'Quinton Adams (QA Lead)' },
+              // { email: 'creator@gonnng.com', label: 'Clara Monet (Creator)' },
+              // { email: 'dev@gonnng.com', label: 'David Vance (Developer)' },
+              // { email: 'product@gonnng.com', label: 'Penelope Reed (Product)' },
             ].map(acc => (
               <button
                 key={acc.email}
