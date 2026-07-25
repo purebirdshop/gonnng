@@ -1,0 +1,377 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom utility styles for sand simulation and visual effects */
+.sand-grain {
+  animation: fall 1.5s infinite ease-in-out;
+}
+
+@keyframes fall {
+  0% { transform: translateY(-10px) scale(0.8); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(120px) scale(0.6); opacity: 0; }
+}
+
+/* Glassmorphism support */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-panel-dark {
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* Dynamic Light Mode Theme Overrides */
+.app-light-mode {
+  background-color: #F3F4F6 !important;
+  color: #111827 !important;
+}
+
+.app-light-mode header {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+.app-light-mode nav {
+  background-color: #E5E7EB !important;
+  border-color: #D1D5DB !important;
+}
+
+/* Background dark containers to crisp white cards */
+.app-light-mode .bg-\[\#0A0A0A\],
+.app-light-mode .bg-\[\#0C0C0C\],
+.app-light-mode .bg-\[\#0F0F0F\],
+.app-light-mode .bg-\[\#101010\],
+.app-light-mode .bg-\[\#111111\],
+.app-light-mode .bg-\[\#121212\],
+.app-light-mode .bg-\[\#141414\],
+.app-light-mode .bg-\[\#151515\],
+.app-light-mode .bg-\[\#161618\],
+.app-light-mode .bg-\[\#181818\],
+.app-light-mode .bg-\[\#1a1a1e\],
+.app-light-mode .bg-\[\#1C1C1E\],
+.app-light-mode .bg-black {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+}
+
+/* Subtle background layers */
+.app-light-mode .bg-white\/5 {
+  background-color: #F3F4F6 !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+}
+
+.app-light-mode .bg-white\/10,
+.app-light-mode .bg-white\/15,
+.app-light-mode .bg-white\/20 {
+  background-color: #E5E7EB !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+/* Hover effects */
+.app-light-mode .hover\:bg-white\/5:hover,
+.app-light-mode .hover\:bg-white\/10:hover,
+.app-light-mode .hover\:bg-white\/20:hover {
+  background-color: #D1D5DB !important;
+}
+
+/* Borders */
+.app-light-mode .border-white\/5,
+.app-light-mode .border-white\/10,
+.app-light-mode .border-white\/15,
+.app-light-mode .border-white\/20,
+.app-light-mode .border-white\/30,
+.app-light-mode .border-white\/40 {
+  border-color: #E5E7EB !important;
+}
+
+/* Text colors */
+.app-light-mode .text-white {
+  color: #111827 !important;
+}
+
+/* Keep text black inside orange accent buttons */
+.app-light-mode .bg-\[\#FF5C00\] .text-white,
+.app-light-mode button.bg-\[\#FF5C00\] {
+  color: #000000 !important;
+}
+
+.app-light-mode .text-white\/90,
+.app-light-mode .text-white\/80,
+.app-light-mode .text-white\/70,
+.app-light-mode .text-white\/60 {
+  color: #374151 !important;
+}
+
+.app-light-mode .text-white\/50,
+.app-light-mode .text-white\/40,
+.app-light-mode .text-white\/30,
+.app-light-mode .text-white\/20 {
+  color: #6B7280 !important;
+}
+
+/* Input fields & textareas */
+.app-light-mode input[type="text"],
+.app-light-mode input[type="email"],
+.app-light-mode input[type="url"],
+.app-light-mode input[type="password"],
+.app-light-mode input[type="search"],
+.app-light-mode textarea,
+.app-light-mode select {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode input::placeholder,
+.app-light-mode textarea::placeholder {
+  color: #9CA3AF !important;
+}
+
+/* Bottom mobile nav */
+.app-light-mode .fixed.bottom-0 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+.app-light-mode .fixed.bottom-0 .text-white\/40 {
+  color: #6B7280 !important;
+}
+
+/* Modal and Drawer overlays */
+.app-light-mode .fixed.inset-0.bg-black\/80,
+.app-light-mode .fixed.inset-0.bg-black\/60,
+.app-light-mode .fixed.inset-0.bg-black\/50,
+.app-light-mode .fixed.inset-0.bg-black\/25 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Profile header visual panel avatar border */
+.app-light-mode .border-4.border-white\/10 {
+  border-color: #D1D5DB !important;
+}
+
+/* -------------------------------------------------------------
+   1. Feed Post Feedback Button Cluster at Bottom of Images
+   ------------------------------------------------------------- */
+.app-light-mode [id^="feed-post-"] .bg-black\/85,
+.app-light-mode #feed-root .bg-black\/85 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(229, 231, 235, 0.9) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1) !important;
+}
+
+.app-light-mode [id^="gong-continue-btn-"]:not(.bg-emerald-500) {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #059669 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.app-light-mode [id^="gong-refine-btn-"]:not(.bg-\[\#FF5C00\]) {
+  background-color: rgba(255, 92, 0, 0.1) !important;
+  color: #E65200 !important;
+  border-color: rgba(255, 92, 0, 0.3) !important;
+}
+
+.app-light-mode [id^="gong-reconsider-btn-"]:not(.bg-red-500) {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  color: #DC2626 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.app-light-mode [id^="comments-trigger-btn-"] {
+  background-color: #F3F4F6 !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode [id^="comments-trigger-btn-"] svg {
+  color: #111827 !important;
+}
+
+/* -------------------------------------------------------------
+   2. Creation Station Modal Form (`CreateHub.tsx`)
+   ------------------------------------------------------------- */
+.app-light-mode #creation-station-modal .bg-\[\#121212\] {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Creation Station Close Button */
+.app-light-mode #close-hub-btn {
+  background-color: #F3F4F6 !important;
+  color: #374151 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode #close-hub-btn:hover {
+  background-color: #E5E7EB !important;
+  color: #111827 !important;
+}
+
+/* Creation Station Image Thumbnail Dropzone & Tile */
+.app-light-mode #creation-station-modal .border-dashed {
+  background-color: #F9FAFB !important;
+  border-color: #D1D5DB !important;
+  color: #111827 !important;
+}
+
+.app-light-mode #creation-station-modal .border-dashed p,
+.app-light-mode #creation-station-modal .border-dashed span,
+.app-light-mode #creation-station-modal .border-dashed div {
+  color: #374151 !important;
+}
+
+/* Mode Selector Tabs in Creation Station (FOCUS / PROJECT / UPDATE) */
+.app-light-mode #creation-station-modal .grid.grid-cols-3 {
+  background-color: #F3F4F6 !important;
+  border-color: #E5E7EB !important;
+}
+
+.app-light-mode #creation-station-modal #mode-focus-btn:not(.bg-\[\#FF5C00\]),
+.app-light-mode #creation-station-modal #mode-project-btn:not(.bg-\[\#FF5C00\]),
+.app-light-mode #creation-station-modal #mode-update-btn:not(.bg-\[\#FF5C00\]) {
+  color: #4B5563 !important;
+}
+
+.app-light-mode #creation-station-modal #mode-focus-btn.bg-\[\#FF5C00\],
+.app-light-mode #creation-station-modal #mode-project-btn.bg-\[\#FF5C00\],
+.app-light-mode #creation-station-modal #mode-update-btn.bg-\[\#FF5C00\] {
+  background-color: #FF5C00 !important;
+  color: #000000 !important;
+}
+
+/* Form selects, inputs, and textareas in Creation Station */
+.app-light-mode #creation-station-modal select,
+.app-light-mode #creation-station-modal input[type="text"],
+.app-light-mode #creation-station-modal input[type="number"],
+.app-light-mode #creation-station-modal textarea {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode #creation-station-modal option {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+}
+
+.app-light-mode #creation-station-modal .bg-white\/5 {
+  background-color: #F9FAFB !important;
+  border-color: #E5E7EB !important;
+  color: #111827 !important;
+}
+
+/* -------------------------------------------------------------
+   3. Slide-Up Modal: Comments & Keep Reading Modal in Feed
+   ------------------------------------------------------------- */
+.app-light-mode .fixed .bg-\[\#141414\]\/95,
+.app-light-mode .fixed .bg-\[\#141414\] {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  color: #111827 !important;
+  border-color: #E5E7EB !important;
+  box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Comments Modal Feedback/Gong Cluster */
+.app-light-mode .fixed .bg-black\/60 {
+  background-color: #F3F4F6 !important;
+  border-color: #E5E7EB !important;
+  color: #111827 !important;
+}
+
+.app-light-mode .fixed .bg-black\/60 .bg-white\/10 {
+  background-color: #E5E7EB !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode .fixed .bg-black\/60 span,
+.app-light-mode .fixed .bg-black\/60 svg {
+  color: #111827 !important;
+}
+
+/* Modal Title & Text Content */
+.app-light-mode .fixed h2,
+.app-light-mode .fixed h4 {
+  color: #111827 !important;
+}
+
+/* Full Project Overview Box in Keep Reading Modal */
+.app-light-mode .fixed .whitespace-pre-line {
+  background-color: #F9FAFB !important;
+  color: #1F2937 !important;
+  border-color: #E5E7EB !important;
+}
+
+/* Comment Cards */
+.app-light-mode .fixed .space-y-2 .p-2,
+.app-light-mode .fixed .space-y-2 .p-2\.5 {
+  background-color: #F9FAFB !important;
+  border-color: #E5E7EB !important;
+  color: #111827 !important;
+}
+
+.app-light-mode .fixed .bg-white\/\[0\.03\] {
+  background-color: #F3F4F6 !important;
+  border-color: #E5E7EB !important;
+}
+
+/* Comment text & reply targets */
+.app-light-mode .fixed p {
+  color: #1F2937 !important;
+}
+
+.app-light-mode .fixed .bg-white\/10.px-3 {
+  background-color: #F3F4F6 !important;
+  color: #374151 !important;
+}
+
+/* Comment Input Field */
+.app-light-mode .fixed form input[type="text"] {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+.app-light-mode .fixed form input[type="text"]::placeholder {
+  color: #9CA3AF !important;
+}
+
+
