@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
+import { getPublicMediaUrl } from '../services/uploadService';
 import { X, UserPlus, UserCheck, Users, Goal, BookOpen, Layers } from 'lucide-react';
 
 interface CreatorProfileModalProps {
@@ -16,7 +17,7 @@ export default function CreatorProfileModal({
   onClose,
   onToggleFollow,
   posts,
-  currentUserId
+  currentUserId,
 }: CreatorProfileModalProps) {
   if (!creator) return null;
 
@@ -25,7 +26,7 @@ export default function CreatorProfileModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-gray-900/40 backdrop-blur-sm">
         {/* Backdrop overlay click */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -40,17 +41,17 @@ export default function CreatorProfileModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative bg-[#141414] border border-white/10 rounded-3xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between"
+          className="relative border rounded-3xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between bg-white border-gray-200 text-gray-900"
         >
           {/* Header Bar */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="flex items-center justify-between pb-3 border-b border-gray-200">
             <span className="text-xs font-mono font-bold text-[#FF5C00] uppercase tracking-wider flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5" /> Creator Profile
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-white/40 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              className="p-2 text-gray-400 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
               title="Close Profile"
             >
               <X className="w-4 h-4" />
@@ -62,7 +63,7 @@ export default function CreatorProfileModal({
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
               <div className="relative shrink-0">
                 <img
-                  src={creator.avatarUrl}
+                  src={creator.avatarUrl && creator.avatarUrl.trim() !== '' ? getPublicMediaUrl('Gonnng', creator.avatarUrl.trim()) : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
                   alt={creator.name}
                   className={`w-20 h-20 rounded-full object-cover border border-white/20 ${
                     creator.isFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-2 ring-offset-[#141414]' : ''
@@ -85,6 +86,9 @@ export default function CreatorProfileModal({
                     </span>
                   )}
                 </div>
+                <p className="text-xs font-mono text-[#FF5C00] truncate">
+                  @{creator.username || creator.name.toLowerCase().replace(/\s+/g, '')}
+                </p>
                 <p className="text-xs text-white/60 leading-relaxed font-sans">{creator.bio || 'Gonnng Community Creator'}</p>
 
                 {/* Follower Stats & Action */}

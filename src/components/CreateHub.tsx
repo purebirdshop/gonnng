@@ -1,8 +1,29 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Recipe, Project, Collection, FeedPost, Task, Creator } from '../types';
-import { X, Camera, Image as ImageIcon, Plus, Check, Trash2, AlertCircle, Film, Upload, Info } from 'lucide-react';
+import { 
+  X, 
+  Camera, 
+  Image as ImageIcon, 
+  Plus, 
+  Check, 
+  Trash2, 
+  AlertCircle, 
+  Film, 
+  Upload, 
+  Info, 
+  Globe, 
+  CircleDotDashed, 
+  Album,
+  ArrowLeft,
+  ArrowRight,
+  Video,
+  Square,
+  FolderKanban
+} from 'lucide-react';
 import FileUploadZone from './FileUploadZone';
 import { UploadedFile } from '../services/uploadService';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { ENABLE_AREA_OF_FOCUS } from '../featureFlags';
 
 interface CreateHubProps {
   onClose: () => void;
@@ -13,19 +34,23 @@ interface CreateHubProps {
   currentUser?: Creator;
   onAddRecipe?: (recipe: Recipe) => void;
   onAddProject: (project: Project) => void;
-  onAddPost: (post: FeedPost) => void;
+  onAddPost: (post: FeedPost) => void | Promise<void>;
   onAddCollection?: (collection: Collection) => void;
   onUpdateProject?: (project: Project) => void;
   onUpdateRecipe?: (recipe: Recipe) => void;
   forkInitialData?: Recipe | null;
   editingRecipe?: Recipe | null;
-  theme?: 'dark' | 'light';
+  permissions?: { camera: boolean; microphone: boolean; files: boolean };
+  onNavigateToPermissions?: () => void;
+  onUpdatePermissions?: (permissions: { camera: boolean; microphone: boolean; files: boolean }) => void;
+  onRequestDevicePermissions?: () => void;
 }
 
 interface MediaItem {
   id: string;
   url: string;
   type: 'image' | 'video';
+  file?: File;
   name?: string;
 }
 
@@ -44,13 +69,29 @@ export default function CreateHub({
   onUpdateRecipe,
   forkInitialData,
   editingRecipe,
-  theme = 'dark'
+  permissions = { camera: true, microphone: true, files: true },
+  onNavigateToPermissions,
+  onUpdatePermissions,
+  onRequestDevicePermissions
 }: CreateHubProps) {
   const myUserId = currentUser?.id || 'user-current';
   const myUserName = currentUser?.name || 'Creative Architect';
   const myUserAvatar = currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120';
+  
+  // Carousel Step State: 1 = Camera / Media Capture, 2 = Details Form, 3 = Preview
+  const [carouselStep, setCarouselStep] = useState<1 | 2 | 3>(1);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Modes: 'focus', 'project', 'recipe', 'update'
-  const [activeMode, setActiveMode] = useState<'focus' | 'project' | 'recipe' | 'update'>(editingRecipe ? 'recipe' : 'project');
+  const [activeMode, setActiveMode] = useState<'focus' | 'project' | 'recipe' | 'update'>(editingRecipe ? 'recipe' : 'update');
+  const [privacy, setPrivacy] = useState<'public' | 'internal' | 'private'>(privacyDefault || 'public');
+
+  useEffect(() => {
+    if (privacyDefault) {
+      setPrivacy(privacyDefault);
+    }
+  }, [privacyDefault]);
 
   // Media attachments state (up to 10 items)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -58,6 +99,358 @@ export default function CreateHub({
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [showLibraryInfoModal, setShowLibraryInfoModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Camera & Recording States
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState(false);
+  const [cameraCaptureMode, setCameraCaptureMode] = useState<'video' | 'photo'>('video');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const timerRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  const createSyntheticCameraStream = (): MediaStream => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    let frame = 0;
+
+    const interval = setInterval(() => {
+      if (!ctx) return;
+      frame++;
+
+      // Animated studio viewfinder background
+      const grad = ctx.createLinearGradient(0, 0, 1280, 720);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(0.5, '#1e293b');
+      grad.addColorStop(1, '#020617');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1280, 720);
+
+      // Soft ambient aperture movement
+      const cx = 640 + Math.sin(frame * 0.04) * 120;
+      const cy = 360 + Math.cos(frame * 0.03) * 80;
+      const glow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 300);
+      glow.addColorStop(0, 'rgba(255, 92, 0, 0.4)');
+      glow.addColorStop(0.5, 'rgba(255, 92, 0, 0.12)');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 300, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Camera viewfinder reticle
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(426, 0); ctx.lineTo(426, 720);
+      ctx.moveTo(853, 0); ctx.lineTo(853, 720);
+      ctx.moveTo(0, 240); ctx.lineTo(1280, 240);
+      ctx.moveTo(0, 480); ctx.lineTo(1280, 480);
+      ctx.stroke();
+
+      // Focus ring
+      ctx.strokeStyle = '#FF5C00';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(640, 360, 50, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Corner brackets
+      const bSize = 30;
+      const pad = 80;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(pad, pad + bSize); ctx.lineTo(pad, pad); ctx.lineTo(pad + bSize, pad); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(1280 - pad - bSize, pad); ctx.lineTo(1280 - pad, pad); ctx.lineTo(1280 - pad, pad + bSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad, 720 - pad - bSize); ctx.lineTo(pad, 720 - pad); ctx.lineTo(pad + bSize, 720 - pad); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(1280 - pad - bSize, 720 - pad); ctx.lineTo(1280 - pad, 720 - pad); ctx.lineTo(1280 - pad, 720 - pad - bSize); ctx.stroke();
+
+      // Viewfinder overlay
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText('LIVE STREAM • 1080P', 90, 70);
+    }, 1000 / 30);
+
+    const stream = canvas.captureStream(30);
+    (stream as any)._syntheticCleanup = () => clearInterval(interval);
+    return stream;
+  };
+
+  const stopCameraInternal = () => {
+    if (cameraStreamRef.current) {
+      if ((cameraStreamRef.current as any)._syntheticCleanup) {
+        try {
+          (cameraStreamRef.current as any)._syntheticCleanup();
+        } catch {}
+      }
+      cameraStreamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch (e) {
+          console.warn('Error stopping media track:', e);
+        }
+      });
+      cameraStreamRef.current = null;
+    }
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {}
+      }
+      mediaRecorderRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.srcObject = null;
+      } catch {}
+    }
+    setCameraActive(false);
+    setIsRecording(false);
+  };
+
+  const startCameraStream = async () => {
+    if (permissions?.camera === false) {
+      setCameraError(true);
+      setCameraActive(false);
+      return;
+    }
+
+    setCameraError(false);
+    let stream: MediaStream | null = null;
+
+    // Attempt 1: Video + Audio with ideal constraints
+    if (permissions?.microphone !== false && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: true
+        });
+      } catch (err1) {
+        console.warn('Camera stream attempt 1 (video+audio ideal) failed:', err1);
+      }
+
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          });
+        } catch (err2) {
+          console.warn('Camera stream attempt 2 (video+audio basic) failed:', err2);
+        }
+      }
+    }
+
+    // Attempt 3: Video-only
+    if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+        });
+      } catch (err3) {
+        console.warn('Camera stream attempt 3 (video-only ideal) failed:', err3);
+      }
+    }
+
+    if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      } catch (err4) {
+        console.warn('Camera stream attempt 4 (video-only basic) failed:', err4);
+      }
+    }
+
+    // Fallback: If hardware stream fails/blocked in iframe, use live synthetic camera feed
+    if (!stream) {
+      try {
+        stream = createSyntheticCameraStream();
+      } catch (e) {
+        console.warn('Synthetic camera stream fallback error:', e);
+      }
+    }
+
+    if (stream) {
+      cameraStreamRef.current = stream;
+      setCameraActive(true);
+      setCameraError(false);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch((e) => console.warn('Video play error:', e));
+      }
+    } else {
+      setCameraError(true);
+      setCameraActive(false);
+    }
+  };
+
+  // Camera lifecycle based on step 1 and permissions
+  useEffect(() => {
+    let mounted = true;
+
+    if (carouselStep === 1) {
+      if (permissions?.camera !== false) {
+        startCameraStream();
+      } else {
+        stopCameraInternal();
+        setCameraError(true);
+      }
+    } else {
+      stopCameraInternal();
+    }
+
+    return () => {
+      mounted = false;
+      stopCameraInternal();
+    };
+  }, [carouselStep, permissions?.camera, permissions?.microphone]);
+
+  const handleResetDevicePermissions = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    stopCameraInternal();
+    onClose();
+    if (onRequestDevicePermissions) {
+      onRequestDevicePermissions();
+    } else if (onNavigateToPermissions) {
+      onNavigateToPermissions();
+    }
+  };
+
+  const dataUrlToFile = (dataUrl: string, fileName: string): File | undefined => {
+    try {
+      const arr = dataUrl.split(',');
+      if (arr.length < 2) return undefined;
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new File([u8arr], fileName, { type: mime });
+    } catch (e) {
+      console.warn('Failed converting dataUrl to File:', e);
+      return undefined;
+    }
+  };
+
+  const mediaItemToFile = async (item: MediaItem): Promise<File | undefined> => {
+    if (item.file) return item.file;
+
+    if (item.url.startsWith('data:')) {
+      return dataUrlToFile(item.url, `${item.name || 'snapshot'}-${Date.now()}.${item.type === 'video' ? 'webm' : 'jpg'}`);
+    }
+
+    if (item.url.startsWith('blob:') || item.url.startsWith('http')) {
+      try {
+        const res = await fetch(item.url);
+        const blob = await res.blob();
+        const ext = item.type === 'video' ? 'webm' : 'jpg';
+        const mime = blob.type || (item.type === 'video' ? 'video/webm' : 'image/jpeg');
+        return new File([blob], `${item.name || 'media'}-${Date.now()}.${ext}`, { type: mime });
+      } catch (e) {
+        console.warn('Failed fetching blob/http media to File:', e);
+      }
+    }
+
+    return undefined;
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && cameraActive) {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Mirror snapshot horizontally to match viewfinder reflection
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const photoFile = dataUrlToFile(dataUrl, `camera-photo-${Date.now()}.jpg`);
+        const newItem: MediaItem = {
+          id: `media-photo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          file: photoFile,
+          url: dataUrl,
+          type: 'image',
+          name: `Snapshot ${new Date().toLocaleTimeString()}`
+        };
+        setMediaItems(prev => [...prev, newItem].slice(0, 10));
+        setImageError('');
+      }
+    } else {
+      // Fallback preset snapshot
+      const randomPreset = MEDIA_PRESETS[Math.floor(Math.random() * MEDIA_PRESETS.length)];
+      addPresetMedia(randomPreset);
+    }
+  };
+
+  const toggleVideoRecording = () => {
+    if (isRecording) {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setIsRecording(false);
+    } else {
+      if (!cameraStreamRef.current) {
+        const randomPreset = MEDIA_PRESETS[Math.floor(Math.random() * MEDIA_PRESETS.length)];
+        addPresetMedia(randomPreset);
+        return;
+      }
+      try {
+        recordedChunksRef.current = [];
+        const recorder = new MediaRecorder(cameraStreamRef.current);
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const videoUrl = URL.createObjectURL(blob);
+          const newItem: MediaItem = {
+            id: `media-video-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            url: videoUrl,
+            type: 'video',
+            name: `Recording ${new Date().toLocaleTimeString()}`
+          };
+          setMediaItems(prev => [...prev, newItem].slice(0, 10));
+          setImageError('');
+        };
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        setRecordingTime(0);
+        timerRef.current = setInterval(() => {
+          setRecordingTime(t => t + 1);
+        }, 1000);
+      } catch (err) {
+        console.error('Error starting video recording:', err);
+      }
+    }
+  };
 
   // Common Presets for Quick Media Selection
   const MEDIA_PRESETS = [
@@ -129,7 +522,7 @@ export default function CreateHub({
     ];
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (forkInitialData && !editingRecipe) {
       setActiveMode('project');
       setSelectedRecipeId(forkInitialData.id);
@@ -195,7 +588,7 @@ export default function CreateHub({
   };
 
   const handleDeletePhase = (phaseId: string) => {
-    if (customPhases.length <= 1) return; // Must keep at least 1 phase
+    if (customPhases.length <= 1) return;
     setCustomPhases(prev => prev.filter(p => p.id !== phaseId));
   };
 
@@ -219,13 +612,48 @@ export default function CreateHub({
   const handleDeleteTask = (phaseId: string, taskId: string) => {
     setCustomPhases(prev => prev.map(p => {
       if (p.id !== phaseId) return p;
-      if (p.tasks.length <= 1) return p; // Every phase requires at least 1 task
+      if (p.tasks.length <= 1) return p;
 
       return {
         ...p,
         tasks: p.tasks.filter(t => t.id !== taskId)
       };
     }));
+  };
+
+  // Delete Confirm Modal State
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const confirmDeletePhase = (phaseId: string, phaseTitle?: string) => {
+    if (customPhases.length <= 1) return;
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${phaseTitle ? `"${phaseTitle}"` : 'this phase'}?`,
+      onConfirm: () => {
+        handleDeletePhase(phaseId);
+        setDeleteConfirm(null);
+      }
+    });
+  };
+
+  const confirmDeleteTask = (phaseId: string, taskId: string, taskTitle?: string) => {
+    const phase = customPhases.find(p => p.id === phaseId);
+    if (phase && phase.tasks.length <= 1) return;
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${taskTitle ? `"${taskTitle}"` : 'this task'}?`,
+      onConfirm: () => {
+        handleDeleteTask(phaseId, taskId);
+        setDeleteConfirm(null);
+      }
+    });
   };
 
   const handleUpdateTaskTitle = (phaseId: string, taskId: string, title: string) => {
@@ -249,7 +677,8 @@ export default function CreateHub({
     return completedTasks < totalTasks;
   });
 
-  const [updateProjId, setUpdateProjId] = useState<string>(incompleteProjects[0]?.id || projects[0]?.id || '');
+  // Default updateProjId to empty string (no project selected by default)
+  const [updateProjId, setUpdateProjId] = useState<string>('');
   const [updateDesc, setUpdateDesc] = useState('');
   const [updateHashtags, setUpdateHashtags] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -271,6 +700,7 @@ export default function CreateHub({
       const isVideo = file.type.startsWith('video');
       return {
         id: `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        file,
         url: URL.createObjectURL(file),
         type: isVideo ? 'video' : 'image',
         name: file.name
@@ -300,19 +730,24 @@ export default function CreateHub({
     setMediaItems(prev => prev.filter(item => item.id !== id));
   };
 
+  // Handle Close Request ("Are you sure?" prompt on Step 2 or Step 3)
+  const handleCloseRequest = () => {
+    if (carouselStep === 2 || carouselStep === 3 || mediaItems.length > 0) {
+      setCloseConfirmOpen(true);
+    } else {
+      stopCameraInternal();
+      onClose();
+    }
+  };
+
   // -------------------------------------------------------------
   // Form Submit Handlers
   // -------------------------------------------------------------
 
   // A. CREATE FOCUS (Area of FOCUS)
-  const handleCreateFocus = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateFocus = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!focusTitle.trim()) return;
-
-    if (mediaItems.length === 0) {
-      setImageError('An image or video attachment is required to create an Area of FOCUS.');
-      return;
-    }
 
     const newCollection: Collection = {
       id: `focus-${Date.now()}`,
@@ -328,8 +763,9 @@ export default function CreateHub({
 
     // Feed Post
     const mainImage = mediaItems[0]?.url;
+    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
     const newPost: FeedPost = {
-      id: `post-focus-${Date.now()}`,
+      id: crypto.randomUUID(),
       type: 'project_created',
       userId: myUserId,
       userName: myUserName,
@@ -340,24 +776,22 @@ export default function CreateHub({
       attachedId: newCollection.id,
       attachedName: newCollection.title,
       image: mainImage,
-      privacy: privacyDefault || 'public',
+      images: mediaItems.map(m => m.url),
+      mediaFiles: selectedFiles,
+      privacy: privacy,
       createdAt: new Date().toISOString(),
       gongs: { continue: 0, refine: 0, reconsider: 0 }
     };
 
     onAddPost(newPost);
+    stopCameraInternal();
     onClose();
   };
 
   // B. CREATE PROJECT
-  const handleCreateProject = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateProject = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!projTitle.trim()) return;
-
-    if (mediaItems.length === 0) {
-      setImageError('An image or video attachment is required to post a PROJECT.');
-      return;
-    }
 
     const hoursEst = Number(projTimeframe) || 8;
     const chosenRecipe = recipes.find(r => r.id === selectedRecipeId);
@@ -380,7 +814,6 @@ export default function CreateHub({
       })
       .filter(ph => ph.tasks.length > 0);
 
-    // Ensure at least one phase and task if all inputs were cleared
     if (projectPhases.length === 0) {
       projectPhases = [
         {
@@ -401,7 +834,7 @@ export default function CreateHub({
       phases: projectPhases,
       createdAt: new Date().toISOString(),
       collectionId: projFocusId || undefined,
-      privacy: privacyDefault,
+      privacy: privacy,
       progressPhotos: mediaItems.map(m => ({
         url: m.url,
         caption: projDesc || projTitle,
@@ -411,7 +844,6 @@ export default function CreateHub({
 
     onAddProject(newProject);
 
-    // Add to my library if checked
     if (addToLibrary && onAddRecipe) {
       const newRecipe: Recipe = {
         id: `recipe-custom-${Date.now()}`,
@@ -433,10 +865,10 @@ export default function CreateHub({
       onAddRecipe(newRecipe);
     }
 
-    // Feed Post
     const mainImage = mediaItems[0]?.url;
+    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
     const newPost: FeedPost = {
-      id: `post-project-${Date.now()}`,
+      id: crypto.randomUUID(),
       type: 'project_created',
       userId: myUserId,
       userName: myUserName,
@@ -446,26 +878,24 @@ export default function CreateHub({
       content: projDesc || `Started a new project${projFocusId ? ` under the Area of FOCUS: ${collections.find(c => c.id === projFocusId)?.title}` : ''}. Timeframe estimate: ${hoursEst} hours.`,
       attachedId: newProject.id,
       attachedName: newProject.title,
+      projectId: newProject.id,
       image: mainImage,
-      privacy: newProject.privacy || privacyDefault || 'public',
+      images: mediaItems.map(m => m.url),
+      mediaFiles: selectedFiles,
+      privacy: privacy,
       createdAt: new Date().toISOString(),
       gongs: { continue: 0, refine: 0, reconsider: 0 }
     };
 
     onAddPost(newPost);
+    stopCameraInternal();
     onClose();
   };
 
   // C. CREATE RECIPE (STANDALONE BLUEPRINT)
-  const handleCreateRecipe = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateRecipe = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!recipeTitle.trim()) return;
-
-    // Image required when making a new recipe
-    if (mediaItems.length === 0) {
-      setImageError('An image attachment is required when creating a new recipe blueprint.');
-      return;
-    }
 
     let recipePhases = customPhases
       .filter(ph => ph.title.trim().length > 0)
@@ -507,6 +937,7 @@ export default function CreateHub({
       } else if (onAddRecipe) {
         onAddRecipe(updatedRecipe);
       }
+      stopCameraInternal();
       onClose();
       return;
     }
@@ -528,8 +959,9 @@ export default function CreateHub({
     }
 
     const mainImage = mediaItems[0]?.url;
+    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
     const newPost: FeedPost = {
-      id: `post-recipe-${Date.now()}`,
+      id: crypto.randomUUID(),
       type: 'project_created',
       userId: myUserId,
       userName: myUserName,
@@ -541,100 +973,145 @@ export default function CreateHub({
       attachedName: newRecipe.title,
       image: mainImage,
       images: mediaItems.map(m => m.url),
-      privacy: privacyDefault || 'public',
+      mediaFiles: selectedFiles,
+      privacy: privacy,
       createdAt: new Date().toISOString(),
       gongs: { continue: 0, refine: 0, reconsider: 0 }
     };
 
     onAddPost(newPost);
+    stopCameraInternal();
     onClose();
   };
 
-  // C. POST UPDATE
-  const handlePostUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeUpdateProject) return;
+  // D. POST UPDATE
+  const handlePostUpdate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (isSubmitting) return;
 
-    // Check off selected tasks on active project
-    let updatedPhases = activeUpdateProject.phases;
-    if (selectedTaskIds.length > 0) {
-      updatedPhases = activeUpdateProject.phases.map(ph => ({
-        ...ph,
-        tasks: ph.tasks.map(t => {
-          if (selectedTaskIds.includes(t.id)) {
-            return { ...t, completed: true, completedAt: new Date().toISOString() };
-          }
-          return t;
-        })
-      }));
+    setIsSubmitting(true);
+    try {
+      // Convert all media items to File objects
+      const selectedFiles: File[] = [];
+      for (const item of mediaItems) {
+        const f = await mediaItemToFile(item);
+        if (f) selectedFiles.push(f);
+      }
+
+      if (updateProjId && activeUpdateProject) {
+        // Check off selected tasks on active project
+        let updatedPhases = activeUpdateProject.phases;
+        if (selectedTaskIds.length > 0) {
+          updatedPhases = activeUpdateProject.phases.map(ph => ({
+            ...ph,
+            tasks: ph.tasks.map(t => {
+              if (selectedTaskIds.includes(t.id)) {
+                return { ...t, completed: true, completedAt: new Date().toISOString() };
+              }
+              return t;
+            })
+          }));
+        }
+
+        const newPhotos = mediaItems.map(m => ({
+          url: m.url,
+          caption: updateDesc || 'Project checkpoint update',
+          date: new Date().toISOString().split('T')[0]
+        }));
+
+        const updatedProject: Project = {
+          ...activeUpdateProject,
+          phases: updatedPhases,
+          progressPhotos: [...(activeUpdateProject.progressPhotos || []), ...newPhotos]
+        };
+
+        onUpdateProject?.(updatedProject);
+
+        const mainImage = mediaItems[0]?.url;
+        const completedTaskTitles = activeUpdateProject.phases
+          .flatMap(ph => ph.tasks)
+          .filter(t => selectedTaskIds.includes(t.id))
+          .map(t => t.title);
+
+        const postTitle = completedTaskTitles.length > 0
+          ? `Updated Task on "${activeUpdateProject.title}": ${completedTaskTitles.join(', ')}`
+          : `Progress Checkpoint for "${activeUpdateProject.title}"`;
+
+        const parsedHashtags = updateHashtags
+          .split(/[\s,]+/)
+          .map(t => t.trim())
+          .filter(Boolean)
+          .map(t => t.startsWith('#') ? t : `#${t}`);
+
+        const newPost: FeedPost = {
+          id: crypto.randomUUID(),
+          type: 'update_logged',
+          userId: myUserId,
+          userName: myUserName,
+          userAvatar: myUserAvatar,
+          timeString: 'Just now',
+          title: postTitle,
+          content: updateDesc || (completedTaskTitles.length > 0 ? `Completed ${completedTaskTitles.length} task(s) and logged a progress update.` : 'Logged a new progress update.'),
+          attachedId: activeUpdateProject.id,
+          attachedName: activeUpdateProject.title,
+          projectId: activeUpdateProject.id,
+          image: mainImage,
+          images: mediaItems.map(m => m.url),
+          mediaFiles: selectedFiles,
+          hashtags: parsedHashtags,
+          privacy: privacy,
+          createdAt: new Date().toISOString(),
+          gongs: { continue: 0, refine: 0, reconsider: 0 }
+        };
+
+        await onAddPost(newPost);
+        stopCameraInternal();
+        onClose();
+      } else {
+        // Standalone update post (not attached to any project)
+        const parsedHashtags = updateHashtags
+          .split(/[\s,]+/)
+          .map(t => t.trim())
+          .filter(Boolean)
+          .map(t => t.startsWith('#') ? t : `#${t}`);
+
+        const mainImage = mediaItems[0]?.url;
+        const postTitle = updateDesc 
+          ? (updateDesc.length > 45 ? `${updateDesc.substring(0, 42)}...` : updateDesc)
+          : 'Daily Progress Update';
+
+        const newPost: FeedPost = {
+          id: crypto.randomUUID(),
+          type: 'update_logged',
+          userId: myUserId,
+          userName: myUserName,
+          userAvatar: myUserAvatar,
+          timeString: 'Just now',
+          title: postTitle,
+          content: updateDesc || 'Logged a new progress update.',
+          image: mainImage,
+          images: mediaItems.map(m => m.url),
+          mediaFiles: selectedFiles,
+          hashtags: parsedHashtags,
+          privacy: privacy,
+          createdAt: new Date().toISOString(),
+          gongs: { continue: 0, refine: 0, reconsider: 0 }
+        };
+
+        await onAddPost(newPost);
+        stopCameraInternal();
+        onClose();
+      }
+    } catch (err) {
+      console.error('Error in handlePostUpdate:', err);
+      setImageError('Failed to publish update. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const newPhotos = mediaItems.map(m => ({
-      url: m.url,
-      caption: updateDesc || 'Project checkpoint update',
-      date: new Date().toISOString().split('T')[0]
-    }));
-
-    const updatedProject: Project = {
-      ...activeUpdateProject,
-      phases: updatedPhases,
-      progressPhotos: [...(activeUpdateProject.progressPhotos || []), ...newPhotos]
-    };
-
-    onUpdateProject?.(updatedProject);
-
-    // Feed post
-    const mainImage = mediaItems[0]?.url;
-    const completedTaskTitles = activeUpdateProject.phases
-      .flatMap(ph => ph.tasks)
-      .filter(t => selectedTaskIds.includes(t.id))
-      .map(t => t.title);
-
-    const postTitle = completedTaskTitles.length > 0
-      ? `Updated Task on "${activeUpdateProject.title}": ${completedTaskTitles.join(', ')}`
-      : `Progress Checkpoint for "${activeUpdateProject.title}"`;
-
-    const parsedHashtags = updateHashtags
-      .split(/[\s,]+/)
-      .map(t => t.trim())
-      .filter(Boolean)
-      .map(t => t.startsWith('#') ? t : `#${t}`);
-
-    const newPost: FeedPost = {
-      id: `post-update-${Date.now()}`,
-      type: 'update_logged',
-      userId: myUserId,
-      userName: myUserName,
-      userAvatar: myUserAvatar,
-      timeString: 'Just now',
-      title: postTitle,
-      content: updateDesc || (completedTaskTitles.length > 0 ? `Completed ${completedTaskTitles.length} task(s) and logged a progress update.` : 'Logged a new progress update.'),
-      attachedId: activeUpdateProject.id,
-      attachedName: activeUpdateProject.title,
-      image: mainImage,
-      images: mediaItems.map(m => m.url),
-      hashtags: parsedHashtags,
-      privacy: activeUpdateProject.privacy || privacyDefault || 'public',
-      createdAt: new Date().toISOString(),
-      gongs: { continue: 0, refine: 0, reconsider: 0 }
-    };
-
-    onAddPost(newPost);
-    onClose();
-  };
-
-  // Helper to calculate total accumulated hours for a focus area
-  const getAccumulatedFocusHours = (colId: string) => {
-    const focusProjects = projects.filter(p => p.collectionId === colId);
-    return focusProjects.reduce((sum, p) => {
-      return sum + p.phases.reduce((pSum, ph) => {
-        return pSum + ph.tasks.reduce((tSum, t) => tSum + (t.estimatedHours || 1), 0);
-      }, 0);
-    }, 0);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto" id="creation-station-modal">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="creation-station-modal">
       <input
         type="file"
         ref={fileInputRef}
@@ -644,744 +1121,893 @@ export default function CreateHub({
         className="hidden"
       />
 
-      <div className={`rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border max-h-[92vh] flex flex-col relative transition-colors ${
-        theme === 'light'
-          ? 'bg-white text-gray-900 border-gray-200'
-          : 'bg-[#121212] text-white border-white/10'
-      }`}>
+      <div className="rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border max-h-[92vh] flex flex-col relative transition-colors bg-white text-gray-900 border-gray-200">
         
         {/* Fixed Non-Scrollable Header */}
-        <div className={`p-4 sm:p-5 border-b flex items-center justify-between gap-3 shrink-0 ${
-          theme === 'light' ? 'border-gray-200 bg-gray-50/50' : 'border-white/10 bg-white/[0.02]'
-        }`}>
-          {/* Top 3 Options Selector */}
-          <div className={`grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl border flex-1 ${
-            theme === 'light' ? 'bg-gray-100 border-gray-200' : 'bg-white/5 border-white/10'
-          }`}>
-            <button
-              type="button"
-              id="mode-focus-btn"
-              onClick={() => {
-                setActiveMode('focus');
-                setImageError('');
-              }}
-              className={`py-2 text-center text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                activeMode === 'focus'
-                  ? 'bg-[#FF5C00] text-black shadow-md font-bold'
-                  : theme === 'light' ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-200' : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              FOCUS
-            </button>
-            <button
-              type="button"
-              id="mode-project-btn"
-              onClick={() => {
-                setActiveMode('project');
-                setImageError('');
-              }}
-              className={`py-2 text-center text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                activeMode === 'project'
-                  ? 'bg-[#FF5C00] text-black shadow-md font-bold'
-                  : theme === 'light' ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-200' : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              PROJECT
-            </button>
-            <button
-              type="button"
-              id="mode-update-btn"
-              onClick={() => {
-                setActiveMode('update');
-                setImageError('');
-              }}
-              className={`py-2 text-center text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                activeMode === 'update'
-                  ? 'bg-[#FF5C00] text-black shadow-md font-bold'
-                  : theme === 'light' ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-200' : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              UPDATE
-            </button>
+        <div className="p-4 sm:p-5 border-b flex items-center justify-between gap-3 shrink-0 border-gray-200 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-display font-bold text-gray-900 tracking-tight">Creation Station</h2>
           </div>
 
           {/* Close Button */}
           <button
             type="button"
             id="close-hub-btn"
-            onClick={onClose}
-            className={`p-2 rounded-full transition-all border cursor-pointer shadow-sm shrink-0 ${
-              theme === 'light'
-                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300'
-                : 'bg-black/70 hover:bg-black text-white/60 hover:text-white border-white/10'
-            }`}
+            onClick={handleCloseRequest}
+            className="p-2 rounded-full transition-all border cursor-pointer shadow-sm shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300"
             title="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Main Padding Container (Scrollable) */}
-        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5">
+        {/* Modal Content Container */}
+        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 flex flex-col justify-between">
 
-          {/* Large Thumbnail Media Block */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                Media Attachment {activeMode === 'update' ? (
-                  <span className="text-white/40 font-normal lowercase">(Optional)</span>
-                ) : (
-                  <span className="text-[#FF5C00] font-bold lowercase">(Required)</span>
-                )}
-              </label>
-              {mediaItems.length > 0 && (
-                <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                  ✓ Attached ({mediaItems.length})
-                </span>
-              )}
+          {imageError && (
+            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-xl text-red-400 text-xs font-mono flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>{imageError}</span>
             </div>
-
-            {imageError && (
-              <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-xl text-red-400 text-xs font-mono flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                <span>{imageError}</span>
-              </div>
-            )}
-
-            <div
-              onClick={() => {
-                setImageError('');
-                setShowMediaModal(true);
-              }}
-              className={`relative w-full h-48 sm:h-56 rounded-2xl border-2 border-dashed bg-black/60 hover:border-[#FF5C00]/80 transition-all flex flex-col items-center justify-center p-3 cursor-pointer overflow-hidden group shadow-inner ${
-                imageError ? 'border-red-500/80 bg-red-950/20' : 'border-white/20'
-              }`}
-            >
-              {mediaItems.length > 0 ? (
-                <div className="relative w-full h-full flex items-center justify-center">
-                  <img
-                    src={mediaItems[0].url}
-                    alt="Media preview"
-                    className="w-full h-full object-cover rounded-xl"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-all rounded-xl flex items-center justify-center">
-                    <span className="bg-black/80 backdrop-blur-md text-white font-mono text-xs px-3 py-1.5 rounded-full border border-white/20 flex items-center gap-1.5 shadow-lg">
-                      <Camera className="w-4 h-4 text-[#FF5C00]" />
-                      {mediaItems.length} {mediaItems.length === 1 ? 'media attached' : 'media items'} (Click to manage)
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center text-center space-y-2 p-4">
-                  <div className="w-12 h-12 rounded-full bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00] group-hover:scale-110 transition-transform">
-                    <Camera className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white uppercase tracking-wider">Click to Open Camera / Upload Media</p>
-                    <p className="text-[10px] font-mono text-white/40 mt-0.5">
-                      Up to 10 images or videos (Videos trim to 60s when multi-uploading)
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Attached Thumbnails Strip */}
-            {mediaItems.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                {mediaItems.map((item, idx) => (
-                  <div key={item.id} className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/20 shrink-0 group">
-                    <img src={item.url} alt={`Media ${idx + 1}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeMediaItem(item.id);
-                      }}
-                      className="absolute top-0.5 right-0.5 p-1 bg-black/80 text-white hover:text-red-400 rounded-full text-[10px]"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-                {mediaItems.length < 10 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowMediaModal(true)}
-                    className="w-14 h-14 rounded-xl border border-dashed border-white/20 hover:border-[#FF5C00] bg-white/5 flex items-center justify-center text-white/40 hover:text-white shrink-0"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* FORM TYPE 1: FOCUS */}
-          {activeMode === 'focus' && (
-            <form onSubmit={handleCreateFocus} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Title <span className="text-red-500 ml-0.5">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={focusTitle}
-                  onChange={(e) => setFocusTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
-                  placeholder="e.g. Fine Art Painting, Hardware Prototyping"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
-                <textarea
-                  value={focusDesc}
-                  onChange={(e) => setFocusDesc(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
-                  placeholder="Describe this area of FOCUS and core creative goals..."
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Work Execution Style
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['sequential', 'parallel', 'hybrid'] as const).map(mode => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setFocusWorkMode(mode)}
-                      className={`py-2 px-3 rounded-xl border text-center text-xs font-mono uppercase font-bold transition-all cursor-pointer ${
-                        focusWorkMode === mode
-                          ? 'bg-[#FF5C00] border-[#FF5C00] text-black shadow-md'
-                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Timeframe <span className="text-white/40 font-normal lowercase">(estimate in hours)</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={focusTimeframe}
-                  onChange={(e) => setFocusTimeframe(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-[#FF5C00]"
-                  placeholder="e.g. 40"
-                />
-              </div>
-
-              <div className="flex flex-row items-center justify-end gap-3 pt-4 border-t border-white/10 w-full">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex-1 sm:flex-none justify-center items-center flex px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
-                >
-                  CANCEL
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 sm:flex-none justify-center items-center flex px-6 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
-                >
-                  CREATE
-                </button>
-              </div>
-            </form>
           )}
 
-          {/* FORM TYPE 2: PROJECT */}
-          {activeMode === 'project' && (
-            <form onSubmit={handleCreateProject} className="space-y-4">
-              {/* Horizontal Scroll of Active Areas of FOCUS */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Area of FOCUS
-                </label>
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                  {collections.map(col => (
-                    <button
-                      key={col.id}
-                      type="button"
-                      onClick={() => setProjFocusId(prev => prev === col.id ? '' : col.id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
-                        projFocusId === col.id
-                          ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
-                          : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
-                      }`}
-                    >
-                      {col.title}
-                    </button>
-                  ))}
-                  {collections.length === 0 && (
-                    <p className="text-xs text-white/40 font-mono py-1">No Areas of FOCUS created yet.</p>
-                  )}
-                </div>
+          {/* STEP 1: CAMERA & MEDIA CAPTURE */}
+          {carouselStep === 1 && (
+            <div className="flex-1 flex flex-col justify-between space-y-4 min-h-0">
+              {/* Camera View Finder */}
+              <div className="relative w-full flex-1 min-h-[300px] max-h-[400px] rounded-2xl overflow-hidden bg-black border border-white/10 flex items-center justify-center shadow-inner group">
+                {permissions?.camera !== false && cameraActive && !cameraError ? (
+                  <video
+                    ref={(el) => {
+                      (videoRef as any).current = el;
+                      if (el && cameraStreamRef.current) {
+                        if (el.srcObject !== cameraStreamRef.current) {
+                          el.srcObject = cameraStreamRef.current;
+                        }
+                        el.play().catch(() => {});
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    muted
+                    onLoadedMetadata={(e) => {
+                      e.currentTarget.play().catch(() => {});
+                    }}
+                    className="w-full h-full object-cover rounded-2xl"
+                    style={{ transform: 'scaleX(-1)', WebkitTransform: 'scaleX(-1)' }}
+                  />
+                ) : (
+                  <>
+                    {/* Centered at the top of this element */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+                      <button
+                        type="button"
+                        id="reset-device-permissions-btn"
+                        onClick={handleResetDevicePermissions}
+                        className="px-4 py-1.5 bg-[#FF5C00]/20 hover:bg-[#FF5C00]/30 text-[#FF5C00] border border-[#FF5C00]/40 font-mono text-xs font-bold rounded-full shadow-lg transition-all cursor-pointer backdrop-blur-md flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        Reset device permissions
+                      </button>
+                    </div>
+
+                    {/* Centered Placeholder Text */}
+                    <div className="flex flex-col items-center justify-center text-center p-6 space-y-3 pt-10">
+                      <div className="w-16 h-16 rounded-full bg-[#FF5C00]/10 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
+                        <Camera className="w-8 h-8 text-[#FF5C00]" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white font-display">Camera Viewfinder</h4>
+                        <p className="text-xs text-white/70 font-sans mt-2 max-w-xs leading-relaxed">
+                          Camera stream unavailable. You may upload files from your device.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Live Recording Tag */}
+                {isRecording && permissions?.camera && (
+                  <div className="absolute top-4 left-4 bg-red-600/90 text-white font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg animate-pulse z-20">
+                    <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
+                    <span>00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</span>
+                  </div>
+                )}
+
+                {/* Attached Badge */}
+                {mediaItems.length > 0 && (
+                  <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-md text-emerald-400 border border-emerald-500/30 font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md z-20">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{mediaItems.length} Captured</span>
+                  </div>
+                )}
+
+                {/* TikTok Style Camera Overlay Controls */}
+                {permissions?.camera && (
+                  <>
+                    {/* VIDEO / PHOTO Mode Switcher - Lower Left Corner */}
+                    <div className="absolute bottom-4 left-4 z-20 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider bg-black/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-xl">
+                      <button
+                        type="button"
+                        id="camera-mode-video-btn"
+                        onClick={() => setCameraCaptureMode('video')}
+                        className={`transition-all cursor-pointer relative py-0.5 ${
+                          cameraCaptureMode === 'video' ? 'text-[#FF5C00] font-black' : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        Video
+                        {cameraCaptureMode === 'video' && (
+                          <span className="absolute -bottom-0.5 inset-x-0 h-0.5 bg-[#FF5C00] rounded-full" />
+                        )}
+                      </button>
+                      <span className="text-white/20">|</span>
+                      <button
+                        type="button"
+                        id="camera-mode-photo-btn"
+                        onClick={() => setCameraCaptureMode('photo')}
+                        className={`transition-all cursor-pointer relative py-0.5 ${
+                          cameraCaptureMode === 'photo' ? 'text-[#FF5C00] font-black' : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        Photo
+                        {cameraCaptureMode === 'photo' && (
+                          <span className="absolute -bottom-0.5 inset-x-0 h-0.5 bg-[#FF5C00] rounded-full" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* TikTok Central Shutter / Record Button */}
+                    <div className="absolute bottom-4 inset-x-0 flex items-center justify-center z-20 pointer-events-none">
+                      <div className="pointer-events-auto">
+                        {cameraCaptureMode === 'photo' ? (
+                          <button
+                            type="button"
+                            id="tiktok-photo-shutter-btn"
+                            onClick={capturePhoto}
+                            className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 backdrop-blur-sm flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-2xl group"
+                            title="Take Photo"
+                          >
+                            <span className="w-11 h-11 rounded-full bg-white group-hover:scale-105 transition-transform shadow-inner" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            id="tiktok-video-shutter-btn"
+                            onClick={toggleVideoRecording}
+                            className={`w-16 h-16 rounded-full border-4 flex items-center justify-center cursor-pointer transition-all shadow-2xl ${
+                              isRecording
+                                ? 'border-red-500 bg-red-600/30 scale-90 ring-4 ring-red-500/50 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)]'
+                                : 'border-white bg-white/20 hover:bg-white/30 active:scale-90'
+                            }`}
+                            title={isRecording ? "Stop Recording" : "Record Video"}
+                          >
+                            {isRecording ? (
+                              <span className="w-5 h-5 rounded-sm bg-red-600 shadow-md animate-pulse" />
+                            ) : (
+                              <span className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 transition-transform shadow-inner" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Bottom Recording Timeline Bar */}
+                {isRecording && (
+                  <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/60 z-30 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-red-600 via-[#FF5C00] to-amber-400 transition-all duration-300 ease-linear shadow-[0_0_12px_rgba(255,92,0,0.9)]"
+                      style={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Recipe Selection Dropdown */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Recipe Blueprint
-                </label>
-                <select
-                  id="creation-station-recipe-select"
-                  value={selectedRecipeId}
-                  onChange={(e) => handleRecipeSelect(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[#181818] border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] cursor-pointer"
+              {/* Step 1 Bottom Bar: Upload button on left, Right Arrow button on right ONLY */}
+              <div className="flex items-center justify-between pt-3 border-t border-white/10 shrink-0">
+                <button
+                  type="button"
+                  id="upload-image-video-btn"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer border border-white/10"
                 >
-                  <option value="" className="bg-[#181818] text-white/60">Select a Recipe from your Library...</option>
-                  {recipes.map(recipe => (
-                    <option key={recipe.id} value={recipe.id} className="bg-[#181818] text-white">
-                      {recipe.title} ({recipe.category})
-                    </option>
-                  ))}
-                </select>
+                  <Upload className="w-4 h-4 text-[#FF5C00]" />
+                  <span>Upload Image / Video</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCameraInternal();
+                    setCarouselStep(2);
+                  }}
+                  className="p-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow-lg flex items-center justify-center cursor-pointer font-bold"
+                  title="Next Step: Details Form"
+                >
+                  <ArrowRight className="w-5 h-5 stroke-[3]" />
+                </button>
               </div>
+            </div>
+          )}
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Title <span className="text-red-500 ml-0.5">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={projTitle}
-                  onChange={(e) => setProjTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
-                  placeholder="e.g. Master Oil Painting Canvas Study"
-                />
-              </div>
+          {/* STEP 2: DETAILS FORM */}
+          {carouselStep === 2 && (
+            <div className="space-y-4 flex-1 flex flex-col justify-between">
+              <div className="space-y-4 overflow-y-auto max-h-[480px] pr-1">
+                {/* Media Preview Header */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                      Media <span className="text-red-500 ml-0.5">*</span> {mediaItems.length > 0 ? `(${mediaItems.length})` : ''}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCarouselStep(1)}
+                      className="text-[10px] font-mono text-[#FF5C00] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Camera className="w-3 h-3" /> Re-record / Upload
+                    </button>
+                  </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
-                <textarea
-                  value={projDesc}
-                  onChange={(e) => setProjDesc(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
-                  placeholder="Explain project details, milestones, and deliverables..."
-                />
-              </div>
-
-              {/* Phases & Tasks Section */}
-              <div className="space-y-3 pt-2 border-t border-white/10">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                    Phases & Tasks
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddPhase}
-                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-[#FF5C00] font-mono text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-[#FF5C00]/30"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Phase
-                  </button>
-                </div>
-
-                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                  {customPhases.map((phase, pIdx) => (
-                    <div key={phase.id} className="p-3.5 bg-white/5 border border-white/10 rounded-xl space-y-2.5">
-                      {/* Phase Header */}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={phase.title}
-                          onChange={(e) => handleUpdatePhaseTitle(phase.id, e.target.value)}
-                          className="flex-1 px-3 py-1.5 bg-[#181818] border border-white/10 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#FF5C00]"
-                          placeholder={`Phase ${pIdx + 1} Title...`}
-                          required
-                        />
+                  {/* Parent Thumbnail */}
+                  {mediaItems.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-white/15 bg-black shadow-md group">
+                        {mediaItems[0].type === 'video' ? (
+                          <video src={mediaItems[0].url} className="w-full h-full object-cover" controls />
+                        ) : (
+                          <img src={mediaItems[0].url} alt="Main thumbnail" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleDeletePhase(phase.id)}
-                          disabled={customPhases.length <= 1}
-                          title={customPhases.length <= 1 ? "Minimum 1 phase required" : "Delete Phase"}
-                          className={`p-1.5 rounded-lg border transition-all ${
-                            customPhases.length <= 1 
-                              ? 'opacity-30 cursor-not-allowed border-white/5 text-white/30' 
-                              : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20 cursor-pointer'
-                          }`}
+                          onClick={() => removeMediaItem(mediaItems[0].id)}
+                          className="absolute top-2 right-2 p-1.5 bg-black/80 hover:bg-red-600 text-white rounded-full transition-all cursor-pointer shadow-lg"
+                          title="Remove media"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
-                      {/* Tasks List */}
-                      <div className="space-y-2 pl-2 border-l-2 border-white/10">
-                        {phase.tasks.map((task, tIdx) => {
-                          const isLastTaskInPhase = phase.tasks.length <= 1;
-
-                          return (
-                            <div key={task.id} className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={task.title}
-                                onChange={(e) => handleUpdateTaskTitle(phase.id, task.id, e.target.value)}
-                                className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs font-sans text-white/90 focus:outline-none focus:border-[#FF5C00]"
-                                placeholder={`Task ${tIdx + 1} description...`}
-                                required
-                              />
+                      {/* Smaller Thumbnails below Parent Preview */}
+                      {mediaItems.length > 1 && (
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                          {mediaItems.slice(1).map((item, idx) => (
+                            <div key={item.id} className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/20 shrink-0 group bg-black">
+                              {item.type === 'video' ? (
+                                <video src={item.url} className="w-full h-full object-cover" />
+                              ) : (
+                                <img src={item.url} alt={`Media ${idx + 2}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              )}
                               <button
                                 type="button"
-                                onClick={() => handleDeleteTask(phase.id, task.id)}
-                                disabled={isLastTaskInPhase}
-                                title={isLastTaskInPhase ? "Minimum 1 task required per phase" : "Delete Task"}
-                                className={`p-1.5 rounded-lg border transition-all ${
-                                  isLastTaskInPhase 
-                                    ? 'opacity-30 cursor-not-allowed border-white/5 text-white/30' 
-                                    : 'bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 border-white/10 hover:border-red-500/30 cursor-pointer'
-                                }`}
+                                onClick={() => removeMediaItem(item.id)}
+                                className="absolute top-0.5 right-0.5 p-1 bg-black/80 text-white hover:text-red-400 rounded-full text-[9px]"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <X className="w-3 h-3" />
                               </button>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => setCarouselStep(1)}
+                      className="p-3 bg-white/5 border border-dashed border-white/20 rounded-2xl flex items-center justify-between cursor-pointer hover:border-[#FF5C00] transition-all"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Camera className="w-4 h-4 text-[#FF5C00]" />
+                        <span className="text-xs font-bold text-white/80">No media attached yet</span>
+                      </div>
+                      <span className="text-xs font-mono text-[#FF5C00] font-bold">Record / Upload →</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* FORM TYPE: UPDATE */}
+                {activeMode === 'update' && (
+                  <div className="space-y-4">
+                    {/* Toggle Project Selection */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                          Select Project
+                        </label>
+                        {updateProjId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUpdateProjId('');
+                              setSelectedTaskIds([]);
+                            }}
+                            className="text-[10px] font-mono text-white/40 hover:text-[#FF5C00] transition-colors cursor-pointer"
+                          >
+                            Deselect Project
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                        {[...incompleteProjects].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(proj => {
+                          const isSelected = updateProjId === proj.id;
+                          return (
+                            <button
+                              key={proj.id}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setUpdateProjId('');
+                                  setSelectedTaskIds([]);
+                                } else {
+                                  setUpdateProjId(proj.id);
+                                  setSelectedTaskIds([]);
+                                }
+                              }}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
+                                  : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
+                              }`}
+                            >
+                              {proj.title}
+                            </button>
                           );
                         })}
+                      </div>
+                    </div>
 
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                        Description <span className="text-red-500 ml-0.5">*</span>
+                      </label>
+                      <textarea
+                        value={updateDesc}
+                        onChange={(e) => setUpdateDesc(e.target.value)}
+                        rows={3}
+                        required
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        placeholder="Share details about your work progress or checkpoint..."
+                      />
+                    </div>
+
+                    {/* Privacy Control Cluster */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-mono text-gray-500 uppercase tracking-wider">Privacy Setting</label>
+                      <div className="inline-flex items-center gap-1.5 p-1 rounded-xl border bg-gray-100 border-gray-200">
                         <button
                           type="button"
-                          onClick={() => handleAddTask(phase.id)}
-                          className="mt-1 text-[11px] font-mono text-[#FF5C00] hover:underline flex items-center gap-1 pt-1 cursor-pointer"
+                          onClick={() => setPrivacy('public')}
+                          className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
+                            privacy === 'public'
+                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
                         >
-                          <Plus className="w-3 h-3" />
-                          Add Task
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>Public</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrivacy('internal')}
+                          className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
+                            privacy === 'internal'
+                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          <CircleDotDashed className="w-3.5 h-3.5" />
+                          <span>Internal</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrivacy('private')}
+                          className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
+                            privacy === 'private'
+                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          <Album className="w-3.5 h-3.5" />
+                          <span>Private</span>
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Hashtags</label>
+                      <input
+                        type="text"
+                        value={updateHashtags}
+                        onChange={(e) => setUpdateHashtags(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#FF5C00]"
+                        placeholder="#woodworking, #diy, #progress"
+                      />
+                    </div>
+
+                    {/* Tasks Section: ONLY SHOWN IF A PROJECT IS SELECTED */}
+                    {updateProjId && activeUpdateProject && (
+                      <div className="space-y-2 pt-1 border-t border-white/10">
+                        <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                          Tasks to update & check off
+                        </label>
+
+                        <div className="bg-black/40 border border-white/10 rounded-2xl p-3.5 space-y-3 max-h-44 overflow-y-auto">
+                          {activeUpdateProject.phases.map((phase, pIdx) => {
+                            const incompleteInPhase = phase.tasks.filter(t => !t.completed);
+                            if (incompleteInPhase.length === 0) return null;
+
+                            return (
+                              <div key={phase.id || `ph-${pIdx}`} className="space-y-1.5">
+                                <h5 className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider">
+                                  Phase {pIdx + 1}: {phase.title}
+                                </h5>
+                                <div className="space-y-1 pl-1">
+                                  {incompleteInPhase.map((task, tIdx) => (
+                                    <label
+                                      key={task.id || `task-${pIdx}-${tIdx}`}
+                                      className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                                        selectedTaskIds.includes(task.id)
+                                          ? 'bg-[#FF5C00]/15 border-[#FF5C00] text-white'
+                                          : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedTaskIds.includes(task.id)}
+                                        onChange={() => toggleTaskSelection(task.id)}
+                                        className="w-4 h-4 rounded border-white/20 bg-black text-[#FF5C00] focus:ring-0 cursor-pointer"
+                                      />
+                                      <span className="flex-1 font-sans truncate">{task.title}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* FORM TYPE: PROJECT */}
+                {activeMode === 'project' && (
+                  <div className="space-y-4">
+                    {ENABLE_AREA_OF_FOCUS && (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Area of FOCUS</label>
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                          {collections.map(col => (
+                            <button
+                              key={col.id}
+                              type="button"
+                              onClick={() => setProjFocusId(prev => prev === col.id ? '' : col.id)}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
+                                projFocusId === col.id
+                                  ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
+                                  : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
+                              }`}
+                            >
+                              {col.title}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Recipe Blueprint</label>
+                      <select
+                        value={selectedRecipeId}
+                        onChange={(e) => handleRecipeSelect(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-[#181818] border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] cursor-pointer"
+                      >
+                        <option value="" className="bg-[#181818] text-white/60">Select a Recipe from Library...</option>
+                        {recipes.map(recipe => (
+                          <option key={recipe.id} value={recipe.id} className="bg-[#181818] text-white">
+                            {recipe.title} ({recipe.category})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                        Title <span className="text-red-500 ml-0.5">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={projTitle}
+                        onChange={(e) => setProjTitle(e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        placeholder="e.g. Master Oil Painting Canvas Study"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
+                      <textarea
+                        value={projDesc}
+                        onChange={(e) => setProjDesc(e.target.value)}
+                        rows={3}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        placeholder="Explain project details, milestones, and deliverables..."
+                      />
+                    </div>
+
+                    {/* Privacy Control Cluster */}
+                    <div className="space-y-1">
+                      <div className="inline-flex items-center gap-1 p-1 rounded-xl border bg-gray-100 border-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => setPrivacy('public')}
+                          className={`p-2 rounded-lg transition-all cursor-pointer ${
+                            privacy === 'public' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                          }`}
+                        >
+                          <Globe className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrivacy('internal')}
+                          className={`p-2 rounded-lg transition-all cursor-pointer ${
+                            privacy === 'internal' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                          }`}
+                        >
+                          <CircleDotDashed className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrivacy('private')}
+                          className={`p-2 rounded-lg transition-all cursor-pointer ${
+                            privacy === 'private' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                          }`}
+                        >
+                          <Album className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Phases & Tasks */}
+                    <div className="space-y-3 pt-2 border-t border-white/10">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Phases & Tasks</label>
+                        <button
+                          type="button"
+                          onClick={handleAddPhase}
+                          className="px-3 py-1 bg-white/10 hover:bg-white/20 text-[#FF5C00] font-mono text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-[#FF5C00]/30"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Phase
+                        </button>
+                      </div>
+
+                      <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                        {customPhases.map((phase, pIdx) => (
+                          <div key={phase.id} className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-2">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={phase.title}
+                                onChange={(e) => handleUpdatePhaseTitle(phase.id, e.target.value)}
+                                className="flex-1 px-3 py-1.5 bg-[#181818] border border-white/10 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#FF5C00]"
+                                placeholder={`Phase ${pIdx + 1} Title...`}
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1.5 pl-2 border-l-2 border-white/10">
+                              {phase.tasks.map((task, tIdx) => (
+                                <div key={task.id} className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={task.title}
+                                    onChange={(e) => handleUpdateTaskTitle(phase.id, task.id, e.target.value)}
+                                    className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white/90 focus:outline-none focus:border-[#FF5C00]"
+                                    placeholder={`Task ${tIdx + 1} description...`}
+                                    required
+                                  />
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => handleAddTask(phase.id)}
+                                className="text-[11px] font-mono text-[#FF5C00] flex items-center gap-1 pt-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" /> Add Task
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* FORM TYPE: FOCUS */}
+                {activeMode === 'focus' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                        Title <span className="text-red-500 ml-0.5">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={focusTitle}
+                        onChange={(e) => setFocusTitle(e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        placeholder="e.g. Fine Art Painting, Hardware Prototyping"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
+                      <textarea
+                        value={focusDesc}
+                        onChange={(e) => setFocusDesc(e.target.value)}
+                        rows={3}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        placeholder="Describe this area of FOCUS and core creative goals..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* FORM TYPE: RECIPE */}
+                {activeMode === 'recipe' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
+                        Recipe Title <span className="text-red-500 ml-0.5">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={recipeTitle}
+                        onChange={(e) => setRecipeTitle(e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        placeholder="e.g. Standard Oil Canvas Preparation"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
+                      <textarea
+                        value={recipeDesc}
+                        onChange={(e) => setRecipeDesc(e.target.value)}
+                        rows={3}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        placeholder="Explain this blueprint process..."
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase tracking-wider opacity-60">
-                  Timeframe <span className="font-normal lowercase opacity-60">(estimate in hours)</span>
-                </label>
-                <input
-                  type="text"
-                  value={projTimeframe}
-                  onChange={(e) => setProjTimeframe(e.target.value)}
-                  className={`w-full px-4 py-2.5 rounded-xl text-sm font-mono focus:outline-none focus:border-[#FF5C00] ${
-                    theme === 'light' ? 'bg-gray-50 border border-gray-300 text-gray-900' : 'bg-white/5 border border-white/10 text-white'
-                  }`}
-                  placeholder="e.g. 12"
-                />
-              </div>
-
-              {/* Add to my library Checkbox with Information Modal trigger */}
-              <div className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
-                theme === 'light'
-                  ? 'bg-gray-50 border-gray-200 text-gray-800'
-                  : 'bg-white/5 border-white/10 text-white/90'
-              }`}>
-                <label className="flex items-center gap-3 cursor-pointer flex-1">
-                  <input
-                    type="checkbox"
-                    checked={addToLibrary}
-                    onChange={(e) => setAddToLibrary(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-[#FF5C00] focus:ring-0 cursor-pointer"
-                  />
-                  <span className="text-xs font-mono font-bold">Add to my library!</span>
-                </label>
+              {/* Step 2 Bottom Bar: Far Left Back Button (Step 1), Far Right Next Button (Step 3) */}
+              <div className="flex items-center justify-between pt-4 border-t border-white/10 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowLibraryInfoModal(true)}
-                  className="p-1 text-white/40 hover:text-[#FF5C00] transition-colors cursor-pointer"
-                  title="More Information"
+                  onClick={() => setCarouselStep(1)}
+                  className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all cursor-pointer font-mono font-bold flex items-center gap-1.5"
+                  title="Back to Camera / Uploads"
                 >
-                  <Info className="w-4 h-4" />
+                  <ArrowLeft className="w-5 h-5" />
                 </button>
-              </div>
 
-              <div className="flex flex-row items-center justify-end gap-3 pt-4 border-t border-white/10 w-full">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="flex-1 sm:flex-none justify-center items-center flex px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  onClick={() => {
+                    if (mediaItems.length === 0) {
+                      setImageError('Media is required. Please capture or upload a photo or video.');
+                      return;
+                    }
+                    if (activeMode === 'update' && !updateDesc.trim()) {
+                      setImageError('Description is required.');
+                      return;
+                    }
+                    if (activeMode === 'project') {
+                      if (!projTitle.trim()) {
+                        setImageError('Project Title is required.');
+                        return;
+                      }
+                      if (!projDesc.trim()) {
+                        setImageError('Description is required.');
+                        return;
+                      }
+                    }
+                    if (activeMode === 'focus') {
+                      if (!focusTitle.trim()) {
+                        setImageError('Focus Area Title is required.');
+                        return;
+                      }
+                      if (!focusDesc.trim()) {
+                        setImageError('Description is required.');
+                        return;
+                      }
+                    }
+                    if (activeMode === 'recipe') {
+                      if (!recipeTitle.trim()) {
+                        setImageError('Recipe Title is required.');
+                        return;
+                      }
+                      if (!recipeDesc.trim()) {
+                        setImageError('Description is required.');
+                        return;
+                      }
+                    }
+                    setImageError('');
+                    setCarouselStep(3);
+                  }}
+                  className="p-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all cursor-pointer font-bold font-mono shadow-lg flex items-center gap-1.5"
+                  title="Next Step: Preview Post"
                 >
-                  CANCEL
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 sm:flex-none justify-center items-center flex px-6 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
-                >
-                  POST
+                  <ArrowRight className="w-5 h-5 stroke-[3]" />
                 </button>
               </div>
-            </form>
+            </div>
           )}
 
-          {/* FORM TYPE 3: UPDATE */}
-          {activeMode === 'update' && (
-            <form onSubmit={handlePostUpdate} className="space-y-4">
-              {/* Horizontal Scroll of Active Projects (<100% complete) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                  Select Project <span className="text-red-500 ml-0.5">*</span>
-                </label>
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                  {incompleteProjects.length > 0 ? (
-                    incompleteProjects.map(proj => (
-                      <button
-                        key={proj.id}
-                        type="button"
-                        onClick={() => {
-                          setUpdateProjId(proj.id);
-                          setSelectedTaskIds([]);
-                        }}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
-                          updateProjId === proj.id
-                            ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
-                            : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
-                        }`}
-                      >
-                        {proj.title}
-                      </button>
-                    ))
-                  ) : (
-                    <p className="text-xs text-white/40 font-mono py-1">No incomplete projects found.</p>
+          {/* STEP 3: PREVIEW STEP */}
+          {carouselStep === 3 && (
+            <div className="space-y-4 flex-1 flex flex-col justify-between">
+              <div className="space-y-3 overflow-y-auto max-h-[480px] pr-1">
+                {/* Sample Post Preview Box */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3 shadow-xl">
+                  {/* Header info */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={myUserAvatar}
+                        alt={myUserName}
+                        className="w-8 h-8 rounded-full object-cover border border-white/20"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{myUserName}</h4>
+                        <p className="text-[10px] font-mono text-white/40">Just now</p>
+                      </div>
+                    </div>
+                    <div className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-[10px] font-mono flex items-center gap-1">
+                      {privacy === 'public' && <Globe className="w-3 h-3 text-[#FF5C00]" />}
+                      {privacy === 'internal' && <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" />}
+                      {privacy === 'private' && <Album className="w-3 h-3 text-[#FF5C00]" />}
+                      <span className="capitalize">{privacy}</span>
+                    </div>
+                  </div>
+
+                  {/* Thumbnail Preview */}
+                  {mediaItems.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="relative w-full h-44 rounded-xl overflow-hidden border border-white/10 bg-black">
+                        {mediaItems[0].type === 'video' ? (
+                          <video src={mediaItems[0].url} className="w-full h-full object-cover" controls />
+                        ) : (
+                          <img src={mediaItems[0].url} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        )}
+                      </div>
+                      {mediaItems.length > 1 && (
+                        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                          {mediaItems.slice(1).map((m, i) => (
+                            <div key={m.id} className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black">
+                              {m.type === 'video' ? (
+                                <video src={m.url} className="w-full h-full object-cover" />
+                              ) : (
+                                <img src={m.url} alt={`Thumb ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Title & Description Preview */}
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-white font-display">
+                      {activeMode === 'update' ? (
+                        activeUpdateProject ? `Update on "${activeUpdateProject.title}"` : (updateDesc ? (updateDesc.length > 45 ? `${updateDesc.substring(0, 42)}...` : updateDesc) : 'Daily Progress Update')
+                      ) : activeMode === 'project' ? (
+                        projTitle || 'New Project'
+                      ) : activeMode === 'focus' ? (
+                        focusTitle || 'New Area of FOCUS'
+                      ) : (
+                        recipeTitle || 'New Recipe Blueprint'
+                      )}
+                    </h3>
+
+                    <p className="text-xs text-white/80 font-sans leading-relaxed whitespace-pre-line">
+                      {activeMode === 'update' ? (updateDesc || 'Logged progress update.') :
+                       activeMode === 'project' ? (projDesc || 'Started new project.') :
+                       activeMode === 'focus' ? (focusDesc || 'Created area of focus.') :
+                       (recipeDesc || 'Published process recipe.')}
+                    </p>
+                  </div>
+
+                  {/* Hashtags Preview */}
+                  {activeMode === 'update' && updateHashtags && (
+                    <div className="text-[11px] font-mono text-[#FF5C00] font-bold">
+                      {updateHashtags.split(/[\s,]+/).map(t => t.startsWith('#') ? t : `#${t}`).join(' ')}
+                    </div>
+                  )}
+
+                  {/* Checked Tasks Preview */}
+                  {activeMode === 'update' && activeUpdateProject && selectedTaskIds.length > 0 && (
+                    <div className="bg-black/40 p-2.5 rounded-xl border border-white/10 space-y-1">
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase block">
+                        ✓ Tasks Completed ({selectedTaskIds.length})
+                      </span>
+                      <ul className="text-xs text-white/70 space-y-0.5 list-disc list-inside">
+                        {activeUpdateProject.phases.flatMap(p => p.tasks).filter(t => selectedTaskIds.includes(t.id)).map((t, idx) => (
+                          <li key={t.id || `chk-task-${idx}`} className="truncate">{t.title}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
-                <textarea
-                  value={updateDesc}
-                  onChange={(e) => setUpdateDesc(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
-                  placeholder="Share details about your work progress or checkpoint..."
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Hashtags</label>
-                <input
-                  type="text"
-                  value={updateHashtags}
-                  onChange={(e) => setUpdateHashtags(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#FF5C00]"
-                  placeholder="#woodworking, #diy, #progress"
-                />
-              </div>
-
-              {/* Phases and Incomplete Tasks for Selected Project */}
-              {activeUpdateProject && (
-                <div className="space-y-2 pt-1">
-                  <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">
-                    Select Tasks to Update & Check Off
-                  </label>
-
-                  <div className="bg-black/40 border border-white/10 rounded-2xl p-3.5 space-y-3 max-h-48 overflow-y-auto">
-                    {activeUpdateProject.phases.map((phase, pIdx) => {
-                      const incompleteInPhase = phase.tasks.filter(t => !t.completed);
-                      if (incompleteInPhase.length === 0) return null;
-
-                      return (
-                        <div key={phase.id} className="space-y-1.5">
-                          <h5 className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider">
-                            Phase {pIdx + 1}: {phase.title}
-                          </h5>
-                          <div className="space-y-1 pl-1">
-                            {incompleteInPhase.map(task => (
-                              <label
-                                key={task.id}
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
-                                  selectedTaskIds.includes(task.id)
-                                    ? 'bg-[#FF5C00]/15 border-[#FF5C00] text-white'
-                                    : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedTaskIds.includes(task.id)}
-                                  onChange={() => toggleTaskSelection(task.id)}
-                                  className="w-4 h-4 rounded border-white/20 bg-black text-[#FF5C00] focus:ring-0 cursor-pointer"
-                                />
-                                <span className="flex-1 font-sans truncate">{task.title}</span>
-                                {task.estimatedHours && (
-                                  <span className="text-[10px] font-mono text-white/40">{task.estimatedHours}h</span>
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {activeUpdateProject.phases.every(ph => ph.tasks.every(t => t.completed)) && (
-                      <p className="text-xs font-mono text-emerald-400 text-center py-2">
-                        🎉 All tasks on this project are 100% completed!
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-row items-center justify-end gap-3 pt-4 border-t border-white/10 w-full">
+              {/* Step 3 Bottom Bar: Left Arrow button on left, SHARE button on right */}
+              <div className="flex items-center justify-between pt-4 border-t border-white/10 shrink-0">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="flex-1 sm:flex-none justify-center items-center flex px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  onClick={() => setCarouselStep(2)}
+                  className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all cursor-pointer font-mono font-bold flex items-center gap-1.5"
+                  title="Back to Details Form"
                 >
-                  CANCEL
+                  <ArrowLeft className="w-5 h-5" />
                 </button>
+
                 <button
-                  type="submit"
-                  className="flex-1 sm:flex-none justify-center items-center flex px-6 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={(e) => {
+                    if (activeMode === 'update') handlePostUpdate(e);
+                    else if (activeMode === 'project') handleCreateProject(e);
+                    else if (activeMode === 'focus') handleCreateFocus(e);
+                    else if (activeMode === 'recipe') handleCreateRecipe(e);
+                  }}
+                  className={`px-6 py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
+                    isSubmitting ? 'opacity-70 cursor-wait' : ''
+                  }`}
                 >
-                  POST UPDATE
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>SHARING...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>SHARE</span>
+                      <ArrowRight className="w-4 h-4 stroke-[3]" />
+                    </>
+                  )}
                 </button>
               </div>
-            </form>
+            </div>
           )}
 
         </div>
       </div>
 
-      {/* LIBRARY INFO MODAL OVERLAY */}
-      {showLibraryInfoModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
-          <div className={`rounded-3xl p-6 max-w-sm w-full space-y-4 border shadow-2xl relative transition-all ${
-            theme === 'light' ? 'bg-white text-gray-900 border-gray-200' : 'bg-[#181818] text-white border-white/10'
-          }`}>
-            <div className="flex justify-between items-center pb-3 border-b border-gray-200 dark:border-white/10">
-              <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#FF5C00] uppercase tracking-wider">
-                <Info className="w-4 h-4 text-[#FF5C00]" />
-                Add to My Library
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLibraryInfoModal(false)}
-                className="p-1 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs font-sans leading-relaxed opacity-80">
-              Saving this project sequence converts your phases and tasks into a reusable Recipe Blueprint in your personal library. You can reuse or share this recipe blueprint whenever you start future projects.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowLibraryInfoModal(false)}
-              className="w-full py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
-            >
-              GOT IT
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* CAMERA & MEDIA SELECTOR MODAL OVERLAY */}
-      {showMediaModal && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-60 flex items-center justify-center p-4">
-          <div className="bg-[#181818] border border-white/10 rounded-3xl p-6 max-w-lg w-full space-y-5 text-white shadow-2xl relative">
-            <button
-              type="button"
-              onClick={() => setShowMediaModal(false)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="space-y-1">
-              <h3 className="text-base font-display font-bold flex items-center gap-2">
-                <Camera className="w-5 h-5 text-[#FF5C00]" /> Media & Camera Station
-              </h3>
-              <p className="text-xs text-white/50 font-mono">
-                Upload up to 10 images and/or videos. Single videos up to 3 minutes; multiple videos automatically trim to 60 seconds.
-              </p>
-            </div>
-
-            {/* File Upload Zone for Logged in Users */}
-            <FileUploadZone
-              label="Upload Custom Media & Assets"
-              onFileUploaded={(file: UploadedFile) => {
-                if (mediaItems.length < 10) {
-                  setMediaItems(prev => [
-                    ...prev,
-                    {
-                      id: file.id,
-                      url: file.url,
-                      type: file.mimeType.startsWith('video') ? 'video' : 'image',
-                      name: file.filename
-                    }
-                  ]);
-                  setImageError('');
-                }
-              }}
-            />
-
-            {/* Upload Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#FF5C00] rounded-2xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer text-center"
-              >
-                <Upload className="w-6 h-6 text-[#FF5C00]" />
-                <span className="text-xs font-bold">Choose Files</span>
-                <span className="text-[9px] font-mono text-white/40">Images & Videos</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  // Instant camera snapshot preset simulation
-                  addPresetMedia(MEDIA_PRESETS[Math.floor(Math.random() * MEDIA_PRESETS.length)]);
-                  setShowMediaModal(false);
-                }}
-                className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#FF5C00] rounded-2xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer text-center"
-              >
-                <Camera className="w-6 h-6 text-[#FF5C00]" />
-                <span className="text-xs font-bold">Capture Photo</span>
-                <span className="text-[9px] font-mono text-white/40">Instant Camera Stream</span>
-              </button>
-            </div>
-
-            {/* Presets Gallery */}
-            <div className="space-y-2 pt-2 border-t border-white/10">
-              <label className="block text-xs font-mono text-white/40 uppercase tracking-wider">Quick Presets</label>
-              <div className="grid grid-cols-5 gap-2">
-                {MEDIA_PRESETS.map((preset, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      addPresetMedia(preset);
-                      setShowMediaModal(false);
-                    }}
-                    className="h-14 rounded-xl overflow-hidden border border-white/10 hover:border-[#FF5C00] cursor-pointer group relative"
-                  >
-                    <img src={preset.url} alt={preset.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowMediaModal(false)}
-                className="px-5 py-2 bg-[#FF5C00] text-black font-bold text-xs rounded-xl"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* DISCARD / ARE YOU SURE CONFIRMATION MODAL OVERLAY */}
+      <DeleteConfirmModal
+        isOpen={closeConfirmOpen}
+        title="Are you sure?"
+        message="Are you sure you want to discard this post draft? Any recorded media and form progress will be lost."
+        confirmText="Discard Draft"
+        cancelText="Keep Editing"
+        onConfirm={() => {
+          stopCameraInternal();
+          setCloseConfirmOpen(false);
+          onClose();
+        }}
+        onCancel={() => setCloseConfirmOpen(false)}
+      />
     </div>
   );
 }

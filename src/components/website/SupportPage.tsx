@@ -53,7 +53,7 @@ const ARTICLES: Article[] = [
     id: 'art-6',
     category: 'Troubleshooting',
     title: 'Why is my Supabase data not syncing?',
-    content: 'Ensure your environment variable VITE_ENABLE_SUPABASE is set to "true" and VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are valid credentials. If Supabase is disabled, Gonnng seamlessly falls back to fast local JSON browser storage.',
+    content: 'Ensure your environment variable VITE_ENABLE_SUPABASE is set to "true" and SUPABASE_URL / VITE_SUPABASE_ANON_KEY are valid credentials. If Supabase is disabled, Gonnng seamlessly falls back to fast local JSON browser storage.',
     helpfulCount: 88
   }
 ];
@@ -106,24 +106,24 @@ export const SupportPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 lg:px-8 py-12 space-y-16">
+    <div className="max-w-7xl mx-auto px-4 lg:px-8 py-12 space-y-16 text-gray-900">
       {/* HERO & SEARCH BAR */}
       <div className="text-center space-y-6 max-w-3xl mx-auto">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
           Gonnng Help Center
         </h1>
-        <p className="text-sm sm:text-base text-white/70 font-sans">
+        <p className="text-sm sm:text-base text-gray-600 font-sans">
           Find instant answers to common questions about recipes, projects, collections, and account settings.
         </p>
 
         <div className="relative max-w-xl mx-auto">
-          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search articles (e.g. 'How do I create a Recipe?')"
-            className="w-full bg-white/5 border border-white/15 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#FF5C00] transition-colors"
+            className="w-full bg-white border border-gray-300 shadow-sm rounded-2xl pl-12 pr-4 py-3.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#FF5C00] transition-colors"
           />
         </div>
       </div>
@@ -137,10 +137,10 @@ export const SupportPage: React.FC = () => {
             <button
               key={cat.name}
               onClick={() => setSelectedCategory(cat.name)}
-              className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-2 ${
+              className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-2 cursor-pointer ${
                 isActive
-                  ? 'bg-[#FF5C00] text-white border-[#FF5C00] font-bold shadow-md shadow-[#FF5C00]/20'
-                  : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white'
+                  ? 'bg-[#FF5C00] text-black border-[#FF5C00] font-bold shadow-md shadow-[#FF5C00]/20'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:text-gray-900 shadow-sm'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -152,20 +152,20 @@ export const SupportPage: React.FC = () => {
 
       {/* KNOWLEDGE ARTICLES LIST */}
       <div className="space-y-4">
-        <h2 className="text-lg font-mono font-bold text-white uppercase tracking-wider flex items-center justify-between">
+        <h2 className="text-lg font-mono font-bold text-gray-900 uppercase tracking-wider flex items-center justify-between">
           <span>Knowledge Articles ({filteredArticles.length})</span>
           {selectedCategory !== 'All Categories' && (
-            <button onClick={() => setSelectedCategory('All Categories')} className="text-xs text-[#FF5C00] font-sans hover:underline">
+            <button onClick={() => setSelectedCategory('All Categories')} className="text-xs text-[#FF5C00] font-sans hover:underline cursor-pointer">
               Clear Category Filter
             </button>
           )}
         </h2>
 
         {filteredArticles.length === 0 ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center text-white/60 space-y-2">
-            <AlertCircle className="w-8 h-8 text-white/40 mx-auto" />
+          <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8 text-center text-gray-600 space-y-2">
+            <AlertCircle className="w-8 h-8 text-gray-400 mx-auto" />
             <p className="text-sm">No articles matched your search query "{searchQuery}".</p>
-            <p className="text-xs text-white/40">Try searching for keywords like "recipe", "project", or "password".</p>
+            <p className="text-xs text-gray-500">Try searching for keywords like "recipe", "project", or "password".</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -175,34 +175,34 @@ export const SupportPage: React.FC = () => {
               return (
                 <div 
                   key={art.id}
-                  className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden transition-colors"
+                  className="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden transition-colors"
                 >
                   <button
                     onClick={() => setExpandedArticle(isExpanded ? null : art.id)}
-                    className="w-full p-5 text-left flex items-center justify-between gap-4 hover:bg-white/5 transition-colors"
+                    className="w-full p-5 text-left flex items-center justify-between gap-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-[10px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] px-2 py-0.5 rounded-full shrink-0">
                         {art.category}
                       </span>
-                      <h3 className="text-sm font-bold text-white truncate">{art.title}</h3>
+                      <h3 className="text-sm font-bold text-gray-900 truncate">{art.title}</h3>
                     </div>
-                    <ChevronRight className={`w-4 h-4 text-white/50 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    <ChevronRight className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                   </button>
 
                   {isExpanded && (
-                    <div className="px-5 pb-5 pt-1 border-t border-white/10 space-y-4 text-xs text-white/80 leading-relaxed font-sans">
+                    <div className="px-5 pb-5 pt-1 border-t border-gray-100 space-y-4 text-xs text-gray-700 leading-relaxed font-sans">
                       <p>{art.content}</p>
 
-                      <div className="flex items-center justify-between pt-3 border-t border-white/5 text-[11px]">
-                        <span className="text-white/40 font-mono">Was this article helpful?</span>
+                      <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px]">
+                        <span className="text-gray-500 font-mono">Was this article helpful?</span>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleRate(art.id, 'up')}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border transition-colors ${
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border transition-colors cursor-pointer ${
                               rating === 'up' 
-                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                                : 'bg-white/5 text-white/60 border-white/10 hover:text-white'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:text-gray-900'
                             }`}
                           >
                             <ThumbsUp className="w-3.5 h-3.5" />
@@ -210,10 +210,10 @@ export const SupportPage: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleRate(art.id, 'down')}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border transition-colors ${
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border transition-colors cursor-pointer ${
                               rating === 'down' 
-                                ? 'bg-red-500/20 text-red-400 border-red-500/30' 
-                                : 'bg-white/5 text-white/60 border-white/10 hover:text-white'
+                                ? 'bg-red-50 text-red-700 border-red-300' 
+                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:text-gray-900'
                             }`}
                           >
                             <ThumbsDown className="w-3.5 h-3.5" />
@@ -231,42 +231,42 @@ export const SupportPage: React.FC = () => {
       </div>
 
       {/* CONTACT ESCALATION / TICKET SUBMISSION FORM */}
-      <div className="bg-gradient-to-b from-white/5 to-transparent border border-white/10 rounded-2xl p-8 space-y-6">
+      <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8 space-y-6">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-[#FF5C00]" />
             <span>Still need help? Submit a Support Ticket</span>
           </h2>
-          <p className="text-xs text-white/60 mt-1">Our customer support team typically responds within 2-4 hours.</p>
+          <p className="text-xs text-gray-600 mt-1">Our customer support team typically responds within 2-4 hours.</p>
         </div>
 
         {ticketSubmitted ? (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center space-y-2">
-            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto animate-bounce" />
-            <h3 className="text-base font-bold text-white">Support Request Received!</h3>
-            <p className="text-xs text-white/70">A confirmation email has been sent to {ticketForm.email || 'your email'}. Ticket ID: #GNG-84920.</p>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center space-y-2">
+            <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto animate-bounce" />
+            <h3 className="text-base font-bold text-gray-900">Support Request Received!</h3>
+            <p className="text-xs text-gray-700">A confirmation email has been sent to {ticketForm.email || 'your email'}. Ticket ID: #GNG-84920.</p>
           </div>
         ) : (
           <form onSubmit={handleTicketSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs text-white/70 font-mono">Your Email</label>
+                <label className="text-xs text-gray-700 font-mono">Your Email</label>
                 <input
                   type="email"
                   required
                   value={ticketForm.email}
                   onChange={(e) => setTicketForm({ ...ticketForm, email: e.target.value })}
                   placeholder="creator@example.com"
-                  className="w-full bg-white/5 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs text-white/70 font-mono">Issue Category</label>
+                <label className="text-xs text-gray-700 font-mono">Issue Category</label>
                 <select
                   value={ticketForm.category}
                   onChange={(e) => setTicketForm({ ...ticketForm, category: e.target.value })}
-                  className="w-full bg-[#121216] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
                 >
                   <option value="Getting Started">Getting Started</option>
                   <option value="Account Management">Account Management</option>
@@ -277,11 +277,11 @@ export const SupportPage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs text-white/70 font-mono">Device Environment</label>
+                <label className="text-xs text-gray-700 font-mono">Device Environment</label>
                 <select
                   value={ticketForm.device}
                   onChange={(e) => setTicketForm({ ...ticketForm, device: e.target.value })}
-                  className="w-full bg-[#121216] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
                 >
                   <option value="Web App">Web Workspace (Desktop)</option>
                   <option value="iOS App">iOS App (iPhone/iPad)</option>
@@ -291,20 +291,20 @@ export const SupportPage: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-white/70 font-mono">Issue Description</label>
+              <label className="text-xs text-gray-700 font-mono">Issue Description</label>
               <textarea
                 required
                 rows={4}
                 value={ticketForm.description}
                 onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })}
                 placeholder="Describe what happened and any steps to reproduce..."
-                className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#FF5C00]"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
               ></textarea>
             </div>
 
             <button
               type="submit"
-              className="bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-white px-6 py-3 rounded-xl text-xs font-bold shadow-md shadow-[#FF5C00]/20 flex items-center gap-2 hover:scale-[1.02] transition-all"
+              className="bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black px-6 py-3 rounded-xl text-xs font-bold shadow-md shadow-[#FF5C00]/20 flex items-center gap-2 hover:scale-[1.02] transition-all cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Submit Ticket</span>

@@ -22,25 +22,22 @@ import {
   GitFork,
   Menu,
   Home,
+  CircleDotDashed,
   Edit2,
   X
 } from 'lucide-react';
 
 import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase } from './types';
-import { 
-  INITIAL_RECIPES, 
-  INITIAL_PROJECTS, 
-  INITIAL_COLLECTIONS, 
-  INITIAL_FEED_POSTS, 
-  INITIAL_CREATORS,
-  COMMUNITY_RECIPES
-} from './data/initialData';
+import { GonnngGIcon, GonnngGLogo } from './components/GonnngLogo';
 import { dataService } from './services/dataService';
+import { uploadService, getPublicMediaUrl } from './services/uploadService';
+import { permissionService } from './services/permissionService';
 import { authService, isAuthFeatureEnabled, UserSession } from './services/authService';
+import { hydrateCreators } from './utils/followUtils';
 
 // Component imports
 import Onboarding from './components/Onboarding';
-import UserProfile from './components/UserProfile';
+import UserProfile, { AppPermissions } from './components/UserProfile';
 import SandEngine from './components/SandEngine';
 import Feed from './components/Feed';
 import CreateHub from './components/CreateHub';
@@ -49,10 +46,10 @@ import CreatorProfileModal from './components/CreatorProfileModal';
 import UpdatesView, { MessageThread } from './components/UpdatesView';
 import ShareDrawer from './components/ShareDrawer';
 import HomeCreatorProfileView from './components/HomeCreatorProfileView';
+import PermissionsPromptModal from './components/PermissionsPromptModal';
 
 // Website Component imports
 import { WebsiteHeader } from './components/website/WebsiteHeader';
-import { WebsiteFooter } from './components/website/WebsiteFooter';
 import { HomePage } from './components/website/HomePage';
 import { DownloadPage } from './components/website/DownloadPage';
 import { SupportPage } from './components/website/SupportPage';
@@ -62,84 +59,53 @@ import { ContactPage } from './components/website/ContactPage';
 import { LoginPage } from './components/website/LoginPage';
 import { OnboardingWizard } from './components/website/OnboardingWizard';
 
+// Cookie Management Infrastructure
+import { useCookieConsent } from './hooks/useCookieConsent';
+import { CookieBanner } from './components/CookieBanner';
+import { CookiePreferencesModal } from './components/CookiePreferencesModal';
+
+const DEFAULT_USER: Creator = {
+  id: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
+  publicId: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
+  username: 'gyro_gearloose',
+  name: 'Gyro Gearloose',
+  email: 'test@gonnng.com',
+  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
+  bio: 'Process creator and workflow explorer.',
+  goals: 'Executing clear process blueprints.',
+  privacyDefault: 'public',
+  followerIds: [],
+  followingIds: [],
+  followersCount: 0,
+  followingCount: 0
+};
+
 export default function App() {
   // Global States loaded from LocalStorage if present
   const [recipes, setRecipes] = useState<Recipe[]>(() => {
     const saved = localStorage.getItem('gonnng_recipes');
-    return saved ? JSON.parse(saved) : INITIAL_RECIPES;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem('gonnng_projects');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [collections, setCollections] = useState<Collection[]>(() => {
     const saved = localStorage.getItem('gonnng_collections');
-    return saved ? JSON.parse(saved) : INITIAL_COLLECTIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [posts, setPosts] = useState<FeedPost[]>(() => {
     const savedStr = localStorage.getItem('gonnng_posts');
-    let rawPosts: FeedPost[] = INITIAL_FEED_POSTS;
-
     if (savedStr) {
       try {
         const savedList: FeedPost[] = JSON.parse(savedStr);
-        if (Array.isArray(savedList) && savedList.length > 0) {
-          const savedMap = new Map<string, FeedPost>(savedList.map(p => [p.id, p]));
-          const initialIds = new Set(INITIAL_FEED_POSTS.map(p => p.id));
-          
-          // Retain all 50+ initial feed posts (preserving user's votes/comments if modified)
-          const mergedInitial = INITIAL_FEED_POSTS.map(p => savedMap.get(p.id) || p);
-          
-          // Include any newly created user posts not in INITIAL_FEED_POSTS
-          const newPosts = savedList.filter(p => !initialIds.has(p.id));
-          rawPosts = [...newPosts, ...mergedInitial];
-        }
-      } catch {
-        rawPosts = INITIAL_FEED_POSTS;
-      }
+        if (Array.isArray(savedList)) return savedList;
+      } catch {}
     }
-    
-    const seenPostIds = new Set<string>();
-    const uniquePosts: FeedPost[] = [];
-
-    for (const p of rawPosts) {
-      let postId = p.id;
-      if (!postId || seenPostIds.has(postId)) {
-        postId = `post-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      }
-      seenPostIds.add(postId);
-
-      const seenCommentIds = new Set<string>();
-      const comments = (p.comments && p.comments.length > 0)
-        ? p.comments.map((c, cIdx) => {
-            let commentId = c.id;
-            if (!commentId || seenCommentIds.has(commentId)) {
-              commentId = `c-${postId}-${cIdx}-${Math.random().toString(36).substring(2, 9)}`;
-            }
-            seenCommentIds.add(commentId);
-            return { ...c, id: commentId };
-          })
-        : [
-            {
-              id: `comment-init-${postId}`,
-              userName: 'Process Coach',
-              userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-              content: 'The whole is indeed a sum of its parts. Excellent focus on sequence!',
-              timeString: '1 day ago'
-            }
-          ];
-
-      uniquePosts.push({
-        ...p,
-        id: postId,
-        comments
-      });
-    }
-
-    return uniquePosts;
+    return [];
   });
 
   const [creators, setCreators] = useState<Creator[]>(() => {
@@ -148,84 +114,168 @@ export default function App() {
       try {
         const parsed: Creator[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const initMap = new Map(INITIAL_CREATORS.map(c => [c.id, c]));
-          return parsed.map(c => {
-            const init = initMap.get(c.id);
-            const followsYou = c.followsYou ?? init?.followsYou ?? false;
-            const isFollowing = c.isFollowing ?? init?.isFollowing ?? false;
-            return {
-              ...c,
-              followsYou,
-              isFollowing,
-              isInCircle: isFollowing && followsYou
-            };
-          });
+          return hydrateCreators(parsed);
         }
-      } catch {
-        return INITIAL_CREATORS;
-      }
+      } catch {}
     }
-    return INITIAL_CREATORS;
+    return [DEFAULT_USER];
   });
 
   const [currentUser, setCurrentUser] = useState<Creator>(() => {
     const saved = localStorage.getItem('gonnng_current_user');
-    return saved ? JSON.parse(saved) : {
-      id: 'user-current',
-      name: 'Creative Architect',
-      email: 'creator@gonnng.app',
-      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
-      bio: 'Lover of artisan sourdough, conceptual canvas painting, and deep focus loops.',
-      goals: 'Host French autumn oil painting exhibit. Perfect the Sandwich Master sequence.',
-      privacyDefault: 'public',
-      followersCount: 84,
-      followingCount: 3
-    };
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) {
+          const followerIds = Array.isArray(parsed.followerIds) ? parsed.followerIds : [];
+          const followingIds = Array.isArray(parsed.followingIds) ? parsed.followingIds : [];
+
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            followerIds,
+            followingIds,
+            followersCount: followerIds.length,
+            followingCount: followingIds.length
+          };
+        }
+      } catch {}
+    }
+    return DEFAULT_USER;
   });
 
   // Routing logic helpers
-  const parsePath = (pathname: string): { viewMode: 'website' | 'workspace'; websiteTab: string; activeTab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile' } => {
+  const parsePath = (pathname: string): { 
+    viewMode: 'website' | 'workspace'; 
+    websiteTab: string; 
+    activeTab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile';
+    updatesCategory?: null | 'updates' | 'followers' | 'appinfo';
+    updatesChatUserId?: string | null;
+    processTab?: 'projects' | 'focus' | 'library';
+    viewedCreatorIdentifier?: string | null;
+    postId?: string | null;
+    recipeId?: string | null;
+  } => {
     const path = pathname.toLowerCase().replace(/\/$/, '') || '/';
-    if (path === '/home' || path.startsWith('/p/') || path.startsWith('/project/') || path.startsWith('/recipe/')) {
-      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'social' };
-    } else if (path === '/sand') {
-      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach' };
-    } else if (path === '/updates') {
-      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates' };
-    } else if (path === '/library') {
-      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes' };
-    } else if (path === '/profile' || path.startsWith('/u/')) {
-      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'profile' };
-    } else if (path === '/download') {
-      return { viewMode: 'website', websiteTab: 'download', activeTab: 'social' };
-    } else if (path === '/support') {
-      return { viewMode: 'website', websiteTab: 'support', activeTab: 'social' };
-    } else if (path === '/contact') {
-      return { viewMode: 'website', websiteTab: 'contact', activeTab: 'social' };
-    } else if (path === '/privacy') {
-      return { viewMode: 'website', websiteTab: 'privacy', activeTab: 'social' };
-    } else if (path === '/terms') {
-      return { viewMode: 'website', websiteTab: 'terms', activeTab: 'social' };
-    } else if (path === '/login') {
-      return { viewMode: 'website', websiteTab: 'login', activeTab: 'social' };
-    } else {
-      return { viewMode: 'website', websiteTab: 'home', activeTab: 'social' };
+    const parts = path.split('/').filter(Boolean);
+
+    if (parts.length === 0) {
+      return { viewMode: 'website', websiteTab: 'home', activeTab: 'profile' };
     }
+
+    const root = parts[0];
+
+    if (['download', 'support', 'contact', 'privacy', 'terms', 'login'].includes(root)) {
+      return { viewMode: 'website', websiteTab: root, activeTab: 'profile' };
+    }
+
+    if (root === 'circle') {
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'social' };
+    }
+
+    if (root === 'p' || root === 'post' || root === 'project') {
+      const postId = parts[1] || null;
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'social', postId };
+    }
+
+    if (root === 'recipe') {
+      const recipeId = parts[1] || null;
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library', recipeId };
+    }
+
+    if (root === 'updates') {
+      const sub = parts[1];
+      if (sub === 'notifications' || sub === 'activity') {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'updates' };
+      }
+      if (sub === 'followers') {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'followers' };
+      }
+      if (sub === 'system' || sub === 'appinfo' || sub === 'announcements') {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'appinfo' };
+      }
+      if (sub === 'messages') {
+        const chatUserId = parts[2] || null;
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: null, updatesChatUserId: chatUserId };
+      }
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: null, updatesChatUserId: null };
+    }
+
+    if (root === 'process' || root === 'sand') {
+      const sub = parts[1];
+      if (sub === 'focus') {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'focus' };
+      }
+      if (sub === 'library') {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library' };
+      }
+      if (sub === 'recipe' && parts[2]) {
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library', recipeId: parts[2] };
+      }
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'projects' };
+    }
+
+    if (root === 'library') {
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library' };
+    }
+
+    if (root === 'profile' || root === 'u') {
+      const viewedHandle = parts[1] || null;
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'profile', viewedCreatorIdentifier: viewedHandle };
+    }
+
+    return { viewMode: 'website', websiteTab: 'home', activeTab: 'profile' };
   };
 
   const getPathFromState = (
     mode: 'website' | 'workspace', 
     webTab: string, 
-    appTab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile'
+    appTab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile',
+    subState?: {
+      updatesCategory?: null | 'updates' | 'followers' | 'appinfo';
+      updatesChatUser?: Creator | null;
+      processTab?: 'projects' | 'focus' | 'library';
+      viewedCreator?: Creator | null | string;
+      postId?: string | null;
+      recipeId?: string | null;
+    }
   ): string => {
     if (mode === 'workspace') {
+      if (subState?.postId) {
+        return `/p/${subState.postId}`;
+      }
+      if (subState?.recipeId) {
+        return `/recipe/${subState.recipeId}`;
+      }
+      if (subState?.viewedCreator) {
+        const creatorObj = typeof subState.viewedCreator === 'object' ? subState.viewedCreator : null;
+        const handle = creatorObj 
+          ? (creatorObj.username || creatorObj.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || creatorObj.id)
+          : subState.viewedCreator;
+        return `/u/${encodeURIComponent(String(handle))}`;
+      }
+
       switch (appTab) {
-        case 'social': return '/home';
-        case 'coach': return '/sand';
-        case 'updates': return '/updates';
-        case 'recipes': return '/sand';
-        case 'profile': return '/profile';
-        default: return '/home';
+        case 'updates':
+          if (subState?.updatesChatUser) {
+            const handle = subState.updatesChatUser.username || subState.updatesChatUser.id;
+            return `/updates/messages/${encodeURIComponent(handle)}`;
+          }
+          if (subState?.updatesCategory === 'updates') return '/updates/notifications';
+          if (subState?.updatesCategory === 'followers') return '/updates/followers';
+          if (subState?.updatesCategory === 'appinfo') return '/updates/system';
+          return '/updates';
+        case 'coach':
+          if (subState?.processTab === 'focus') return '/process/focus';
+          return '/process/projects';
+        case 'recipes':
+          return '/process/library';
+        case 'social':
+          return '/circle';
+        case 'profile':
+          return '/profile';
+        default:
+          return '/profile';
       }
     } else {
       switch (webTab) {
@@ -248,17 +298,208 @@ export default function App() {
   const [websiteTab, setWebsiteTab] = useState<string>(initialRoute.websiteTab);
   const [authSession, setAuthSession] = useState<UserSession | null>(() => authService.getCurrentSession());
 
+  // Cookie Consent Infrastructure
+  const {
+    hasAnswered: hasAnsweredCookieConsent,
+    preferences: cookiePreferences,
+    attribution: cookieAttribution,
+    isPreferencesModalOpen: isCookieModalOpen,
+    acceptAll: handleAcceptAllCookies,
+    rejectOptional: handleRejectOptionalCookies,
+    savePreferences: handleSaveCookiePreferences,
+    openPreferencesModal: handleOpenCookieModal,
+    closePreferencesModal: handleCloseCookieModal,
+    trackEvent: trackAnalyticsEvent,
+    governanceItems: cookieGovernanceItems
+  } = useCookieConsent();
+
+  // On mount: check server authentication session via gonnng_session cookie
+  useEffect(() => {
+    authService.checkServerSession().then((user) => {
+      if (user) {
+        setAuthSession(user);
+      }
+    });
+  }, []);
+
+  // Ensure currentUser state is synced when authSession or creators change
+  useEffect(() => {
+    const activeUserId = authSession?.id || currentUser.id || 'user-current';
+    const activeEmail = authSession?.email;
+
+    const matchingCreator = creators.find(
+      c => c.id === activeUserId || (activeEmail && c.email?.toLowerCase() === activeEmail.toLowerCase())
+    );
+
+    if (matchingCreator) {
+      setCurrentUser(prev => {
+        const isDifferent =
+          prev.id !== matchingCreator.id ||
+          prev.followersCount !== matchingCreator.followersCount ||
+          prev.followingCount !== matchingCreator.followingCount ||
+          JSON.stringify(prev.followerIds) !== JSON.stringify(matchingCreator.followerIds) ||
+          JSON.stringify(prev.followingIds) !== JSON.stringify(matchingCreator.followingIds);
+
+        if (isDifferent) {
+          return {
+            ...matchingCreator,
+            avatarUrl: authSession?.avatarUrl || matchingCreator.avatarUrl
+          };
+        }
+        return prev;
+      });
+    } else if (authSession) {
+      const newCreator: Creator = {
+        id: authSession.id,
+        publicId: authSession.publicId || Math.random().toString(36).substring(2, 11).toUpperCase(),
+        username: authSession.username || authSession.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        name: authSession.name,
+        email: authSession.email,
+        avatarUrl: authSession.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
+        bio: 'Process creator and workflow explorer.',
+        goals: 'Executing clear process blueprints.',
+        privacyDefault: 'public',
+        followerIds: [],
+        followingIds: [],
+        followersCount: 0,
+        followingCount: 0
+      };
+      setCreators(prev => [...prev, newCreator]);
+      setCurrentUser(newCreator);
+    }
+  }, [authSession, creators]);
+
+  // Track page views when website tab changes
+  useEffect(() => {
+    if (viewMode === 'website') {
+      trackAnalyticsEvent('Page View', { page: websiteTab });
+      if (websiteTab === 'home') trackAnalyticsEvent('Landing Page Visit');
+      if (websiteTab === 'download') trackAnalyticsEvent('Download Page Visit');
+      if (websiteTab === 'login') trackAnalyticsEvent('Account Creation Click');
+    }
+  }, [viewMode, websiteTab, trackAnalyticsEvent]);
+
+  // Hardware & Device Permissions State
+  const [permissions, setPermissions] = useState<AppPermissions>(() => {
+    const saved = localStorage.getItem('gonnng_permissions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return { camera: true, microphone: true, files: true };
+  });
+
+  const [showPermissionsPromptModal, setShowPermissionsPromptModal] = useState<boolean>(false);
+
+  // Flow 1: Cold start / login permission check
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    permissionService.onLoginOrColdStart(currentUser.id).then(resMap => {
+      const updated: AppPermissions = {
+        camera: resMap.camera === 'granted',
+        microphone: resMap.microphone === 'granted',
+        files: resMap.file_access === 'granted'
+      };
+      setPermissions(updated);
+      localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
+    }).catch(err => console.warn('Permission cold start sync error:', err));
+  }, [currentUser?.id]);
+
+  // Flow 2: Sync permissions on app foreground / resume
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const syncForegroundPermissions = () => {
+      if (document.visibilityState === 'visible') {
+        permissionService.onForegroundSync(currentUser.id).then(resMap => {
+          const updated: AppPermissions = {
+            camera: resMap.camera === 'granted',
+            microphone: resMap.microphone === 'granted',
+            files: resMap.file_access === 'granted'
+          };
+          setPermissions(updated);
+          localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
+        }).catch(err => console.warn('Foreground permissions sync note:', err));
+      }
+    };
+
+    document.addEventListener('visibilitychange', syncForegroundPermissions);
+    window.addEventListener('focus', syncForegroundPermissions);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncForegroundPermissions);
+      window.removeEventListener('focus', syncForegroundPermissions);
+    };
+  }, [currentUser?.id]);
+
+  const handleUpdatePermissions = (updated: AppPermissions) => {
+    setPermissions(updated);
+    localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
+  };
+
+  const handleApproveAllPermissions = () => {
+    const allApproved = { camera: true, microphone: true, files: true };
+    setPermissions(allApproved);
+    localStorage.setItem('gonnng_permissions', JSON.stringify(allApproved));
+    localStorage.setItem('gonnng_permissions_prompted', 'true');
+    setShowPermissionsPromptModal(false);
+  };
+
+  const handleCustomPermissions = (custom: AppPermissions) => {
+    setPermissions(custom);
+    localStorage.setItem('gonnng_permissions', JSON.stringify(custom));
+    localStorage.setItem('gonnng_permissions_prompted', 'true');
+    setShowPermissionsPromptModal(false);
+  };
+
+  const handleNavigateToPermissions = () => {
+    setViewMode('workspace');
+    setActiveTab('profile');
+    setIsProfileSettingsOpen(true);
+    setTimeout(() => {
+      const el = document.getElementById('permissions-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 350);
+  };
+
   const [activeTab, setActiveTab] = useState<'updates' | 'recipes' | 'coach' | 'social' | 'profile'>(initialRoute.activeTab);
-  const [feedFilter, setFeedFilter] = useState<'all' | 'internal' | 'private'>('all');
+  const [processTab, setProcessTab] = useState<'projects' | 'focus' | 'library'>(initialRoute.processTab || 'projects');
+  const [feedFilter, setFeedFilter] = useState<'all' | 'internal' | 'private'>('internal');
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
 
+  // Overlay / Inline Views state
+  const [homeViewCreatorProfile, setHomeViewCreatorProfile] = useState<Creator | null>(null);
+  const [profileSuperimposedPostId, setProfileSuperimposedPostId] = useState<string | null>(initialRoute.postId || null);
+  const [homeSuperimposedPostId, setHomeSuperimposedPostId] = useState<string | null>(initialRoute.postId || null);
+  const [autoOpenCommentsPostId, setAutoOpenCommentsPostId] = useState<string | null>(null);
+
+  // Updates View Navigation States
+  const [updatesCategory, setUpdatesCategory] = useState<null | 'updates' | 'followers' | 'appinfo'>(initialRoute.updatesCategory ?? null);
+  const [updatesChatUser, setUpdatesChatUser] = useState<Creator | null>(null);
+
+  const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
+
   const updateRoute = (
-    newViewMode: 'website' | 'workspace',
+    newViewMode?: 'website' | 'workspace',
     newWebsiteTab?: string,
     newActiveTab?: 'updates' | 'recipes' | 'coach' | 'social' | 'profile',
+    subState?: {
+      updatesCategory?: null | 'updates' | 'followers' | 'appinfo';
+      updatesChatUser?: Creator | null;
+      processTab?: 'projects' | 'focus' | 'library';
+      viewedCreator?: Creator | null | string;
+      postId?: string | null;
+      recipeId?: string | null;
+    },
     push: boolean = true
   ) => {
-    const targetViewMode = newViewMode;
+    const targetViewMode = newViewMode ?? viewMode;
     const targetWebsiteTab = newWebsiteTab ?? websiteTab;
     const targetActiveTab = newActiveTab ?? activeTab;
 
@@ -266,23 +507,86 @@ export default function App() {
     if (newWebsiteTab !== undefined) setWebsiteTab(targetWebsiteTab);
     if (newActiveTab !== undefined) setActiveTab(targetActiveTab);
 
-    const targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab);
-    if (push && window.location.pathname !== targetPath) {
+    const effUpdatesCat = subState?.updatesCategory !== undefined ? subState.updatesCategory : updatesCategory;
+    const effUpdatesUser = subState?.updatesChatUser !== undefined ? subState.updatesChatUser : updatesChatUser;
+    const effProcessTab = subState?.processTab !== undefined ? subState.processTab : processTab;
+    const effViewedCreator = subState?.viewedCreator !== undefined ? subState.viewedCreator : (homeViewCreatorProfile || viewedCreatorId);
+    const effPostId = subState?.postId !== undefined ? subState.postId : (homeSuperimposedPostId || profileSuperimposedPostId);
+    const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : selectedRecipeModal?.id;
+
+    const targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab, {
+      updatesCategory: effUpdatesCat,
+      updatesChatUser: effUpdatesUser,
+      processTab: effProcessTab,
+      viewedCreator: effViewedCreator,
+      postId: effPostId,
+      recipeId: effRecipeId
+    });
+
+    if (push && typeof window !== 'undefined' && window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
   };
 
   useEffect(() => {
-    const handlePopState = () => {
+    const syncFromRoute = () => {
       const route = parsePath(window.location.pathname);
       setViewMode(route.viewMode);
       setWebsiteTab(route.websiteTab);
       setActiveTab(route.activeTab);
+
+      if (route.processTab) {
+        setProcessTab(route.processTab);
+      }
+
+      setUpdatesCategory(route.updatesCategory ?? null);
+
+      if (route.updatesChatUserId) {
+        const found = creators.find(c => c.id === route.updatesChatUserId || c.username === route.updatesChatUserId);
+        setUpdatesChatUser(found || null);
+      } else {
+        setUpdatesChatUser(null);
+      }
+
+      if (route.viewedCreatorIdentifier) {
+        const handle = route.viewedCreatorIdentifier.toLowerCase();
+        const found = creators.find(c => c.id === route.viewedCreatorIdentifier || c.username?.toLowerCase() === handle || c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === handle);
+        if (found) {
+          if (currentUser && found.id === currentUser.id) {
+            setHomeViewCreatorProfile(null);
+            setViewedCreatorId(null);
+          } else {
+            setHomeViewCreatorProfile(found);
+          }
+        } else {
+          setViewedCreatorId(route.viewedCreatorIdentifier);
+        }
+      } else {
+        setHomeViewCreatorProfile(null);
+        setViewedCreatorId(null);
+      }
+
+      if (route.postId) {
+        setHomeSuperimposedPostId(route.postId);
+        setProfileSuperimposedPostId(route.postId);
+      } else {
+        setHomeSuperimposedPostId(null);
+        setProfileSuperimposedPostId(null);
+      }
+
+      if (route.recipeId) {
+        const foundRec = recipes.find(r => r.id === route.recipeId);
+        if (foundRec) setSelectedRecipeModal(foundRec);
+      } else {
+        setSelectedRecipeModal(null);
+      }
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    syncFromRoute();
+
+    window.addEventListener('popstate', syncFromRoute);
+    return () => window.removeEventListener('popstate', syncFromRoute);
+  }, [creators, currentUser, recipes]);
 
   const handleLoginSuccess = (user: UserSession) => {
     setAuthSession(user);
@@ -296,21 +600,12 @@ export default function App() {
     if (user.isOnboarded) {
       setShowTutorial(false);
       localStorage.setItem('gonnng_tutorial_done', 'true');
-      updateRoute('workspace', undefined, 'social');
+      updateRoute('workspace', undefined, 'profile');
     } else {
       setShowTutorial(true);
       localStorage.removeItem('gonnng_tutorial_done');
-      updateRoute('workspace', undefined, 'social');
+      updateRoute('workspace', undefined, 'profile');
     }
-  };
-
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('gonnng_theme') as 'dark' | 'light') || 'dark';
-  });
-
-  const handleToggleTheme = (newTheme: 'dark' | 'light') => {
-    setTheme(newTheme);
-    localStorage.setItem('gonnng_theme', newTheme);
   };
 
   const handleLogout = () => {
@@ -358,12 +653,6 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll, { capture: true });
   }, []);
 
-  // Overlay / Inline Views state
-  const [homeViewCreatorProfile, setHomeViewCreatorProfile] = useState<Creator | null>(null);
-  const [profileSuperimposedPostId, setProfileSuperimposedPostId] = useState<string | null>(null);
-  const [homeSuperimposedPostId, setHomeSuperimposedPostId] = useState<string | null>(null);
-  const [autoOpenCommentsPostId, setAutoOpenCommentsPostId] = useState<string | null>(null);
-
   const handleTabChange = (tab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile') => {
     setShowTutorial(false);
     if (tab === 'updates') {
@@ -382,52 +671,64 @@ export default function App() {
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    updateRoute('workspace', undefined, tab);
+    updateRoute('workspace', undefined, tab, {
+      updatesCategory: null,
+      updatesChatUser: null,
+      processTab: tab === 'recipes' ? 'library' : tab === 'coach' ? 'projects' : undefined,
+      viewedCreator: null,
+      postId: null,
+      recipeId: null
+    });
+  };
+
+  const handleUpdatesCategoryChange = (cat: null | 'updates' | 'followers' | 'appinfo') => {
+    setUpdatesCategory(cat);
+    setUpdatesChatUser(null);
+    updateRoute('workspace', undefined, 'updates', { updatesCategory: cat, updatesChatUser: null, viewedCreator: null, postId: null, recipeId: null });
+  };
+
+  const handleUpdatesChatUserChange = (user: Creator | null) => {
+    setUpdatesChatUser(user);
+    setUpdatesCategory(null);
+    updateRoute('workspace', undefined, 'updates', { updatesCategory: null, updatesChatUser: user, viewedCreator: null, postId: null, recipeId: null });
+  };
+
+  const handleProcessTabChange = (tab: 'projects' | 'focus' | 'library') => {
+    setProcessTab(tab);
+    const targetAppTab = tab === 'library' ? 'recipes' : 'coach';
+    updateRoute('workspace', undefined, targetAppTab, { processTab: tab, viewedCreator: null, postId: null, recipeId: null });
   };
 
   // Message Threads & Share Drawer States
   const [shareDrawerPost, setShareDrawerPost] = useState<FeedPost | null>(null);
   const [isShareDrawerOpen, setIsShareDrawerOpen] = useState<boolean>(false);
 
-  // Updates View Navigation States
-  const [updatesCategory, setUpdatesCategory] = useState<null | 'updates' | 'followers' | 'appinfo'>(null);
-  const [updatesChatUser, setUpdatesChatUser] = useState<Creator | null>(null);
-
-  const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
-
   const handleSelectPost = (postId: string, actionType?: 'comment' | 'vote' | 'shared_message') => {
     setShowTutorial(false);
+    const match = posts.find(p => p.id === postId || (p.title && p.title.toLowerCase().includes(postId.toLowerCase()))) || posts[0];
+    const actualPostId = match ? match.id : postId;
+
+    setProfileSuperimposedPostId(actualPostId);
+    setHomeSuperimposedPostId(actualPostId);
     if (actionType === 'comment') {
-      // Comment notification: Permalinks to Profile view superimposed post & opens comment drawer!
-      setProfileSuperimposedPostId(postId);
-      setAutoOpenCommentsPostId(postId);
-      handleTabChange('profile');
-      setTimeout(() => {
-        document.getElementById('profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
+      setAutoOpenCommentsPostId(actualPostId);
     } else {
-      // Vote update, shared message post, or default: Superimpose over Profile view!
-      setProfileSuperimposedPostId(postId);
       setAutoOpenCommentsPostId(null);
-      handleTabChange('profile');
-      setTimeout(() => {
-        document.getElementById('profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
     }
+    updateRoute('workspace', undefined, 'social', { postId: actualPostId });
+    setTimeout(() => {
+      document.getElementById('profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   const handleSelectRecipe = (recipeId: string) => {
     setShowTutorial(false);
-    const targetRecipe = recipes.find(r => r.id === recipeId) || 
-                         COMMUNITY_RECIPES.find(r => r.id === recipeId) ||
-                         INITIAL_RECIPES.find(r => r.id === recipeId) ||
-                         recipes[0];
+    const targetRecipe = recipes.find(r => r.id === recipeId) || recipes[0];
     if (targetRecipe) {
       setSelectedRecipeModal(targetRecipe);
+      updateRoute('workspace', undefined, 'recipes', { recipeId: targetRecipe.id, processTab: 'library' });
     }
-    handleTabChange('recipes');
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
@@ -435,14 +736,23 @@ export default function App() {
 
   const handleSelectUser = (creatorId: string) => {
     setShowTutorial(false);
-    const targetCreator = creators.find(c => c.id === creatorId || c.name === creatorId) || INITIAL_CREATORS.find(c => c.id === creatorId || c.name === creatorId);
+    const targetCreator = creators.find(c => c.id === creatorId || c.username === creatorId || c.name === creatorId);
     if (targetCreator) {
-      setHomeViewCreatorProfile(targetCreator);
-      updateRoute('workspace', undefined, 'social');
+      if (currentUser && targetCreator.id === currentUser.id) {
+        setHomeViewCreatorProfile(null);
+        setViewedCreatorId(null);
+        updateRoute('workspace', undefined, 'profile', { viewedCreator: null });
+      } else {
+        setHomeViewCreatorProfile(targetCreator);
+        updateRoute('workspace', undefined, 'social', { viewedCreator: targetCreator });
+      }
       setTimeout(() => {
         document.getElementById('home-profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 100);
+    } else {
+      setViewedCreatorId(creatorId);
+      updateRoute('workspace', undefined, 'social', { viewedCreator: creatorId });
     }
   };
 
@@ -453,34 +763,7 @@ export default function App() {
         return JSON.parse(saved);
       } catch {}
     }
-    return [
-      {
-        creator: INITIAL_CREATORS.find(c => c.id === 'creator-ada') || INITIAL_CREATORS[0],
-        lastUpdated: Date.now() - 1000 * 60 * 15,
-        unreadCount: 1,
-        messages: [
-          { id: 'm1', senderId: 'creator-ada', text: 'Hey Creative Architect! How is the Sand Engine algorithm coming along?', timestamp: '15m ago', isRead: false },
-          { id: 'm2', senderId: 'user-current', text: 'Going great! Just completed phase 2 of the workspace sequence.', timestamp: '10m ago', isRead: true },
-          { id: 'm3', senderId: 'creator-ada', text: 'Wonderful! Send over the blueprint permalink when ready.', timestamp: '5m ago', isRead: false }
-        ]
-      },
-      {
-        creator: INITIAL_CREATORS.find(c => c.id === 'creator-hokusai') || INITIAL_CREATORS[1],
-        lastUpdated: Date.now() - 1000 * 60 * 60 * 2,
-        unreadCount: 0,
-        messages: [
-          { id: 'm4', senderId: 'creator-hokusai', text: 'Check out the new Prussian blue pigment edition of the Great Wave!', timestamp: '2h ago', isRead: true, postThumbnail: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800', postId: 'post-viral-1' }
-        ]
-      },
-      {
-        creator: INITIAL_CREATORS.find(c => c.id === 'creator-clara') || INITIAL_CREATORS[2],
-        lastUpdated: Date.now() - 1000 * 60 * 60 * 24,
-        unreadCount: 0,
-        messages: [
-          { id: 'm5', senderId: 'creator-clara', text: 'Have you considered adding oil glazing ratios to the art recipe?', timestamp: '1d ago', isRead: true }
-        ]
-      }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -507,7 +790,7 @@ export default function App() {
   const handleSendMessage = (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => {
     setMessageThreads(prev => {
       const existingIndex = prev.findIndex(t => t.creator.id === targetUserId);
-      const targetCreator = creators.find(c => c.id === targetUserId) || INITIAL_CREATORS.find(c => c.id === targetUserId);
+      const targetCreator = creators.find(c => c.id === targetUserId);
 
       if (!targetCreator) return prev;
 
@@ -590,6 +873,25 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gonnng_current_user', JSON.stringify(currentUser));
   }, [currentUser]);
+
+  const handleUpdateUser = async (updated: Creator) => {
+    const previousName = currentUser.name;
+    setCurrentUser(updated);
+
+    // Persist changes across creators, users, posts, and recipes tables in database
+    const result = await dataService.updateUserProfile(updated, previousName);
+
+    if (result.creators?.length) setCreators(result.creators);
+    if (result.posts?.length) setPosts(result.posts);
+    if (result.recipes?.length) setRecipes(result.recipes);
+
+    setAuthSession(prev => prev ? {
+      ...prev,
+      name: updated.name,
+      avatarUrl: updated.avatarUrl,
+      username: updated.username || prev.username
+    } : prev);
+  };
 
   // Set default selected project
   useEffect(() => {
@@ -716,16 +1018,23 @@ export default function App() {
 
   const handleOpenCreatorProfile = (creatorIdOrName: string) => {
     if (!creatorIdOrName) return;
-    const found = creators.find(c => c.id === creatorIdOrName || c.name === creatorIdOrName) || INITIAL_CREATORS.find(c => c.id === creatorIdOrName || c.name === creatorIdOrName);
+    const found = creators.find(c => c.id === creatorIdOrName || c.username === creatorIdOrName || c.name === creatorIdOrName);
     if (found) {
-      setHomeViewCreatorProfile(found);
-      updateRoute('workspace', undefined, 'social');
+      if (currentUser && found.id === currentUser.id) {
+        setHomeViewCreatorProfile(null);
+        setViewedCreatorId(null);
+        updateRoute('workspace', undefined, 'profile', { viewedCreator: null });
+      } else {
+        setHomeViewCreatorProfile(found);
+        updateRoute('workspace', undefined, activeTab === 'social' ? 'social' : 'profile', { viewedCreator: found });
+      }
       setTimeout(() => {
         document.getElementById('home-profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 100);
     } else {
       setViewedCreatorId(creatorIdOrName);
+      updateRoute('workspace', undefined, 'profile', { viewedCreator: creatorIdOrName });
     }
   };
 
@@ -752,29 +1061,50 @@ export default function App() {
     };
   }, [viewedCreatorId, creators, currentUser]);
 
-  // Creator following toggle (In Circle = Mutual Follow: you follow them AND they follow you)
-  const handleToggleFollowCreator = (id: string) => {
-    let nextFollowedCount = 0;
-    setCreators(prev => {
-      const updated = prev.map(c => {
-        if (c.id !== id) return c;
-        const willFollow = !c.isFollowing;
-        const followsYou = c.followsYou ?? false;
-        return {
-          ...c,
-          isFollowing: willFollow,
-          isInCircle: willFollow && followsYou,
-          followersCount: willFollow ? c.followersCount + 1 : Math.max(0, c.followersCount - 1)
-        };
-      });
-      nextFollowedCount = updated.filter(c => c.isFollowing).length;
-      return updated;
-    });
+  // Creator following toggle (updates bidirectional followerIds & followingIds)
+  const handleToggleFollowCreator = (targetUserId: string) => {
+    if (!currentUser || currentUser.id === targetUserId) return;
 
-    setCurrentUser(prev => ({
-      ...prev,
-      followingCount: nextFollowedCount
-    }));
+    const currentUserId = currentUser.id;
+
+    setCreators(prevCreators => {
+      const activeUser = prevCreators.find(c => c.id === currentUserId);
+      const targetUser = prevCreators.find(c => c.id === targetUserId);
+
+      const activeFollowing = activeUser?.followingIds ? [...activeUser.followingIds] : [];
+      const targetFollowers = targetUser?.followerIds ? [...targetUser.followerIds] : [];
+
+      const isCurrentlyFollowing = activeFollowing.includes(targetUserId);
+
+      let newActiveFollowing: string[];
+      let newTargetFollowers: string[];
+
+      if (isCurrentlyFollowing) {
+        newActiveFollowing = activeFollowing.filter(id => id !== targetUserId);
+        newTargetFollowers = targetFollowers.filter(id => id !== currentUserId);
+      } else {
+        newActiveFollowing = Array.from(new Set([...activeFollowing, targetUserId]));
+        newTargetFollowers = Array.from(new Set([...targetFollowers, currentUserId]));
+      }
+
+      return prevCreators.map(c => {
+        if (c.id === currentUserId) {
+          return {
+            ...c,
+            followingIds: newActiveFollowing,
+            followingCount: newActiveFollowing.length
+          };
+        }
+        if (c.id === targetUserId) {
+          return {
+            ...c,
+            followerIds: newTargetFollowers,
+            followersCount: newTargetFollowers.length
+          };
+        }
+        return c;
+      });
+    });
   };
 
   const handleToggleCircleCreator = (id: string) => {
@@ -978,7 +1308,7 @@ export default function App() {
   // Website View Render
   if (viewMode === 'website') {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] font-sans text-white flex flex-col antialiased overflow-x-hidden w-full">
+      <div className="min-h-screen bg-[#F3F4F6] text-gray-900 font-sans flex flex-col antialiased overflow-x-hidden w-full">
         <WebsiteHeader 
           currentTab={websiteTab} 
           onNavigate={handleNavigateWebsite} 
@@ -998,7 +1328,7 @@ export default function App() {
             <SupportPage />
           )}
           {websiteTab === 'privacy' && (
-            <PrivacyPage />
+            <PrivacyPage onOpenCookiePreferences={handleOpenCookieModal} />
           )}
           {websiteTab === 'terms' && (
             <TermsPage />
@@ -1028,25 +1358,32 @@ export default function App() {
           )}
         </main>
 
-        <WebsiteFooter 
-          onNavigate={handleNavigateWebsite} 
-          onOpenWorkspace={handleOpenWorkspace} 
+        {/* Promotional & Application Cookie Infrastructure Components */}
+        <CookieBanner
+          isVisible={!hasAnsweredCookieConsent}
+          attribution={cookieAttribution}
+          onAcceptAll={handleAcceptAllCookies}
+          onRejectOptional={handleRejectOptionalCookies}
+          onManagePreferences={handleOpenCookieModal}
+        />
+
+        <CookiePreferencesModal
+          isOpen={isCookieModalOpen}
+          preferences={cookiePreferences}
+          governanceItems={cookieGovernanceItems}
+          onClose={handleCloseCookieModal}
+          onSavePreferences={handleSaveCookiePreferences}
+          onAcceptAll={handleAcceptAllCookies}
         />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col antialiased pb-0 overflow-x-hidden w-full transition-colors duration-200 ${
-      theme === 'light' ? 'bg-[#F3F4F6] text-gray-900 app-light-mode' : 'bg-[#0A0A0A] text-white'
-    }`}>
+    <div className="min-h-screen font-sans flex flex-col antialiased pb-0 overflow-x-hidden w-full transition-colors duration-200 bg-[#F3F4F6] text-gray-900">
       
       {/* Dynamic Global Top Bar - Fixed top position with scroll shrink */}
-      <header className={`backdrop-blur-md fixed top-0 left-0 right-0 z-40 border-b shrink-0 transition-all duration-300 shadow-2xl ${
-        theme === 'light' 
-          ? 'bg-white/95 text-gray-900 border-gray-200 shadow-sm' 
-          : 'bg-[#0A0A0A]/95 text-white border-white/10'
-      }`}>
+      <header className="backdrop-blur-md fixed top-0 left-0 right-0 z-40 border-b shrink-0 transition-all duration-300 shadow-2xl bg-white/95 text-gray-900 border-gray-200 shadow-sm">
         <div className={`max-w-7xl mx-auto px-3 sm:px-4 md:px-8 flex items-center justify-between transition-all duration-300 relative ${
           isScrolled ? 'h-9 sm:h-10' : 'h-9 sm:h-14'
         }`}>
@@ -1054,48 +1391,59 @@ export default function App() {
           {/* Logo Brand Area */}
           <div 
             onClick={() => handleTabChange(activeTab)}
-            className="flex items-center gap-2 sm:gap-3 cursor-pointer group shrink-0"
+            className="flex items-center cursor-pointer group shrink-0"
             title="Click to return to top"
           >
+            {/* Mobile & Tablet Layout Logo (Gonnng G Icon) */}
             <div 
               onClick={(e) => {
                 e.stopPropagation();
                 setShowTutorial(true);
                 localStorage.removeItem('gonnng_tutorial_done');
               }}
-              className={`bg-[#FF5C00] rounded-full flex items-center justify-center cursor-pointer group-hover:scale-105 transition-all text-black font-display font-bold italic shrink-0 ${
-                isScrolled ? 'w-5.5 h-5.5 text-xs' : 'w-5.5 h-5.5 text-xs sm:w-8 sm:h-8 sm:text-base'
-              }`}
+              className="lg:hidden flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform"
               title="Click to reset tutorial"
             >
-              G
+              <GonnngGIcon className="w-8 h-8" />
             </div>
-            <div className="flex items-center justify-center text-center gap-1.5">
-              <span className={`font-display font-black tracking-tighter uppercase italic transition-all ${
-                isScrolled ? 'text-sm' : 'text-sm sm:text-xl'
-              }`}>
-                Gonnng
-              </span>
+
+            {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowTutorial(true);
+                localStorage.removeItem('gonnng_tutorial_done');
+              }}
+              className="hidden lg:flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform"
+              title="Click to reset tutorial"
+            >
+              <GonnngGLogo />
             </div>
           </div>
 
 
           {/* Center Navigation tabs */}
-          <nav className={`hidden md:flex items-center gap-1 p-1 rounded-2xl shadow-inner md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 z-10 transition-colors ${
-            theme === 'light' ? 'bg-gray-200/80 border border-gray-300' : 'bg-[#141414] border border-white/15'
-          }`}>
+          <nav className="hidden md:flex items-center gap-1 p-1 rounded-2xl shadow-inner md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 z-10 transition-colors bg-gray-200/80 border border-gray-300">
             <button
-              id="nav-social-tab"
-              onClick={() => handleTabChange('social')}
+              id="nav-profile-tab"
+              onClick={() => handleTabChange('profile')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'social' && !showTutorial 
+                activeTab === 'profile' && !showTutorial 
                   ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
-                  : theme === 'light'
-                    ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
-                    : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
-              <Home className="w-4 h-4" /> Home
+              {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
+                <img 
+                  src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
+                  alt={currentUser.name || 'Profile'} 
+                  className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+              <span>Profile</span>
             </button>
             <button
               id="nav-coach-tab"
@@ -1103,9 +1451,7 @@ export default function App() {
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'coach' && !showTutorial 
                   ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
-                  : theme === 'light'
-                    ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
-                    : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
               <Hourglass className="w-4 h-4" /> Process
@@ -1126,9 +1472,7 @@ export default function App() {
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer relative ${
                 activeTab === 'updates' && !showTutorial 
                   ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
-                  : theme === 'light'
-                    ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
-                    : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
               <Bell className="w-4 h-4" /> Updates
@@ -1139,77 +1483,41 @@ export default function App() {
               )}
             </button>
             <button
-              id="nav-profile-tab"
-              onClick={() => handleTabChange('profile')}
+              id="nav-social-tab"
+              onClick={() => handleTabChange('social')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'profile' && !showTutorial 
+                activeTab === 'social' && !showTutorial 
                   ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
-                  : theme === 'light'
-                    ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
-                    : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
-              {currentUser?.avatarUrl ? (
-                <img 
-                  src={currentUser.avatarUrl} 
-                  alt={currentUser.name || 'Profile'} 
-                  className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <User className="w-4 h-4" />
-              )}
-              <span>Profile</span>
+              <CircleDotDashed className="w-4 h-4" /> Circle
             </button>
           </nav>
 
-          {/* Action Area / Filter Controller on the Right */}
+          {/* Action Area on the Right */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {activeTab === 'social' ? (
-              /* All | Circle Toggle Filter in Upper Right Header (Feed View Only) */
-              <div className={`flex items-center gap-1 p-1 rounded-xl border shadow-inner transition-colors ${
-                theme === 'light' ? 'bg-gray-200/80 border-gray-300' : 'bg-white/10 border-white/15'
-              }`}>
-                <button
-                  id="feed-filter-all"
-                  onClick={() => setFeedFilter('all')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                    feedFilter === 'all' 
-                      ? 'bg-[#FF5C00] text-black shadow-sm font-black' 
-                      : theme === 'light' ? 'text-gray-700 hover:text-gray-900' : 'text-white/50 hover:text-white'
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  id="feed-filter-internal"
-                  onClick={() => setFeedFilter('internal')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                    feedFilter === 'internal' 
-                      ? 'bg-[#FF5C00] text-black shadow-sm font-black' 
-                      : theme === 'light' ? 'text-gray-700 hover:text-gray-900' : 'text-white/50 hover:text-white'
-                  }`}
-                >
-                  Circle
-                </button>
-              </div>
-            ) : (activeTab === 'recipes' || activeTab === 'profile') ? (
-              /* Hamburger Menu Button on Upper Banner Right Hand Side (Sand, Library, Profile) */
+            {activeTab === 'profile' ? (
               <button
                 type="button"
                 id="header-profile-menu-btn"
                 onClick={() => {
-                  if (activeTab !== 'profile') {
-                    updateRoute('workspace', undefined, 'profile');
-                    setIsProfileSettingsOpen(true);
-                  } else {
-                    setIsProfileSettingsOpen(prev => !prev);
-                  }
+                  setIsProfileSettingsOpen(prev => !prev);
                 }}
                 className="p-1.5 sm:p-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
                 title="Profile Settings"
               >
                 <Menu className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+              </button>
+            ) : activeTab === 'social' ? (
+              <button
+                type="button"
+                id="circle-search-btn"
+                onClick={() => setShowSearchModal(true)}
+                className="p-1.5 sm:p-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
+                title="Search Circle"
+              >
+                <Search className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
               </button>
             ) : null}
           </div>
@@ -1218,9 +1526,7 @@ export default function App() {
 
         {/* Global Header Progress Bar - Shrinks on scroll, number hides on scroll */}
         <div 
-          className={`w-full relative overflow-hidden transition-all duration-300 ${
-            theme === 'light' ? 'bg-gray-200' : 'bg-white/5'
-          } ${
+          className={`w-full relative overflow-hidden transition-all duration-300 bg-gray-200 ${
             isScrolled ? 'h-1.5' : 'h-4'
           }`}
           id="header-progress-bar-container" 
@@ -1237,30 +1543,36 @@ export default function App() {
       </header>
 
       {/* Fixed Mobile Navigation Bar at the Bottom */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 py-2 px-3 flex justify-around items-center z-50 shadow-2xl transition-colors border-t ${
-        theme === 'light'
-          ? 'bg-white/95 backdrop-blur-md border-gray-200 text-gray-900'
-          : 'bg-[#0F0F0F]/95 backdrop-blur-md border-white/10 text-white'
-      }`}>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 py-2 px-3 flex justify-around items-center z-50 shadow-2xl transition-colors border-t bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
         <button 
-          onClick={() => handleTabChange('social')}
+          onClick={() => handleTabChange('profile')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
-            activeTab === 'social' && !showTutorial 
+            activeTab === 'profile' && !showTutorial 
               ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
-              : theme === 'light' ? 'text-gray-500 hover:text-gray-900' : 'text-white/40 hover:text-white/70'
+              : 'text-gray-500 hover:text-gray-900'
           }`}
         >
-          {activeTab === 'social' && !showTutorial && (
+          {activeTab === 'profile' && !showTutorial && (
             <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
           )}
-          <Home className="w-4.5 h-4.5" /> Home
+          {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
+            <img 
+              src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
+              alt={currentUser.name || 'Profile'} 
+              className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <User className="w-4.5 h-4.5" />
+          )}
+          <span>Profile</span>
         </button>
         <button 
           onClick={() => handleTabChange('coach')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'coach' && !showTutorial 
               ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
-              : theme === 'light' ? 'text-gray-500 hover:text-gray-900' : 'text-white/40 hover:text-white/70'
+              : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {activeTab === 'coach' && !showTutorial && (
@@ -1283,11 +1595,11 @@ export default function App() {
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'updates' && !showTutorial 
               ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
-              : theme === 'light' ? 'text-gray-500 hover:text-gray-900' : 'text-white/40 hover:text-white/70'
+              : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {totalUnreadNotifications > 0 ? (
-            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-mono font-black bg-[#FF5C00] text-black flex items-center justify-center shadow-md">
+            <span className="absolute -top-2 left-1/2 -translate-x-1/2 min-w-[18px] h-4 px-1 rounded-full text-[9px] font-mono font-black bg-[#FF5C00] text-black flex items-center justify-center shadow-md z-10">
               {totalUnreadNotifications}
             </span>
           ) : (
@@ -1298,27 +1610,17 @@ export default function App() {
           <Bell className="w-4.5 h-4.5" /> Updates
         </button>
         <button 
-          onClick={() => handleTabChange('profile')}
+          onClick={() => handleTabChange('social')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
-            activeTab === 'profile' && !showTutorial 
+            activeTab === 'social' && !showTutorial 
               ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
-              : theme === 'light' ? 'text-gray-500 hover:text-gray-900' : 'text-white/40 hover:text-white/70'
+              : 'text-gray-500 hover:text-gray-900'
           }`}
         >
-          {activeTab === 'profile' && !showTutorial && (
+          {activeTab === 'social' && !showTutorial && (
             <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
           )}
-          {currentUser?.avatarUrl ? (
-            <img 
-              src={currentUser.avatarUrl} 
-              alt={currentUser.name || 'Profile'} 
-              className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <User className="w-4.5 h-4.5" />
-          )}
-          <span>Profile</span>
+          <CircleDotDashed className="w-4.5 h-4.5" /> Circle
         </button>
       </div>
 
@@ -1333,7 +1635,7 @@ export default function App() {
             onCompleteTutorial={() => {
               setShowTutorial(false);
               localStorage.setItem('gonnng_tutorial_done', 'true');
-              updateRoute('workspace', undefined, 'social');
+              updateRoute('workspace', undefined, 'profile');
             }} 
           />
         ) : (
@@ -1367,8 +1669,8 @@ export default function App() {
                   activeProject={activeProject}
                   recipes={recipes}
                   onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
-                  theme={theme}
-                  initialTab={activeTab === 'recipes' ? 'library' : 'projects'}
+                  initialTab={activeTab === 'recipes' ? 'library' : (processTab || 'projects')}
+                  onTabChange={handleProcessTabChange}
                   currentUser={currentUser}
                   setShowSearchModal={setShowSearchModal}
                   setEditingRecipe={setEditingRecipe}
@@ -1390,7 +1692,6 @@ export default function App() {
                   currentUser={currentUser}
                   creators={creators}
                   posts={posts}
-                  theme={theme}
                   onFollowToggle={handleToggleFollowCreator}
                   messageThreads={messageThreads}
                   onSendMessage={handleSendMessage}
@@ -1398,11 +1699,12 @@ export default function App() {
                   onSelectRecipe={handleSelectRecipe}
                   onSelectUser={handleSelectUser}
                   activeCategory={updatesCategory}
-                  setActiveCategory={setUpdatesCategory}
+                  setActiveCategory={handleUpdatesCategoryChange}
                   activeChatUser={updatesChatUser}
-                  setActiveChatUser={setUpdatesChatUser}
+                  setActiveChatUser={handleUpdatesChatUserChange}
                   onMarkThreadAsRead={handleMarkThreadAsRead}
                   onNotificationRead={() => setUnreadNotifsCount(prev => Math.max(0, prev - 1))}
+                  onUnreadNotifsCountChange={setUnreadNotifsCount}
                 />
               </motion.div>
             )}
@@ -1422,7 +1724,6 @@ export default function App() {
                     posts={posts}
                     currentUserId={currentUser.id}
                     currentUser={currentUser}
-                    theme={theme}
                     onBackToHome={() => setHomeViewCreatorProfile(null)}
                     onToggleFollow={handleToggleFollowCreator}
                     onUpdatePostGong={handleUpdatePostGong}
@@ -1432,6 +1733,7 @@ export default function App() {
                       setShareDrawerPost(post);
                       setIsShareDrawerOpen(true);
                     }}
+                    onOpenCreatorProfile={(id) => setViewedCreatorId(id)}
                   />
                 ) : (
                   <Feed 
@@ -1445,7 +1747,6 @@ export default function App() {
                     onToggleCommentHeart={handleToggleCommentHeart}
                     onFeedScroll={(scrolled) => setIsScrolled(scrolled)}
                     onOpenCreatorProfile={handleOpenCreatorProfile}
-                    theme={theme}
                     superimposedPostId={homeSuperimposedPostId}
                     autoOpenCommentsPostId={autoOpenCommentsPostId}
                     onClearSuperimposedPost={() => {
@@ -1455,6 +1756,15 @@ export default function App() {
                     onOpenShareDrawer={(post) => {
                       setShareDrawerPost(post);
                       setIsShareDrawerOpen(true);
+                    }}
+                    onOpenPostModal={(post) => {
+                      if (post) {
+                        setHomeSuperimposedPostId(post.id);
+                        updateRoute('workspace', undefined, activeTab, { postId: post.id });
+                      } else {
+                        setHomeSuperimposedPostId(null);
+                        updateRoute('workspace', undefined, activeTab, { postId: null });
+                      }
                     }}
                   />
                 )}
@@ -1471,15 +1781,16 @@ export default function App() {
               >
                 <UserProfile 
                   currentUser={currentUser}
-                  onUpdateUser={(updated) => setCurrentUser(updated)}
+                  onUpdateUser={handleUpdateUser}
                   allCreators={creators}
                   onToggleFollowCreator={handleToggleFollowCreator}
                   onToggleCircleCreator={handleToggleCircleCreator}
                   onOpenPhilosophy={() => setShowPhilosophyModal(true)}
                   onOpenCreatorProfile={handleOpenCreatorProfile}
                   onSignOut={handleLogout}
-                  theme={theme}
-                  onToggleTheme={handleToggleTheme}
+                  onOpenCookiePreferences={handleOpenCookieModal}
+                  permissions={permissions}
+                  onUpdatePermissions={handleUpdatePermissions}
                   isSettingsDrawerOpen={isProfileSettingsOpen}
                   setIsSettingsDrawerOpen={setIsProfileSettingsOpen}
                   posts={posts}
@@ -1489,11 +1800,9 @@ export default function App() {
                   setShowTutorial={setShowTutorial}
                   superimposedPost={(() => {
                     if (!profileSuperimposedPostId) return null;
-                    const direct = posts.find(p => p.id === profileSuperimposedPostId) || 
-                                   INITIAL_FEED_POSTS.find(p => p.id === profileSuperimposedPostId);
+                    const direct = posts.find(p => p.id === profileSuperimposedPostId);
                     if (direct) return direct;
-                    const fuzzy = posts.find(p => p.id.includes(profileSuperimposedPostId) || profileSuperimposedPostId.includes(p.id)) ||
-                                  INITIAL_FEED_POSTS.find(p => p.id.includes(profileSuperimposedPostId) || profileSuperimposedPostId.includes(p.id));
+                    const fuzzy = posts.find(p => p.id.includes(profileSuperimposedPostId) || profileSuperimposedPostId.includes(p.id));
                     if (fuzzy) return fuzzy;
                     return posts[0] || null;
                   })()}
@@ -1514,6 +1823,14 @@ export default function App() {
         )}
       </main>
 
+      {/* Device Permissions Initial Prompt Modal (Logged in workspace mode only) */}
+      <PermissionsPromptModal
+        isOpen={showPermissionsPromptModal && viewMode === 'workspace'}
+        currentPermissions={permissions}
+        onClose={() => setShowPermissionsPromptModal(false)}
+        onSavePermissions={handleCustomPermissions}
+      />
+
       {/* CreationStation Modular Modal Overlay */}
       {showCreateModal && (
         <CreateHub 
@@ -1527,6 +1844,10 @@ export default function App() {
           projects={projects}
           currentUser={currentUser}
           privacyDefault={currentUser.privacyDefault}
+          permissions={permissions}
+          onNavigateToPermissions={handleNavigateToPermissions}
+          onUpdatePermissions={handleUpdatePermissions}
+          onRequestDevicePermissions={() => setShowPermissionsPromptModal(true)}
           onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
           onUpdateRecipe={(updatedR) => {
             setRecipes(prev => prev.map(r => r.id === updatedR.id ? updatedR : r));
@@ -1541,10 +1862,20 @@ export default function App() {
           onUpdateProject={(updatedProj) => {
             setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
           }}
-          onAddPost={(post) => setPosts(prev => [post, ...prev])}
+          onAddPost={async (post) => {
+            setPosts(prev => [post, ...prev]);
+            try {
+              await dataService.addPost(post);
+              const freshPosts = await dataService.getPosts();
+              if (freshPosts && freshPosts.length > 0) {
+                setPosts(freshPosts);
+              }
+            } catch (err) {
+              console.error('Failed to persist post to Supabase database/storage:', err);
+            }
+          }}
           forkInitialData={forkInitialData}
           editingRecipe={editingRecipe}
-          theme={theme}
         />
       )}
 
@@ -1554,7 +1885,8 @@ export default function App() {
           onClose={() => setShowSearchModal(false)}
           recipes={recipes}
           creators={creators}
-          communityRecipes={COMMUNITY_RECIPES}
+          communityRecipes={recipes}
+          posts={posts}
           onSaveRecipe={handleSaveCommunityRecipe}
           onForkRecipe={handleForkCommunityRecipe}
           onToggleFollowCreator={handleToggleFollowCreator}
@@ -1564,11 +1896,11 @@ export default function App() {
 
       {/* Gonnng Feedback Philosophy Manual Modal */}
       {showPhilosophyModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-[#121212] rounded-3xl p-6 md:p-8 max-w-xl w-full border border-white/10 shadow-2xl space-y-6"
+            className="rounded-3xl p-6 md:p-8 max-w-xl w-full border shadow-2xl space-y-6 bg-white border-gray-200 text-gray-900"
           >
             <div className="flex justify-between items-start">
               <div>
@@ -1651,22 +1983,22 @@ export default function App() {
 
       {/* Complete Project Celebration Modal */}
       {congratulateProject && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-[#151515] rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-2xl border border-white/10"
+            className="rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-2xl border bg-white border-gray-200 text-gray-900"
           >
-            <div className="inline-flex w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-400 items-center justify-center text-3xl">
+            <div className="inline-flex w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-600 items-center justify-center text-3xl">
               🏆
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-xl font-display font-bold text-white">Gonnng! Finished.</h3>
-              <p className="text-xs font-mono text-emerald-400 uppercase font-bold tracking-wider">
+              <h3 className="text-xl font-display font-bold text-gray-900">Gonnng! Finished.</h3>
+              <p className="text-xs font-mono text-emerald-600 uppercase font-bold tracking-wider">
                 Accountability Loop Complete
               </p>
-              <h4 className="text-base font-bold text-emerald-400 font-mono pt-2">"{congratulateProject}"</h4>
-              <p className="text-xs text-white/60 leading-relaxed pt-1.5">
+              <h4 className="text-base font-bold text-emerald-600 font-mono pt-2">"{congratulateProject}"</h4>
+              <p className="text-xs text-gray-600 leading-relaxed pt-1.5">
                 You checked off every phase, stayed aligned to your core goals, and successfully finished what you started. The whole is indeed a sum of its parts!
               </p>
             </div>
@@ -1683,26 +2015,24 @@ export default function App() {
 
       {/* Recipe Modal Overlay (Process View Permalinks) */}
       {selectedRecipeModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-gray-900/40 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className={`w-full max-w-2xl max-h-[90vh] rounded-3xl p-5 sm:p-7 flex flex-col justify-between shadow-2xl border ${
-              theme === 'light' ? 'bg-white border-gray-200 text-gray-900' : 'bg-[#141414] border-white/15 text-white'
-            }`}
+            className="w-full max-w-2xl max-h-[90vh] rounded-3xl p-5 sm:p-7 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
           >
-            <div className={`flex justify-between items-start pb-4 border-b ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}>
+            <div className="flex justify-between items-start pb-4 border-b border-gray-200">
               <div className="space-y-1 min-w-0 pr-4">
                 <div className="flex items-center gap-2">
                   <span className="bg-[#FF5C00]/20 text-[#FF5C00] text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border border-[#FF5C00]/30">
                     {selectedRecipeModal.category}
                   </span>
-                  <span className={`text-xs font-mono ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>
+                  <span className="text-xs font-mono text-gray-500">
                     by {selectedRecipeModal.authorName}
                   </span>
                   {selectedRecipeModal.forkedFrom && (
-                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 inline-flex items-center gap-1">
+                    <span className="text-[10px] font-mono text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 inline-flex items-center gap-1">
                       <GitFork className="w-3 h-3" /> Forked from {selectedRecipeModal.forkedFrom}
                     </span>
                   )}
@@ -1710,16 +2040,14 @@ export default function App() {
                 <h2 className="text-xl sm:text-2xl font-display font-bold leading-tight">
                   {selectedRecipeModal.title}
                 </h2>
-                <p className={`text-xs sm:text-sm ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`}>
+                <p className="text-xs sm:text-sm text-gray-600">
                   {selectedRecipeModal.description}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedRecipeModal(null)}
-                className={`p-2 rounded-full transition-colors cursor-pointer shrink-0 ${
-                  theme === 'light' ? 'hover:bg-gray-100 text-gray-600' : 'hover:bg-white/10 text-white/70'
-                }`}
+                className="p-2 rounded-full transition-colors cursor-pointer shrink-0 hover:bg-gray-100 text-gray-600"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1732,9 +2060,7 @@ export default function App() {
               {selectedRecipeModal.phases && selectedRecipeModal.phases.map((ph, pIdx) => (
                 <div 
                   key={ph.id || pIdx} 
-                  className={`p-3.5 rounded-2xl border space-y-2 ${
-                    theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'
-                  }`}
+                  className="p-3.5 rounded-2xl border space-y-2 bg-gray-50 border-gray-200"
                 >
                   <h4 className="text-xs font-mono font-bold uppercase text-[#FF5C00]">
                     Phase {pIdx + 1}: {ph.title}
@@ -1751,19 +2077,7 @@ export default function App() {
               ))}
             </div>
 
-            <div className={`pt-4 border-t flex flex-wrap items-center justify-end gap-2.5 ${
-              theme === 'light' ? 'border-gray-200' : 'border-white/10'
-            }`}>
-              <button
-                type="button"
-                onClick={() => {
-                  handleInstantiateRecipe(selectedRecipeModal);
-                  setSelectedRecipeModal(null);
-                }}
-                className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" /> Instantiate as Project
-              </button>
+            <div className="pt-4 border-t flex flex-wrap items-center justify-end gap-2.5 border-gray-200">
               <button
                 type="button"
                 onClick={() => {
@@ -1772,11 +2086,9 @@ export default function App() {
                   setShowCreateModal(true);
                   setSelectedRecipeModal(null);
                 }}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
-                  theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300' : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
-                }`}
+                className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
               >
-                <GitFork className="w-4 h-4" /> Fork Blueprint
+                <Plus className="w-4 h-4" /> Instantiate as Project
               </button>
             </div>
           </motion.div>
@@ -1807,20 +2119,23 @@ export default function App() {
         }}
       />
 
-      {/* Footer Area */}
-      <footer className="hidden md:block border-t border-white/10 bg-[#0A0A0A] py-6 mt-[24px] shrink-0">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-display font-black text-lg tracking-tighter uppercase italic text-white">Gonnng</span>
-            <span className="text-white/40 font-mono text-[10px]">•</span>
-            <span className="text-[11px] text-white/50 font-sans">Helping humans break ideas into parts and finish projects.</span>
-          </div>
-          <div className="text-[10px] font-mono text-white/40">
-            Crafted with absolute dedication • 2026-07-15 08:44 UTC
-          </div>
-        </div>
-      </footer>
+      {/* Global Cookie Infrastructure Components */}
+      <CookieBanner
+        isVisible={!hasAnsweredCookieConsent}
+        attribution={cookieAttribution}
+        onAcceptAll={handleAcceptAllCookies}
+        onRejectOptional={handleRejectOptionalCookies}
+        onManagePreferences={handleOpenCookieModal}
+      />
 
+      <CookiePreferencesModal
+        isOpen={isCookieModalOpen}
+        preferences={cookiePreferences}
+        governanceItems={cookieGovernanceItems}
+        onClose={handleCloseCookieModal}
+        onSavePreferences={handleSaveCookiePreferences}
+        onAcceptAll={handleAcceptAllCookies}
+      />
     </div>
   );
 }

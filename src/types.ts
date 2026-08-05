@@ -1,20 +1,58 @@
+import {
+  Database,
+  ProfileVisibility,
+  RecipeVisibility,
+  MediaType,
+  FeedbackType
+} from './lib/database.types';
+
+export type { ProfileVisibility, RecipeVisibility, MediaType, FeedbackType };
+
+// Database Row Interfaces
+export type UserRow = Database['public']['Tables']['users']['Row'];
+export type RecipeRow = Database['public']['Tables']['recipes']['Row'];
+export type RecipePhaseRow = Database['public']['Tables']['recipe_phases']['Row'];
+export type RecipeTaskRow = Database['public']['Tables']['recipe_tasks']['Row'];
+export type RecipeBookmarkRow = Database['public']['Tables']['recipe_bookmarks']['Row'];
+export type ProjectRow = Database['public']['Tables']['projects']['Row'];
+export type ProjectPhaseRow = Database['public']['Tables']['project_phases']['Row'];
+export type ProjectTaskRow = Database['public']['Tables']['project_tasks']['Row'];
+export type PostRow = Database['public']['Tables']['posts']['Row'];
+export type PostMediaRow = Database['public']['Tables']['post_media']['Row'];
+export type PostFeedbackRow = Database['public']['Tables']['post_feedback']['Row'];
+export type CommentRow = Database['public']['Tables']['comments']['Row'];
+export type FollowRow = Database['public']['Tables']['follows']['Row'];
+export type CircleRow = Database['public']['Views']['circles']['Row'];
+
+// Domain Types for UI
 export interface Task {
   id: string;
   title: string;
   completed: boolean;
   completedAt?: string;
-  estimatedHours?: number; // For the Sand tracker/Reality checking
+  estimatedHours?: number;
+  sourceTaskId?: string | null;
+  position?: number;
 }
 
 export interface Phase {
   id: string;
   title: string;
   tasks: Task[];
+  sourcePhaseId?: string | null;
+  position?: number;
+}
+
+export interface RecipePhase {
+  id?: string;
+  title: string;
+  position?: number;
+  tasks: { id?: string; title: string; position?: number; estimatedHours?: number }[];
 }
 
 export interface Recipe {
-  id: string; // Internal System ID (FR-001)
-  publicId?: string; // Public Identifier (FR-002, Base62 e.g. T8PnZK4vx)
+  id: string;
+  publicId?: string;
   title: string;
   description: string;
   authorId: string;
@@ -22,24 +60,24 @@ export interface Recipe {
   authorUsername?: string;
   category: 'Humorous' | 'Practical' | 'Creative' | 'Educational' | 'Strategy';
   tags: string[];
-  phases: {
-    title: string;
-    tasks: { title: string; estimatedHours?: number }[];
-  }[];
+  phases: RecipePhase[];
+  visibility?: RecipeVisibility;
   isCustom?: boolean;
-  forkedFrom?: string; // Track original creator
-  forkedFromInternalId?: string; // Parent Recipe Internal ID (FR-006)
-  forkedFromPublicId?: string; // Parent Recipe Public ID (FR-006)
+  forkedFrom?: string;
+  forkedFromInternalId?: string;
+  forkedFromPublicId?: string;
   gongsCount?: {
     continue: number;
     refine: number;
     reconsider: number;
   };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Project {
-  id: string; // Internal System ID (FR-001)
-  publicId?: string; // Public Identifier (FR-002, Base62 e.g. F93LmQa8Y)
+  id: string;
+  publicId?: string;
   title: string;
   recipeId: string;
   recipeTitle: string;
@@ -48,37 +86,41 @@ export interface Project {
   completedAt?: string;
   isCompleted?: boolean;
   collectionId?: string;
-  privacy: 'public' | 'internal' | 'private';
-  progressPhotos?: { url: string; caption: string; date: string }[];
+  privacy: ProfileVisibility;
+  progressPhotos?: { url: string; caption: string; date: string; bucket?: string; path?: string }[];
   lastProgressShotAt?: string;
 }
 
 export interface Collection {
-  id: string; // Internal System ID
-  publicId?: string; // Public Identifier
+  id: string;
+  publicId?: string;
   title: string;
   description: string;
-  deadlineDate: string; // ISO date string
+  deadlineDate: string;
   projectIds: string[];
   workMode: 'sequential' | 'parallel' | 'hybrid';
-  budgetedHours?: number; // Sand capacity
+  budgetedHours?: number;
 }
 
 export interface Creator {
-  id: string; // Internal System ID (FR-001)
-  publicId?: string; // Public Identifier (FR-002)
-  username?: string; // Unique username e.g. jasonburns (FR-005)
+  id: string;
+  publicId?: string;
+  username?: string;
   name: string;
   email: string;
   avatarUrl: string;
+  avatarBucket?: string;
+  avatarPath?: string;
   bio: string;
   goals: string;
-  privacyDefault: 'public' | 'internal' | 'private';
+  privacyDefault: ProfileVisibility;
   followersCount: number;
   followingCount: number;
+  followerIds?: string[];
+  followingIds?: string[];
   isFollowing?: boolean;
   followsYou?: boolean;
-  isInCircle?: boolean; // Mutual follow flag (isFollowing && followsYou)
+  isInCircle?: boolean;
 }
 
 export interface PostComment {
@@ -87,37 +129,57 @@ export interface PostComment {
   userId?: string;
   userName: string;
   userAvatar: string;
+  body?: string;
   content: string;
   timeString: string;
   likes?: number;
   userLiked?: boolean;
-  parentId?: string;
+  parentId?: string | null;
   replyToUser?: string;
+  createdAt?: string;
+  children?: PostComment[];
+}
+
+export interface PostMediaItem {
+  id: string;
+  postId?: string;
+  storageBucket: string;
+  storagePath: string;
+  mediaType: MediaType;
+  position: number;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  resolvedUrl?: string;
 }
 
 export interface FeedPost {
-  id: string; // Internal System ID (FR-001)
-  publicId?: string; // Public Identifier (FR-002, Base62 e.g. B2FsQa81R)
+  id: string;
+  publicId?: string;
   type: 'project_created' | 'task_completed' | 'project_completed' | 'progress_shot' | 'update_logged';
   userId: string;
   userName: string;
-  username?: string; // Creator's unique username for profile URL resolution
+  username?: string;
   userAvatar: string;
   timeString: string;
   title: string;
   content?: string;
-  attachedId?: string; // ID of referenced Project/Recipe
-  attachedName?: string; // Name of referenced Project/Recipe
+  description?: string;
+  attachedId?: string;
+  attachedName?: string;
+  projectId?: string | null;
   image?: string;
   images?: string[];
+  media?: PostMediaItem[];
+  mediaFiles?: File[];
   hashtags?: string[] | string;
-  privacy: 'public' | 'internal' | 'private';
+  privacy: ProfileVisibility;
   createdAt?: string;
   gongs: {
     continue: number;
     refine: number;
     reconsider: number;
-    userVoted?: 'continue' | 'refine' | 'reconsider';
+    userVoted?: 'continue' | 'refine' | 'reconsider' | FeedbackType;
   };
   comments?: PostComment[];
 }

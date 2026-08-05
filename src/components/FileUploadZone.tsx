@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, File, Image as ImageIcon, Trash2, CheckCircle2, AlertCircle, Lock, Sparkles, Loader2 } from 'lucide-react';
 import { uploadService, isFileUploadAllowed, isFileUploadFeatureEnabled, UploadedFile } from '../services/uploadService';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
 
 interface FileUploadZoneProps {
   onFileUploaded?: (file: UploadedFile) => void;
@@ -90,10 +91,25 @@ export default function FileUploadZone({
     }
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const handleDelete = (file: UploadedFile, e: React.MouseEvent) => {
     e.stopPropagation();
-    uploadService.deleteUpload(id);
-    loadUserFiles();
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete "${file.filename}"?`,
+      onConfirm: () => {
+        uploadService.deleteUpload(file.id);
+        loadUserFiles();
+        setDeleteConfirm(null);
+      }
+    });
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -224,8 +240,8 @@ export default function FileUploadZone({
                 </div>
 
                 <button
-                  onClick={(e) => handleDelete(file.id, e)}
-                  className="p-1 rounded text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  onClick={(e) => handleDelete(file, e)}
+                  className="p-1 rounded text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                   title="Delete Upload"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -235,6 +251,14 @@ export default function FileUploadZone({
           </div>
         </div>
       )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm?.isOpen}
+        title={deleteConfirm?.title}
+        message={deleteConfirm?.message}
+        onConfirm={() => deleteConfirm?.onConfirm()}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }

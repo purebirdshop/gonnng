@@ -22,7 +22,6 @@ interface ShareDrawerProps {
   followingUsers: Creator[];
   onSendMessage: (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => void;
   onOpenAuth: () => void;
-  theme?: 'dark' | 'light';
 }
 
 export default function ShareDrawer({
@@ -33,7 +32,6 @@ export default function ShareDrawer({
   followingUsers,
   onSendMessage,
   onOpenAuth,
-  theme = 'dark'
 }: ShareDrawerProps) {
   const [copied, setCopied] = useState(false);
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
@@ -74,7 +72,7 @@ export default function ShareDrawer({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-40"
+          className="fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm"
         />
 
         {/* Responsive Drawer Container */}
@@ -83,63 +81,47 @@ export default function ShareDrawer({
           animate={{ y: 0, x: 0 }}
           exit={{ y: '100%', x: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-          className={`relative z-50 w-full md:w-96 border-t md:border-t-0 md:border-l p-5 sm:p-6 shadow-2xl flex flex-col justify-between max-h-[85vh] md:max-h-none md:h-full overflow-y-auto rounded-t-3xl md:rounded-none ${
-            theme === 'light'
-              ? 'bg-white border-gray-200 text-gray-900'
-              : 'bg-[#141414] border-white/15 text-white'
-          }`}
+          className="relative z-50 w-full md:w-96 border-t md:border-t-0 md:border-l p-5 sm:p-6 shadow-2xl flex flex-col justify-between max-h-[85vh] md:max-h-none md:h-full overflow-y-auto rounded-t-3xl md:rounded-none bg-white border-gray-200 text-gray-900"
           id="share-drawer-container"
         >
           {/* Header */}
           <div className="space-y-4">
-            <div className={`flex justify-between items-center pb-3 border-b ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}>
+            <div className="flex justify-between items-center pb-3 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <ArrowUpRight className="w-5 h-5 text-[#FF5C00]" />
-                <h3 className={`text-sm font-display font-bold uppercase tracking-wider ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>Share Post</h3>
+                <h3 className="text-sm font-display font-bold uppercase tracking-wider text-gray-900">Share Post</h3>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                  theme === 'light'
-                    ? 'bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900'
-                    : 'bg-white/5 hover:bg-white/15 text-white/70 hover:text-white'
-                }`}
+                className="p-1.5 rounded-full transition-all cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Post Preview Card */}
-            <div className={`flex gap-3 p-3 border rounded-2xl items-center ${
-              theme === 'light'
-                ? 'bg-gray-50 border-gray-200 text-gray-900'
-                : 'bg-black/60 border-white/10 text-white'
-            }`}>
+            <div className="flex gap-3 p-3 border rounded-2xl items-center bg-gray-50 border-gray-200 text-gray-900">
               {post.image && (
                 <img
                   src={post.image}
                   alt={post.title}
-                  className="w-12 h-12 rounded-xl object-cover border border-white/10 shrink-0"
+                  className="w-12 h-12 rounded-xl object-cover border border-gray-200 shrink-0"
                   referrerPolicy="no-referrer"
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h4 className={`text-xs font-bold truncate ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{post.title}</h4>
-                <p className={`text-[10px] font-mono truncate ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>by {post.userName}</p>
+                <h4 className="text-xs font-bold truncate text-gray-900">{post.title}</h4>
+                <p className="text-[10px] font-mono truncate text-gray-500">by {post.userName}</p>
               </div>
             </div>
 
             {/* Permalink Section */}
             <div className="space-y-1.5">
-              <label className={`text-[10px] font-mono uppercase tracking-wider ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>Unique Post Permalink</label>
-              <div className={`flex items-center gap-2 border p-2 rounded-xl ${
-                theme === 'light'
-                  ? 'bg-gray-100 border-gray-300 text-gray-900'
-                  : 'bg-black border-white/15 text-white'
-              }`}>
+              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500">Unique Post Permalink</label>
+              <div className="flex items-center gap-2 border p-2 rounded-xl bg-gray-100 border-gray-300 text-gray-900">
                 <Link className="w-4 h-4 text-[#FF5C00] shrink-0" />
-                <span className={`text-xs font-mono truncate flex-1 ${theme === 'light' ? 'text-gray-800' : 'text-white/80'}`}>{permalink}</span>
+                <span className="text-xs font-mono truncate flex-1 text-gray-800">{permalink}</span>
                 <button
                   type="button"
                   id="share-drawer-copy-btn"
@@ -165,7 +147,7 @@ export default function ShareDrawer({
 
             {/* Direct Message Section */}
             <div className="pt-2 space-y-3">
-              <label className={`text-[10px] font-mono uppercase tracking-wider block ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>
+              <label className="text-[10px] font-mono uppercase tracking-wider block text-gray-500">
                 Send to Followers via Direct Message
               </label>
 
@@ -177,22 +159,18 @@ export default function ShareDrawer({
                       return (
                         <div
                           key={user.id}
-                          className={`flex justify-between items-center p-2.5 border rounded-xl transition-all ${
-                            theme === 'light'
-                              ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-900'
-                              : 'bg-white/5 border-white/10 hover:border-white/20 text-white'
-                          }`}
+                          className="flex justify-between items-center p-2.5 border rounded-xl transition-all bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-900"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
-                              src={user.avatarUrl}
+                              src={user.avatarUrl && user.avatarUrl.trim() !== '' ? user.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
                               alt={user.name}
-                              className="w-8 h-8 rounded-full object-cover border border-white/20 shrink-0"
+                              className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
                               referrerPolicy="no-referrer"
                             />
                             <div className="min-w-0">
-                              <h5 className={`text-xs font-bold truncate ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{user.name}</h5>
-                              <p className={`text-[10px] font-mono truncate ${theme === 'light' ? 'text-gray-500' : 'text-white/40'}`}>@{user.name.toLowerCase().replace(/\s+/g, '')}</p>
+                              <h5 className="text-xs font-bold truncate text-gray-900">{user.name}</h5>
+                              <p className="text-[10px] font-mono truncate text-gray-500">@{user.name.toLowerCase().replace(/\s+/g, '')}</p>
                             </div>
                           </div>
 
@@ -203,7 +181,7 @@ export default function ShareDrawer({
                             disabled={isSent}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
                               isSent
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30'
                                 : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold shadow'
                             }`}
                           >
@@ -222,15 +200,15 @@ export default function ShareDrawer({
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-6 bg-white/5 border border-white/10 rounded-2xl text-xs text-white/50 space-y-1">
-                    <User className="w-6 h-6 mx-auto text-white/30" />
+                  <div className="text-center py-6 bg-gray-50 border border-gray-200 rounded-2xl text-xs text-gray-500 space-y-1">
+                    <User className="w-6 h-6 mx-auto text-gray-400" />
                     <p>No followers found to message.</p>
                   </div>
                 )
               ) : (
                 /* Unauthenticated View */
-                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3 text-center">
-                  <p className="text-xs text-white/70">
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl space-y-3 text-center">
+                  <p className="text-xs text-gray-600">
                     Sign in or create an account to message posts directly to creators and followers.
                   </p>
                   <div className="flex gap-2 justify-center pt-1">
@@ -252,7 +230,7 @@ export default function ShareDrawer({
                         onClose();
                         onOpenAuth();
                       }}
-                      className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-all border border-white/15 flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold text-xs rounded-xl transition-all border border-gray-300 flex items-center gap-1.5 cursor-pointer"
                     >
                       <UserPlus className="w-3.5 h-3.5" /> Create Account
                     </button>
@@ -263,8 +241,8 @@ export default function ShareDrawer({
           </div>
 
           {/* Footer Note */}
-          <div className="pt-4 border-t border-white/10 text-center">
-            <span className="text-[10px] font-mono text-white/40">gonnng.com • universal human blueprint sharing</span>
+          <div className="pt-4 border-t border-gray-200 text-center">
+            <span className="text-[10px] font-mono text-gray-400">gonnng.com • universal human blueprint sharing</span>
           </div>
         </motion.div>
       </div>

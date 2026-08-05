@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Collection, Project, Recipe, Phase } from '../types';
-import { AlertCircle, ShieldAlert, Hourglass, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, Layers, Target, GripVertical, Plus, Search, GitFork, BookOpen } from 'lucide-react';
+import { AlertCircle, ShieldAlert, Hourglass, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, Layers, Target, GripVertical, Plus, Search, GitFork, BookOpen, PrinterCheck, FolderKanban } from 'lucide-react';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
+import { ENABLE_AREA_OF_FOCUS } from '../featureFlags';
 
 interface SandEngineProps {
   collections: Collection[];
@@ -24,9 +27,9 @@ interface SandEngineProps {
 
   recipes?: Recipe[];
   onAddRecipe?: (recipe: Recipe) => void;
-  theme?: 'dark' | 'light';
 
   initialTab?: 'projects' | 'focus' | 'library';
+  onTabChange?: (tab: 'projects' | 'focus' | 'library') => void;
   currentUser?: { id?: string; name?: string; avatarUrl?: string; avatar?: string; privacyDefault?: 'public' | 'private' };
   setShowSearchModal?: (show: boolean) => void;
   setEditingRecipe?: (recipe: Recipe | null) => void;
@@ -52,25 +55,27 @@ export default function SandEngine({
   activeProject,
   recipes = [],
   onAddRecipe,
-  theme = 'dark',
   initialTab = 'projects',
+  onTabChange,
   currentUser,
   setShowSearchModal,
   setEditingRecipe,
   setForkInitialData,
   handleInstantiateRecipe
 }: SandEngineProps) {
-  const [topTab, setTopTab] = useState<'projects' | 'focus' | 'library'>(initialTab);
+  const [topTab, setTopTab] = useState<'projects' | 'focus' | 'library'>(!ENABLE_AREA_OF_FOCUS && initialTab === 'focus' ? 'projects' : initialTab);
   const [activeItemType, setActiveItemType] = useState<'project' | 'focus'>('project');
   const [selectedColId, setSelectedColId] = useState<string>(collections[0]?.id || '');
   const [customBudgetHours, setCustomBudgetHours] = useState<number>(80);
   const [showMobileDetailModal, setShowMobileDetailModal] = useState(false);
+  const [visibleActiveProjectsCount, setVisibleActiveProjectsCount] = useState<number>(15);
 
   useEffect(() => {
     if (initialTab) {
-      setTopTab(initialTab);
-      if (initialTab === 'projects') setActiveItemType('project');
-      if (initialTab === 'focus') setActiveItemType('focus');
+      const effectiveTab = !ENABLE_AREA_OF_FOCUS && initialTab === 'focus' ? 'projects' : initialTab;
+      setTopTab(effectiveTab);
+      if (effectiveTab === 'projects') setActiveItemType('project');
+      if (effectiveTab === 'focus' && ENABLE_AREA_OF_FOCUS) setActiveItemType('focus');
     }
   }, [initialTab]);
 
@@ -92,6 +97,73 @@ export default function SandEngine({
   const [editFocusTitle, setEditFocusTitle] = useState('');
   const [editFocusDescription, setEditFocusDescription] = useState('');
   const [editFocusBudget, setEditFocusBudget] = useState(80);
+
+  // Printable Copy Modal State
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printableItem, setPrintableItem] = useState<PrintableItem | null>(null);
+
+  const handleOpenPrintModal = (item: PrintableItem) => {
+    setPrintableItem(item);
+    setPrintModalOpen(true);
+  };
+
+  // Delete Confirmation Modal State
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const confirmDeleteProject = (projId: string, projTitle?: string, onCloseModal?: () => void) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${projTitle ? `"${projTitle}"` : 'this project'}? This action cannot be undone.`,
+      onConfirm: () => {
+        handleDeleteProject(projId);
+        if (onCloseModal) onCloseModal();
+        setDeleteConfirm(null);
+      }
+    });
+  };
+
+  const confirmDeleteFocus = (focusId: string, focusTitle?: string, onCloseModal?: () => void) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${focusTitle ? `"${focusTitle}"` : 'this Area of FOCUS'}? This action cannot be undone.`,
+      onConfirm: () => {
+        if (onDeleteCollection) onDeleteCollection(focusId);
+        if (onCloseModal) onCloseModal();
+        setDeleteConfirm(null);
+      }
+    });
+  };
+
+  const confirmDeletePhase = (pIdx: number, phaseTitle?: string) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${phaseTitle ? `"${phaseTitle}"` : `Phase ${pIdx + 1}`}?`,
+      onConfirm: () => {
+        handleRemovePhase(pIdx);
+        setDeleteConfirm(null);
+      }
+    });
+  };
+
+  const confirmDeleteTask = (pIdx: number, tIdx: number, taskTitle?: string) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Are you sure?",
+      message: `Are you sure you want to delete ${taskTitle ? `"${taskTitle}"` : 'this task'}?`,
+      onConfirm: () => {
+        handleRemoveTask(pIdx, tIdx);
+        setDeleteConfirm(null);
+      }
+    });
+  };
 
   const activeCollection = collections.find(c => c.id === selectedColId) || collections[0];
 
@@ -181,10 +253,23 @@ export default function SandEngine({
   const feasibility = calculateFeasibility();
   const sandFillPercentage = Math.max(0, Math.min(100, Math.round(((budgetedHours - totalRemainingHours) / budgetedHours) * 100)));
 
-  // Sorting Projects: Active (uncompleted) first, Completed at the bottom
-  const activeProjectsList = allProjects.filter(p => !p.isCompleted);
-  const completedProjectsList = allProjects.filter(p => p.isCompleted);
-  const sortedProjects = [...activeProjectsList, ...completedProjectsList];
+  // Sorting Projects: Active (uncompleted) first sorted from most recent first, Completed at the bottom
+  const activeProjectsList = [...allProjects.filter(p => !p.isCompleted)].sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return b.id.localeCompare(a.id);
+  });
+
+  const completedProjectsList = [...allProjects.filter(p => p.isCompleted)].sort((a, b) => {
+    const timeA = a.completedAt ? new Date(a.completedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const timeB = b.completedAt ? new Date(b.completedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    if (timeA !== timeB) return timeB - timeA;
+    return b.id.localeCompare(a.id);
+  });
+
+  const visibleActiveProjects = activeProjectsList.slice(0, visibleActiveProjectsCount);
+  const sortedProjects = [...visibleActiveProjects, ...completedProjectsList];
 
   const isProjectInLibrary = activeProject ? (recipes?.some(r => r.id === activeProject.recipeId || r.title.trim().toLowerCase() === activeProject.title.trim().toLowerCase()) || false) : false;
 
@@ -193,8 +278,8 @@ export default function SandEngine({
     const newRecipe: Recipe = {
       id: `recipe-proj-${Date.now()}`,
       title: activeProject.title,
-      authorId: 'user-current',
-      authorName: 'Creative Architect',
+      authorId: currentUser?.id || 'user-current',
+      authorName: currentUser?.name || 'Creative Architect',
       category: 'Creative',
       description: `Execution blueprint for ${activeProject.title}`,
       phases: activeProject.phases.map(ph => ({
@@ -234,8 +319,8 @@ export default function SandEngine({
       const newRecipe: Recipe = {
         id: `recipe-proj-${Date.now()}`,
         title: updated.title,
-        authorId: 'user-current',
-        authorName: 'Creative Architect',
+        authorId: currentUser?.id || 'user-current',
+        authorName: currentUser?.name || 'Creative Architect',
         category: 'Creative',
         description: `Execution blueprint for ${updated.title}`,
         phases: updated.phases.map(ph => ({
@@ -439,40 +524,45 @@ export default function SandEngine({
               onClick={() => {
                 setTopTab('projects');
                 setActiveItemType('project');
+                if (onTabChange) onTabChange('projects');
               }}
               className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 topTab === 'projects'
                   ? 'bg-[#FF5C00] text-black shadow-md font-black'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
               <Layers className="w-3.5 h-3.5" /> PROJECTS
             </button>
-            <button
-              id="sand-tab-focus"
-              type="button"
-              onClick={() => {
-                setTopTab('focus');
-                setActiveItemType('focus');
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                topTab === 'focus'
-                  ? 'bg-[#FF5C00] text-black shadow-md font-black'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Target className="w-3.5 h-3.5" /> FOCUS
-            </button>
+            {ENABLE_AREA_OF_FOCUS && (
+              <button
+                id="sand-tab-focus"
+                type="button"
+                onClick={() => {
+                  setTopTab('focus');
+                  setActiveItemType('focus');
+                  if (onTabChange) onTabChange('focus');
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  topTab === 'focus'
+                    ? 'bg-[#FF5C00] text-black shadow-md font-black'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" /> FOCUS
+              </button>
+            )}
             <button
               id="sand-tab-library"
               type="button"
               onClick={() => {
                 setTopTab('library');
+                if (onTabChange) onTabChange('library');
               }}
               className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 topTab === 'library'
                   ? 'bg-[#FF5C00] text-black shadow-md font-black'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" /> LIBRARY
@@ -509,7 +599,7 @@ export default function SandEngine({
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow"
             >
-              <Plus className="w-4 h-4" /> {topTab === 'projects' ? 'Start New Project' : 'Create Area of FOCUS'}
+              <Plus className="w-4 h-4" /> {topTab === 'projects' || !ENABLE_AREA_OF_FOCUS ? 'Start New Project' : 'Create Area of FOCUS'}
             </button>
           )}
         </div>
@@ -529,139 +619,185 @@ export default function SandEngine({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {recipes.map((recipe, idx) => (
-                <div 
-                  key={recipe.id} 
-                  id={`recipe-card-${recipe.id}`}
-                  className="bg-[#151515] border border-white/10 shadow-sm hover:shadow-md transition-all flex flex-col justify-between p-5 rounded-2xl"
-                  style={(recipe.id === 'recipe-custom-1784771489038' || idx === 0) ? {
-                    paddingLeft: '13px',
-                    paddingRight: '12px',
-                    paddingTop: '12px',
-                    paddingBottom: '12px',
-                    borderWidth: '1px',
-                    borderRadius: '0px'
-                  } : { padding: '1.5rem', borderRadius: '1.5rem' }}
-                >
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-start">
-                      <span className="bg-[#FF5C00]/15 text-[#FF5C00] font-mono text-[9px] uppercase px-2 py-1 rounded font-bold tracking-wider">
-                        {recipe.category}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-white/40">
-                          by {recipe.authorName}
+            {recipes && recipes.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {recipes.map((recipe, idx) => (
+                  <div 
+                    key={recipe.id} 
+                    id={`recipe-card-${recipe.id}`}
+                    className="bg-[#151515] border border-white/10 shadow-sm hover:shadow-md transition-all flex flex-col justify-between p-5 rounded-2xl"
+                    style={(recipe.id === 'recipe-custom-1784771489038' || idx === 0) ? {
+                      paddingLeft: '13px',
+                      paddingRight: '12px',
+                      paddingTop: '12px',
+                      paddingBottom: '12px',
+                      borderWidth: '1px',
+                      borderRadius: '0px'
+                    } : { padding: '1.5rem', borderRadius: '1.5rem' }}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-start">
+                        <span className="bg-[#FF5C00]/15 text-[#FF5C00] font-mono text-[9px] uppercase px-2 py-1 rounded font-bold tracking-wider">
+                          {recipe.category}
                         </span>
-                        {((recipe.authorName && currentUser?.name && recipe.authorName.toLowerCase() === currentUser.name.toLowerCase()) || recipe.authorName === 'Creative Architect' || recipe.authorName === 'You') ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono text-white/40">
+                            by {recipe.authorName}
+                          </span>
+                          {((recipe.authorName && currentUser?.name && recipe.authorName.toLowerCase() === currentUser.name.toLowerCase()) || recipe.authorName === 'Creative Architect' || recipe.authorName === 'You') ? (
+                            <button
+                              type="button"
+                              id={`edit-recipe-${recipe.id}`}
+                              onClick={() => {
+                                if (setEditingRecipe) setEditingRecipe(recipe);
+                                if (setForkInitialData) setForkInitialData(null);
+                                setShowCreateModal(true);
+                              }}
+                              className="p-1 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10"
+                              title="Edit Recipe Blueprint"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              id={`fork-recipe-${recipe.id}`}
+                              onClick={() => {
+                                if (setForkInitialData) setForkInitialData(recipe);
+                                if (setEditingRecipe) setEditingRecipe(null);
+                                setShowCreateModal(true);
+                              }}
+                              className="p-1 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10"
+                              title="Fork Recipe Blueprint"
+                            >
+                              <GitFork className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-lg font-display font-bold text-white">{recipe.title}</h3>
                           <button
                             type="button"
-                            id={`edit-recipe-${recipe.id}`}
-                            onClick={() => {
-                              if (setEditingRecipe) setEditingRecipe(recipe);
-                              if (setForkInitialData) setForkInitialData(null);
-                              setShowCreateModal(true);
-                            }}
-                            className="p-1 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10"
-                            title="Edit Recipe Blueprint"
+                            onClick={() => handleOpenPrintModal({
+                              id: recipe.id,
+                              type: 'recipe',
+                              title: recipe.title,
+                              description: recipe.description,
+                              authorName: recipe.authorName,
+                              category: recipe.category,
+                              phases: recipe.phases,
+                              tags: recipe.tags,
+                              gongsCount: recipe.gongsCount,
+                            })}
+                            className="p-1.5 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10 shrink-0"
+                            title="Printable Copy"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <PrinterCheck className="w-4 h-4 stroke-[2]" />
                           </button>
-                        ) : (
-                          <button
-                            type="button"
-                            id={`fork-recipe-${recipe.id}`}
-                            onClick={() => {
-                              if (setForkInitialData) setForkInitialData(recipe);
-                              if (setEditingRecipe) setEditingRecipe(null);
-                              setShowCreateModal(true);
-                            }}
-                            className="p-1 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10"
-                            title="Fork Recipe Blueprint"
-                          >
-                            <GitFork className="w-3.5 h-3.5" />
-                          </button>
+                        </div>
+                        <p className="text-xs text-white/60 font-sans leading-relaxed">{recipe.description}</p>
+                        
+                        {recipe.forkedFrom && (
+                          <div className="inline-flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-mono mt-1">
+                            <GitFork className="w-3 h-3" /> Forked from {recipe.forkedFrom}
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    <div className="space-y-1.5">
-                      <h3 className="text-lg font-display font-bold text-white">{recipe.title}</h3>
-                      <p className="text-xs text-white/60 font-sans leading-relaxed">{recipe.description}</p>
-                      
-                      {recipe.forkedFrom && (
-                        <div className="inline-flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-mono mt-1">
-                          <GitFork className="w-3 h-3" /> Forked from {recipe.forkedFrom}
+                      {/* List of Recipe milestones */}
+                      <div className="space-y-2 pt-2">
+                        <p className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Sequence Milestones</p>
+                        <div className="space-y-1">
+                          {recipe.phases.map((ph, phIdx) => (
+                            <div key={`rec-ph-${recipe.id}-${phIdx}`} className="flex gap-2 items-center text-xs text-white/80 font-sans">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C00]"></span>
+                              <strong className="font-semibold text-white">{ph.title}</strong>
+                              <span className="text-[10px] text-white/40 font-mono">({ph.tasks.length} sub-tasks)</span>
+                            </div>
+                          ))}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* List of Recipe milestones */}
-                    <div className="space-y-2 pt-2">
-                      <p className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Sequence Milestones</p>
-                      <div className="space-y-1">
-                        {recipe.phases.map((ph, phIdx) => (
-                          <div key={phIdx} className="flex gap-2 items-center text-xs text-white/80 font-sans">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C00]"></span>
-                            <strong className="font-semibold text-white">{ph.title}</strong>
-                            <span className="text-[10px] text-white/40 font-mono">({ph.tasks.length} sub-tasks)</span>
-                          </div>
+                      {/* Tags display */}
+                      <div className="flex gap-1 pt-2 flex-wrap">
+                        {recipe.tags.map((tag, tagIdx) => (
+                          <span key={`tag-${tag}-${tagIdx}`} className="text-[9px] font-mono bg-white/5 text-white/40 px-2 py-0.5 rounded-full border border-white/10">
+                            #{tag}
+                          </span>
                         ))}
                       </div>
                     </div>
 
-                    {/* Tags display */}
-                    <div className="flex gap-1 pt-2 flex-wrap">
-                      {recipe.tags.map(tag => (
-                        <span key={tag} className="text-[9px] font-mono bg-white/5 text-white/40 px-2 py-0.5 rounded-full border border-white/10">
-                          #{tag}
-                        </span>
-                      ))}
+                    {/* Action buttons */}
+                    <div className="border-t border-white/10 pt-4 mt-6 flex justify-between items-center">
+                      <div className="text-[10px] text-white/40 font-mono">
+                        {recipe.phases.reduce((s, p) => s + p.tasks.length, 0)} TOTAL CHECKS
+                      </div>
+
+                      <button
+                        id={`instantiate-recipe-${recipe.id}`}
+                        onClick={() => {
+                          if (setForkInitialData) setForkInitialData(recipe);
+                          if (setEditingRecipe) setEditingRecipe(null);
+                          if (setShowCreateModal) setShowCreateModal(true);
+                        }}
+                        className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Start Recipe
+                      </button>
                     </div>
                   </div>
-
-                  {/* Action buttons */}
-                  <div className="border-t border-white/10 pt-4 mt-6 flex justify-between items-center">
-                    <div className="text-[10px] text-white/40 font-mono">
-                      {recipe.phases.reduce((s, p) => s + p.tasks.length, 0)} TOTAL CHECKS
-                    </div>
-
-                    <button
-                      id={`instantiate-recipe-${recipe.id}`}
-                      onClick={() => {
-                        if (setForkInitialData) setForkInitialData(recipe);
-                        if (setEditingRecipe) setEditingRecipe(null);
-                        if (setShowCreateModal) setShowCreateModal(true);
-                      }}
-                      className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Start Recipe
-                    </button>
-                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-[#151515] border border-white/10 p-12 rounded-3xl text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-[#FF5C00]/10 border border-[#FF5C00]/20 flex items-center justify-center mx-auto text-[#FF5C00]">
+                  <BookOpen className="w-7 h-7" />
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1">
+                  <h4 className="text-lg font-bold text-white font-display">No Process Blueprints in Library</h4>
+                  <p className="text-xs text-white/60 max-w-md mx-auto leading-relaxed">
+                    Your process blueprint library is currently empty. Create or publish your first recipe blueprint to build your sequence collection!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setEditingRecipe) setEditingRecipe(null);
+                    if (setForkInitialData) setForkInitialData(null);
+                    if (setShowCreateModal) setShowCreateModal(true);
+                  }}
+                  className="px-5 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer mt-2"
+                >
+                  <Plus className="w-4 h-4" /> Create First Recipe
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full min-w-0 items-stretch" id="dashboard-grid">
             
             {/* LEFT SIDE: PROJECTS | FOCUS List */}
             <div className="w-full min-w-0 md:h-full flex flex-col" id="dashboard-sidebar">
-              <div className="bg-black rounded-none border-0 px-0 pt-[12px] pb-0 sm:p-5 shadow-sm space-y-4 w-full min-w-0 md:h-full md:flex md:flex-col md:justify-between" id="dashboard-sidebar-inner">
+              <div className="rounded-none border-0 px-0 pt-[12px] pb-0 sm:p-5 shadow-sm space-y-4 w-full min-w-0 md:h-full md:flex md:flex-col md:justify-between bg-white text-gray-900" id="dashboard-sidebar-inner">
                 <div className="space-y-3">
                   {/* Header title for active list */}
-                  <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                    <span className="text-xs font-mono font-bold text-white/70 uppercase tracking-wider">
+                  <div className="flex justify-between items-center pb-2 border-b border-gray-200">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-gray-600">
                       {topTab === 'projects' ? `Active Projects (${sortedProjects.length})` : `Areas of Focus (${collections.length})`}
                     </span>
                   </div>
 
                   {/* List Content */}
-                  <div className="space-y-2.5 max-md:max-h-none max-md:overflow-visible md:max-h-[520px] md:overflow-y-auto pr-0 md:pr-1">
+                  <div className={topTab === 'projects' ? "space-y-2.5 max-h-none overflow-visible" : "space-y-2.5 max-md:max-h-none max-md:overflow-visible md:max-h-[520px] md:overflow-y-auto pr-0 md:pr-1"}>
                     {topTab === 'projects' ? (
                       /* PROJECTS TAB LIST */
                       sortedProjects.length > 0 ? (
-                        sortedProjects.map(p => {
+                        <>
+                          {sortedProjects.map(p => {
                           const progress = getProjectProgress(p);
                           const isSelected = selectedProjectId === p.id && activeItemType === 'project';
                           const isCompleted = p.isCompleted;
@@ -681,42 +817,38 @@ export default function SandEngine({
                               className={`p-3 rounded-2xl border cursor-pointer transition-all ${
                                 isSelected
                                   ? isCompleted
-                                    ? 'bg-[#1a1a1a] border-2 border-emerald-500 text-white shadow-md'
-                                    : theme === 'light'
-                                      ? 'bg-orange-50/80 border-2 border-[#FF5C00] text-gray-900 shadow-md ring-2 ring-[#FF5C00]/20'
-                                      : 'bg-[#1f1f1f] border-2 border-[#FF5C00] text-white shadow-md ring-2 ring-[#FF5C00]/20'
+                                    ? 'bg-emerald-100 border-2 border-emerald-500 text-gray-900 shadow-md ring-2 ring-emerald-500/20'
+                                    : 'bg-orange-100 border-2 border-[#FF5C00] text-gray-900 shadow-md ring-2 ring-[#FF5C00]/20'
                                   : isCompleted
-                                  ? 'bg-[#141414] border border-white/10 text-white/50 opacity-70 hover:opacity-100'
-                                  : theme === 'light'
-                                    ? 'bg-white border border-gray-200 text-gray-900 shadow-sm hover:border-[#FF5C00]/50'
-                                    : 'bg-[#151515] border border-white/10 text-white shadow-sm hover:border-[#FF5C00]/50'
+                                  ? 'bg-emerald-50/60 border border-emerald-200 text-gray-700 opacity-80 hover:opacity-100'
+                                  : 'bg-white border border-gray-200 text-gray-900 shadow-sm hover:border-[#FF5C00]/50'
                               }`}
                             >
                               <div className="flex justify-between items-start gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5">
                                     <h4 className={`text-[9px] font-mono font-bold uppercase truncate ${
-                                      isCompleted ? 'text-white/40 font-normal' : 'text-[#FF5C00]'
+                                      isCompleted ? 'text-gray-400 font-normal' : 'text-[#FF5C00]'
                                     }`}>
                                       {p.recipeTitle}
                                     </h4>
                                     {isCompleted && (
-                                      <span className="text-[8px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/30">
+                                      <span className="text-[8px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-600 px-1.5 py-0.2 rounded border border-emerald-500/30">
                                         COMPLETED
                                       </span>
                                     )}
                                   </div>
                                   <h5 className={`text-xs font-bold truncate mt-0.5 ${
                                     isCompleted 
-                                      ? 'line-through text-white/40' 
-                                      : theme === 'light' ? 'text-gray-900' : 'text-white'
+                                      ? 'line-through text-gray-400' 
+                                      : 'text-gray-900'
                                   }`}>
                                     {p.title}
                                   </h5>
                                 </div>
                                 <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0 font-bold ${
                                   isCompleted
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30'
                                     : 'bg-[#FF5C00] text-black shadow-sm'
                                 }`}>
                                   {progress}%
@@ -726,8 +858,8 @@ export default function SandEngine({
                               {/* Progress bar */}
                               <div className={`w-full rounded-full h-1 mt-2.5 overflow-hidden ${
                                 isCompleted 
-                                  ? 'bg-white/10' 
-                                  : theme === 'light' ? 'bg-gray-200' : 'bg-white/10'
+                                  ? 'bg-gray-200' 
+                                  : 'bg-gray-200'
                               }`}>
                                 <div 
                                   className={`h-full rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-[#FF5C00]'}`} 
@@ -736,10 +868,40 @@ export default function SandEngine({
                               </div>
                             </div>
                           );
-                        })
+                        })}
+                        {activeProjectsList.length > visibleActiveProjectsCount && (
+                          <button
+                            type="button"
+                            id="sand-more-projects-btn"
+                            onClick={() => setVisibleActiveProjectsCount(prev => prev + 9)}
+                            className="w-full py-2.5 px-4 mt-3 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-2 border shadow-sm bg-gray-100 hover:bg-gray-200 text-[#FF5C00] border-[#FF5C00]/30"
+                          >
+                            More Projects... ({activeProjectsList.length - visibleActiveProjectsCount} remaining)
+                          </button>
+                        )}
+                        </>
                       ) : (
-                        <div className="text-center py-8 text-white/40 text-xs font-sans">
-                          No active projects. Click below to start!
+                        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center space-y-3 my-2">
+                          <div className="w-10 h-10 rounded-xl bg-orange-100 border border-orange-200 text-[#FF5C00] flex items-center justify-center mx-auto">
+                            <FolderKanban className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-bold text-gray-900 font-display">No Active Projects</h5>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              You don't have any active projects yet. Start a new project or create a custom blueprint!
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (setEditingRecipe) setEditingRecipe(null);
+                              if (setForkInitialData) setForkInitialData(null);
+                              if (setShowCreateModal) setShowCreateModal(true);
+                            }}
+                            className="px-3.5 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Start New Project
+                          </button>
                         </div>
                       )
                     ) : (
@@ -768,35 +930,31 @@ export default function SandEngine({
                               className={`p-3 rounded-2xl border cursor-pointer transition-all ${
                                 isSelected
                                   ? isCompleted
-                                    ? 'bg-[#1a1a1a] border-2 border-emerald-500 text-white shadow-md'
-                                    : theme === 'light'
-                                      ? 'bg-orange-50/80 border-2 border-[#FF5C00] text-gray-900 shadow-md ring-2 ring-[#FF5C00]/20'
-                                      : 'bg-[#1f1f1f] border-2 border-[#FF5C00] text-white shadow-md ring-2 ring-[#FF5C00]/20'
+                                    ? 'bg-emerald-100 border-2 border-emerald-500 text-gray-900 shadow-md ring-2 ring-emerald-500/20'
+                                    : 'bg-orange-100 border-2 border-[#FF5C00] text-gray-900 shadow-md ring-2 ring-[#FF5C00]/20'
                                   : isCompleted
-                                  ? 'bg-[#141414] border border-white/10 text-white/50 opacity-70 hover:opacity-100'
-                                  : theme === 'light'
-                                    ? 'bg-white border border-gray-200 text-gray-900 shadow-sm hover:border-[#FF5C00]/50'
-                                    : 'bg-[#151515] border border-white/10 text-white shadow-sm hover:border-[#FF5C00]/50'
+                                  ? 'bg-emerald-50/60 border border-emerald-200 text-gray-700 opacity-80 hover:opacity-100'
+                                  : 'bg-white border border-gray-200 text-gray-900 shadow-sm hover:border-[#FF5C00]/50'
                               }`}
                             >
                               <div className="flex justify-between items-start gap-2">
                                 <div className="min-w-0 flex-1">
                                   <h4 className={`text-[9px] font-mono font-bold uppercase truncate ${
-                                    isCompleted ? 'text-white/40 font-normal' : 'text-[#FF5C00]'
+                                    isCompleted ? 'text-gray-400 font-normal' : 'text-[#FF5C00]'
                                   }`}>
                                     {colProjects.length} {colProjects.length === 1 ? 'PROJECT' : 'PROJECTS'} {col.budgetedHours ? `• ${col.budgetedHours}H` : ''}
                                   </h4>
                                   <h5 className={`text-xs font-bold truncate mt-0.5 ${
                                     isCompleted 
-                                      ? 'line-through text-white/40' 
-                                      : theme === 'light' ? 'text-gray-900' : 'text-white'
+                                      ? 'line-through text-gray-400' 
+                                      : 'text-gray-900'
                                   }`}>
                                     {col.title}
                                   </h5>
                                 </div>
                                 <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0 font-bold ${
                                   isCompleted
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30'
                                     : 'bg-[#FF5C00] text-black shadow-sm'
                                 }`}>
                                   {progress}%
@@ -805,8 +963,8 @@ export default function SandEngine({
 
                               <div className={`w-full rounded-full h-1 mt-2.5 overflow-hidden ${
                                 isCompleted 
-                                  ? 'bg-white/10' 
-                                  : theme === 'light' ? 'bg-gray-200' : 'bg-white/10'
+                                  ? 'bg-gray-200' 
+                                  : 'bg-gray-200'
                               }`}>
                                 <div 
                                   className={`h-full rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-[#FF5C00]'}`} 
@@ -817,7 +975,7 @@ export default function SandEngine({
                           );
                         })
                       ) : (
-                        <div className="text-center py-8 text-white/40 text-xs font-sans">
+                        <div className="text-center py-8 text-gray-500 text-xs font-sans">
                           No Areas of FOCUS created yet.
                         </div>
                       )
@@ -831,7 +989,7 @@ export default function SandEngine({
           <div className="hidden md:block md:col-span-2 space-y-6 w-full min-w-0" id="dashboard-details">
             {activeItemType === 'project' && activeProject ? (
               /* --- PROJECT VIEWER --- */
-              <div className="bg-[#151515] rounded-3xl border border-white/10 p-3.5 sm:p-5 md:p-6 shadow-sm space-y-6 w-full min-w-0 h-full flex flex-col justify-between">
+              <div className="rounded-3xl border p-3.5 sm:p-5 md:p-6 shadow-sm space-y-6 w-full min-w-0 h-full flex flex-col justify-between bg-white border-gray-200 text-gray-900 shadow-md">
                 <div className="space-y-6">
                   {/* Project Header with double-click edit */}
                   <div className="flex items-start justify-between gap-3 pb-4 border-b border-white/10 w-full min-w-0">
@@ -860,13 +1018,32 @@ export default function SandEngine({
                           />
                         </div>
                       ) : (
-                        <h2 
-                          onDoubleClick={handleStartProjectEdit}
-                          title="Double-click to edit project title"
-                          className="text-base sm:text-lg font-display font-bold text-white mt-1 break-words cursor-pointer hover:text-[#FF5C00] transition-colors"
-                        >
-                          {activeProject.title}
-                        </h2>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <h2 
+                            onDoubleClick={handleStartProjectEdit}
+                            title="Double-click to edit project title"
+                            className="text-base sm:text-lg font-display font-bold text-white break-words cursor-pointer hover:text-[#FF5C00] transition-colors"
+                          >
+                            {activeProject.title}
+                          </h2>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrintModal({
+                              id: activeProject.id,
+                              type: 'project',
+                              title: activeProject.title,
+                              recipeTitle: activeProject.recipeTitle,
+                              phases: activeProject.phases,
+                              progressPhotos: activeProject.progressPhotos,
+                              createdAt: activeProject.createdAt,
+                              completedAt: activeProject.completedAt,
+                            })}
+                            className="p-1.5 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-lg transition-all cursor-pointer flex items-center justify-center border border-white/10 shrink-0"
+                            title="Printable Copy"
+                          >
+                            <PrinterCheck className="w-4 h-4 stroke-[2]" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -903,7 +1080,7 @@ export default function SandEngine({
                           <button
                             id={`delete-project-btn-${activeProject.id}`}
                             type="button"
-                            onClick={() => handleDeleteProject(activeProject.id)}
+                            onClick={() => confirmDeleteProject(activeProject.id, activeProject.title)}
                             className="p-2 text-white/40 hover:text-red-500 hover:bg-white/5 rounded-xl transition-all cursor-pointer flex items-center justify-center"
                             title="Delete project"
                           >
@@ -975,7 +1152,7 @@ export default function SandEngine({
 
                               <button
                                 type="button"
-                                onClick={() => handleRemovePhase(pIdx)}
+                                onClick={() => confirmDeletePhase(pIdx, phase.title)}
                                 className="p-1.5 text-white/40 hover:text-red-400 hover:bg-white/10 rounded-lg transition-all shrink-0 cursor-pointer"
                                 title="Delete phase"
                               >
@@ -1030,7 +1207,7 @@ export default function SandEngine({
                                   {/* Delete Task */}
                                   <button
                                     type="button"
-                                    onClick={() => handleRemoveTask(pIdx, tIdx)}
+                                    onClick={() => confirmDeleteTask(pIdx, tIdx, task.title)}
                                     className="p-1 text-white/30 hover:text-red-400 rounded transition-all shrink-0 cursor-pointer"
                                     title="Delete task"
                                   >
@@ -1063,7 +1240,7 @@ export default function SandEngine({
                         const isPhaseComplete = phase.tasks.length > 0 && phase.tasks.every(t => t.completed);
 
                         return (
-                          <div key={phase.id} className="space-y-3 w-full min-w-0">
+                          <div key={phase.id || `proj-phase-${pIdx}`} className="space-y-3 w-full min-w-0">
                             <div className="flex items-center justify-between">
                               <h3 className="text-xs font-mono font-bold text-white/80 uppercase tracking-wider flex items-center gap-2">
                                 <span className="bg-white/10 text-white/85 w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] shrink-0">
@@ -1083,9 +1260,9 @@ export default function SandEngine({
                             </div>
 
                             <div className="space-y-2 pl-0 sm:pl-7 w-full min-w-0">
-                              {phase.tasks.map(task => (
+                              {phase.tasks.map((task, tIdx) => (
                                 <div
-                                  key={task.id}
+                                  key={task.id || `proj-task-${pIdx}-${tIdx}`}
                                   onClick={() => handleToggleTask(activeProject.id, phase.id, task.id)}
                                   className={`p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 min-w-0 w-full ${
                                     task.completed
@@ -1156,8 +1333,7 @@ export default function SandEngine({
                     <button
                       type="button"
                       onClick={() => {
-                        handleDeleteProject(activeProject.id);
-                        setIsEditingProject(false);
+                        confirmDeleteProject(activeProject.id, activeProject.title, () => setIsEditingProject(false));
                       }}
                       className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
                     >
@@ -1166,9 +1342,9 @@ export default function SandEngine({
                   </div>
                 )}
               </div>
-            ) : activeItemType === 'focus' && activeCollection ? (
+            ) : activeItemType === 'focus' && ENABLE_AREA_OF_FOCUS && activeCollection ? (
               /* --- AREA OF FOCUS VIEWER --- */
-              <div className="bg-[#151515] rounded-3xl border border-white/10 p-3.5 sm:p-5 md:p-6 shadow-sm space-y-6 w-full min-w-0 h-full flex flex-col justify-between">
+              <div className="rounded-3xl border p-3.5 sm:p-5 md:p-6 shadow-sm space-y-6 w-full min-w-0 h-full flex flex-col justify-between bg-white border-gray-200 text-gray-900 shadow-md">
                 <div className="space-y-6">
                   {/* Focus Header with double-click edit */}
                   <div className="flex items-start justify-between gap-3 pb-4 border-b border-white/10 w-full min-w-0">
@@ -1235,8 +1411,7 @@ export default function SandEngine({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  onDeleteCollection(activeCollection.id);
-                                  setIsEditingFocus(false);
+                                  confirmDeleteFocus(activeCollection.id, activeCollection.title, () => setIsEditingFocus(false));
                                 }}
                                 className="ml-auto px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                               >
@@ -1301,7 +1476,7 @@ export default function SandEngine({
                             <button
                               type="button"
                               onClick={() => {
-                                onDeleteCollection(activeCollection.id);
+                                confirmDeleteFocus(activeCollection.id, activeCollection.title);
                               }}
                               className="p-2 text-white/40 hover:text-red-500 hover:bg-white/5 rounded-xl transition-all cursor-pointer"
                               title="Delete Area of FOCUS"
@@ -1399,11 +1574,11 @@ export default function SandEngine({
                                 <div className="bg-[#FF5C00] h-full rounded-full" style={{ width: `${pProg}%` }}></div>
                               </div>
                               {p.phases.map((ph, phIdx) => (
-                                <div key={ph.id} className="space-y-1 pt-1">
+                                <div key={ph.id || `bound-ph-${p.id}-${phIdx}`} className="space-y-1 pt-1">
                                   <span className="text-[9px] font-mono text-white/40 uppercase">Phase {phIdx + 1}: {ph.title}</span>
-                                  {ph.tasks.map(t => (
+                                  {ph.tasks.map((t, tIdx) => (
                                     <div 
-                                      key={t.id} 
+                                      key={t.id || `bound-t-${phIdx}-${tIdx}`} 
                                       onClick={() => handleToggleTask(p.id, ph.id, t.id)}
                                       className="flex items-center gap-2 text-xs text-white/80 hover:text-white cursor-pointer"
                                     >
@@ -1434,10 +1609,7 @@ export default function SandEngine({
                     <button
                       type="button"
                       onClick={() => {
-                        if (onDeleteCollection) {
-                          onDeleteCollection(activeCollection.id);
-                        }
-                        setIsEditingFocus(false);
+                        confirmDeleteFocus(activeCollection.id, activeCollection.title, () => setIsEditingFocus(false));
                       }}
                       className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
                     >
@@ -1447,35 +1619,51 @@ export default function SandEngine({
                 )}
               </div>
             ) : (
-              <div className="bg-[#151515] rounded-3xl p-12 text-center border border-white/10">
-                <p className="text-white/40 font-sans">Select an item on the left to view details.</p>
+              <div className="bg-white rounded-3xl p-12 text-center border border-gray-200 shadow-sm space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center mx-auto text-[#FF5C00]">
+                  <FolderKanban className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-gray-900 font-display">No Project Selected</h4>
+                  <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
+                    {sortedProjects.length === 0 
+                      ? "You don't have any active projects. Create your first project to start tracking your process steps."
+                      : "Select a project from the left sidebar to view its sequence phases and task progress."}
+                  </p>
+                </div>
+                {sortedProjects.length === 0 && (
+                  <button
+                    onClick={() => {
+                      if (setEditingRecipe) setEditingRecipe(null);
+                      if (setForkInitialData) setForkInitialData(null);
+                      if (setShowCreateModal) setShowCreateModal(true);
+                    }}
+                    className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" /> Start New Project
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
-        )}
+      )}
       </div>
 
       {/* DETAIL EDIT MODAL */}
       <AnimatePresence>
         {showMobileDetailModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border relative max-h-[90vh] flex flex-col transition-colors ${
-                theme === 'light'
-                  ? 'bg-white text-gray-900 border-gray-200'
-                  : 'bg-[#121212] text-white border-white/10'
-              }`}
+              className="rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border relative max-h-[90vh] flex flex-col transition-colors bg-white text-gray-900 border-gray-200"
             >
               {activeItemType === 'project' && activeProject ? (
                 <>
                   {/* Fixed Non-Scrollable Header */}
-                  <div className={`p-4 sm:p-5 border-b flex items-start justify-between gap-3 shrink-0 ${
-                    theme === 'light' ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/[0.02]'
-                  }`}>
+                  <div className="p-4 sm:p-5 border-b flex items-start justify-between gap-3 shrink-0 border-gray-200 bg-gray-50">
                     <div className="min-w-0 flex-1 space-y-1">
                       <span className="text-[10px] font-mono text-[#FF5C00] uppercase font-bold">{activeProject.recipeTitle}</span>
                       {isEditingProject ? (
@@ -1483,20 +1671,37 @@ export default function SandEngine({
                           type="text"
                           value={editProjectTitle}
                           onChange={(e) => setEditProjectTitle(e.target.value)}
-                          className={`border rounded-xl px-3 py-1.5 text-base font-display font-bold w-full focus:outline-none focus:border-[#FF5C00] ${
-                            theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-black border-white/20 text-white'
-                          }`}
+                          className="border rounded-xl px-3 py-1.5 text-base font-display font-bold w-full focus:outline-none focus:border-[#FF5C00] bg-white border-gray-300 text-gray-900"
                           placeholder="Project title..."
                           autoFocus
                         />
                       ) : (
-                        <h3 
-                          onDoubleClick={handleStartProjectEdit}
-                          title="Double-click to edit project title"
-                          className="text-lg font-bold cursor-pointer hover:text-[#FF5C00] leading-snug"
-                        >
-                          {activeProject.title}
-                        </h3>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 
+                            onDoubleClick={handleStartProjectEdit}
+                            title="Double-click to edit project title"
+                            className="text-lg font-bold cursor-pointer hover:text-[#FF5C00] leading-snug"
+                          >
+                            {activeProject.title}
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrintModal({
+                              id: activeProject.id,
+                              type: 'project',
+                              title: activeProject.title,
+                              recipeTitle: activeProject.recipeTitle,
+                              phases: activeProject.phases,
+                              progressPhotos: activeProject.progressPhotos,
+                              createdAt: activeProject.createdAt,
+                              completedAt: activeProject.completedAt,
+                            })}
+                            className="p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center border shrink-0 bg-gray-100 hover:bg-[#FF5C00] text-gray-700 hover:text-black border-gray-200"
+                            title="Printable Copy"
+                          >
+                            <PrinterCheck className="w-4 h-4 stroke-[2]" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -1518,9 +1723,7 @@ export default function SandEngine({
                               setIsEditingProject(false);
                               setShowMobileDetailModal(false);
                             }}
-                            className={`p-2 rounded-xl cursor-pointer transition-all flex items-center justify-center ${
-                              theme === 'light' ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
-                            }`}
+                            className="p-2 rounded-xl cursor-pointer transition-all flex items-center justify-center bg-gray-200 text-gray-700 hover:bg-gray-300"
                             title="Cancel edit"
                           >
                             <X className="w-4 h-4" />
@@ -1531,9 +1734,7 @@ export default function SandEngine({
                           <button
                             type="button"
                             onClick={handleStartProjectEdit}
-                            className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
-                              theme === 'light' ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'text-white/60 hover:text-white bg-white/5 hover:bg-white/10'
-                            }`}
+                            className="p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center bg-gray-100 text-gray-700 hover:bg-gray-200"
                             title="Edit project"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -1541,12 +1742,9 @@ export default function SandEngine({
                           <button
                             type="button"
                             onClick={() => {
-                              handleDeleteProject(activeProject.id);
-                              setShowMobileDetailModal(false);
+                              confirmDeleteProject(activeProject.id, activeProject.title, () => setShowMobileDetailModal(false));
                             }}
-                            className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
-                              theme === 'light' ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-white/40 hover:text-red-500 hover:bg-white/5'
-                            }`}
+                            className="p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center text-red-600 bg-red-50 hover:bg-red-100"
                             title="Delete project"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1561,14 +1759,10 @@ export default function SandEngine({
                           setShowMobileDetailModal(false);
                           setIsEditingProject(false);
                         }}
-                        className={`p-2 rounded-xl transition-all border cursor-pointer ml-1 ${
-                          theme === 'light'
-                            ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300'
-                            : 'bg-black/70 hover:bg-black text-white/60 hover:text-white border-white/10'
-                        }`}
+                        className="p-2 rounded-full transition-all border cursor-pointer ml-1 shadow-sm shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300"
                         title="Close modal"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
@@ -1582,7 +1776,7 @@ export default function SandEngine({
                             <div 
                               key={ph.id || `mobile-edit-ph-${pIdx}`} 
                               className={`p-3 rounded-2xl border space-y-2 transition-all ${
-                                dragOverPhaseIdx === pIdx ? 'border-[#FF5C00] bg-[#FF5C00]/10' : theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-black/60 border-white/10'
+                                dragOverPhaseIdx === pIdx ? 'border-[#FF5C00] bg-[#FF5C00]/10' : 'bg-gray-50 border-gray-200'
                               }`}
                               onDragOver={(e) => handlePhaseDragOver(e, pIdx)}
                               onDrop={(e) => handlePhaseContainerTaskDrop(e, pIdx)}
@@ -1609,16 +1803,14 @@ export default function SandEngine({
                                       const val = e.target.value;
                                       setEditPhases(prev => prev.map((p, i) => i === pIdx ? { ...p, title: val } : p));
                                     }}
-                                    className={`border rounded-lg px-2.5 py-1 text-xs font-bold w-full focus:outline-none focus:border-[#FF5C00] ${
-                                      theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-black border-white/20 text-white'
-                                    }`}
+                                    className="border rounded-lg px-2.5 py-1 text-xs font-bold w-full focus:outline-none focus:border-[#FF5C00] bg-white border-gray-300 text-gray-900"
                                     placeholder="Phase title..."
                                   />
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => handleRemovePhase(pIdx)}
-                                  className="p-1 text-white/40 hover:text-red-400 rounded cursor-pointer"
+                                  onClick={() => confirmDeletePhase(pIdx, ph.title)}
+                                  className="p-1 text-gray-400 hover:text-red-500 rounded cursor-pointer"
                                   title="Delete phase"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1637,11 +1829,11 @@ export default function SandEngine({
                                     className={`p-2 rounded-xl border flex items-center justify-between gap-2 ${
                                       dragOverTask?.phaseIdx === pIdx && dragOverTask?.taskIdx === tIdx
                                         ? 'border-[#FF5C00] bg-[#FF5C00]/10'
-                                        : theme === 'light' ? 'bg-white border-gray-200' : 'bg-black/40 border-white/10'
+                                        : 'bg-white border-gray-200'
                                     }`}
                                   >
                                     <div 
-                                      className="cursor-grab active:cursor-grabbing text-white/40 hover:text-[#FF5C00] shrink-0 p-1"
+                                      className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-[#FF5C00] shrink-0 p-1"
                                       title="Click, hold & drag vertically to reorder task or move to another phase"
                                     >
                                       <GripVertical className="w-3.5 h-3.5" />
@@ -1651,7 +1843,7 @@ export default function SandEngine({
                                       type="checkbox"
                                       checked={t.completed}
                                       disabled
-                                      className="w-3.5 h-3.5 rounded border-white/20 bg-black text-[#FF5C00] opacity-30 cursor-not-allowed shrink-0"
+                                      className="w-3.5 h-3.5 rounded border-gray-300 bg-gray-100 text-[#FF5C00] opacity-30 cursor-not-allowed shrink-0"
                                     />
 
                                     <input
@@ -1664,14 +1856,14 @@ export default function SandEngine({
                                           tasks: p.tasks.map((tk, j) => j === tIdx ? { ...tk, title: val } : tk)
                                         } : p));
                                       }}
-                                      className="bg-transparent border-0 border-b border-white/10 focus:border-[#FF5C00] text-xs text-white font-medium flex-1 focus:outline-none px-1 py-0.5"
+                                      className="bg-transparent border-0 border-b border-gray-200 focus:border-[#FF5C00] text-xs text-gray-900 font-medium flex-1 focus:outline-none px-1 py-0.5"
                                       placeholder="Task description..."
                                     />
 
                                     <button
                                       type="button"
-                                      onClick={() => handleRemoveTask(pIdx, tIdx)}
-                                      className="p-1 text-white/30 hover:text-red-400 rounded cursor-pointer"
+                                      onClick={() => confirmDeleteTask(pIdx, tIdx, t.title)}
+                                      className="p-1 text-gray-400 hover:text-red-500 rounded cursor-pointer"
                                       title="Delete task"
                                     >
                                       <Trash2 className="w-3 h-3" />
@@ -1682,7 +1874,7 @@ export default function SandEngine({
                                 <button
                                   type="button"
                                   onClick={() => handleAddTaskToPhase(pIdx)}
-                                  className="w-full py-1 border border-dashed border-white/20 hover:border-[#FF5C00]/50 hover:text-[#FF5C00] text-white/50 text-[10px] font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer mt-1"
+                                  className="w-full py-1 border border-dashed border-gray-300 hover:border-[#FF5C00]/50 hover:text-[#FF5C00] text-gray-500 text-[10px] font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer mt-1"
                                 >
                                   <Plus className="w-3 h-3" /> Add Task
                                 </button>
@@ -1693,7 +1885,7 @@ export default function SandEngine({
                           <button
                             type="button"
                             onClick={handleAddPhase}
-                            className="w-full py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-mono text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            className="w-full py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-800 font-mono text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5 text-[#FF5C00]" /> Add New Phase
                           </button>
@@ -1703,20 +1895,18 @@ export default function SandEngine({
                           const isPhaseComplete = ph.tasks.length > 0 && ph.tasks.every(t => t.completed);
 
                           return (
-                            <div key={ph.id} className="space-y-2">
+                            <div key={ph.id || `mobile-ph-${pIdx}`} className="space-y-2">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-mono font-bold text-[#FF5C00] uppercase">Phase {pIdx + 1}: {ph.title}</span>
-                                {isPhaseComplete && <span className="text-emerald-400 font-bold text-xs shrink-0">Complete!</span>}
+                                {isPhaseComplete && <span className="text-emerald-600 font-bold text-xs shrink-0">Complete!</span>}
                               </div>
-                              {ph.tasks.map(t => (
+                              {ph.tasks.map((t, tIdx) => (
                                 <div
-                                  key={t.id}
+                                  key={t.id || `mobile-t-${pIdx}-${tIdx}`}
                                   onClick={() => handleToggleTask(activeProject.id, ph.id, t.id)}
-                                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                                    theme === 'light' ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'
-                                  }`}
+                                  className="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all bg-gray-50 border-gray-200 hover:bg-gray-100"
                                 >
-                                  <span className={`text-xs ${t.completed ? 'line-through text-emerald-500' : ''}`}>{t.title}</span>
+                                  <span className={`text-xs ${t.completed ? 'line-through text-emerald-600' : ''}`}>{t.title}</span>
                                   <input type="checkbox" checked={t.completed} readOnly className="w-4 h-4 text-[#FF5C00]" />
                                 </div>
                               ))}
@@ -1728,15 +1918,16 @@ export default function SandEngine({
 
                     {/* Delete button when editing project */}
                     {isEditingProject && (
-                      <div className="pt-4 border-t border-white/10 flex justify-center">
+                      <div className="pt-4 border-t border-gray-200 flex justify-center">
                         <button
                           type="button"
                           onClick={() => {
-                            handleDeleteProject(activeProject.id);
-                            setIsEditingProject(false);
-                            setShowMobileDetailModal(false);
+                            confirmDeleteProject(activeProject.id, activeProject.title, () => {
+                              setIsEditingProject(false);
+                              setShowMobileDetailModal(false);
+                            });
                           }}
-                          className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
+                          className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
                         >
                           <Trash2 className="w-4 h-4" /> Delete this project
                         </button>
@@ -1757,12 +1948,10 @@ export default function SandEngine({
                     )}
                   </div>
                 </>
-              ) : activeCollection ? (
+              ) : activeCollection && ENABLE_AREA_OF_FOCUS ? (
                 <>
                   {/* Fixed Non-Scrollable Header */}
-                  <div className={`p-4 sm:p-5 border-b flex items-start justify-between gap-3 shrink-0 ${
-                    theme === 'light' ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/[0.02]'
-                  }`}>
+                  <div className="p-4 sm:p-5 border-b flex items-start justify-between gap-3 shrink-0 border-gray-200 bg-gray-50">
                     <div className="min-w-0 flex-1 space-y-1">
                       <span className="text-[10px] font-mono text-[#FF5C00] uppercase font-bold">Area of FOCUS</span>
                       {isEditingFocus ? (
@@ -1771,18 +1960,14 @@ export default function SandEngine({
                             type="text"
                             value={editFocusTitle}
                             onChange={(e) => setEditFocusTitle(e.target.value)}
-                            className={`border rounded-xl px-3 py-1.5 text-sm font-display font-bold w-full focus:outline-none focus:border-[#FF5C00] ${
-                              theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-black border-white/20 text-white'
-                            }`}
+                            className="border rounded-xl px-3 py-1.5 text-sm font-display font-bold w-full focus:outline-none focus:border-[#FF5C00] bg-white border-gray-300 text-gray-900"
                             placeholder="Area of Focus title..."
                             autoFocus
                           />
                           <textarea
                             value={editFocusDescription}
                             onChange={(e) => setEditFocusDescription(e.target.value)}
-                            className={`border rounded-xl px-3 py-1.5 text-xs font-sans w-full focus:outline-none h-14 ${
-                              theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-black border-white/20 text-white'
-                            }`}
+                            className="border rounded-xl px-3 py-1.5 text-xs font-sans w-full focus:outline-none h-14 bg-white border-gray-300 text-gray-900"
                             placeholder="Description..."
                           />
                           <div className="flex items-center gap-2">
@@ -1791,9 +1976,7 @@ export default function SandEngine({
                               type="number"
                               value={editFocusBudget}
                               onChange={(e) => setEditFocusBudget(Number(e.target.value))}
-                              className={`border rounded-xl px-3 py-1 text-xs w-20 font-mono font-bold ${
-                                theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-black border-white/20 text-white'
-                              }`}
+                              className="border rounded-xl px-3 py-1 text-xs w-20 font-mono font-bold bg-white border-gray-300 text-gray-900"
                             />
                           </div>
                         </div>
@@ -1830,9 +2013,7 @@ export default function SandEngine({
                               setIsEditingFocus(false);
                               setShowMobileDetailModal(false);
                             }}
-                            className={`p-2 rounded-xl cursor-pointer transition-all flex items-center justify-center ${
-                              theme === 'light' ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-white/10 text-white hover:bg-white/20'
-                            }`}
+                            className="p-2 rounded-xl cursor-pointer transition-all flex items-center justify-center bg-gray-200 text-gray-700 hover:bg-gray-300"
                             title="Cancel edit"
                           >
                             <X className="w-4 h-4" />
@@ -1843,9 +2024,7 @@ export default function SandEngine({
                           <button
                             type="button"
                             onClick={handleStartFocusEdit}
-                            className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
-                              theme === 'light' ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'text-white/60 hover:text-white bg-white/5 hover:bg-white/10'
-                            }`}
+                            className="p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center bg-gray-100 text-gray-700 hover:bg-gray-200"
                             title="Edit Area of FOCUS"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -1854,12 +2033,9 @@ export default function SandEngine({
                             <button
                               type="button"
                               onClick={() => {
-                                onDeleteCollection(activeCollection.id);
-                                setShowMobileDetailModal(false);
+                                confirmDeleteFocus(activeCollection.id, activeCollection.title, () => setShowMobileDetailModal(false));
                               }}
-                              className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
-                                theme === 'light' ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-white/40 hover:text-red-500 hover:bg-white/5'
-                              }`}
+                              className="p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center text-red-600 bg-red-50 hover:bg-red-100"
                               title="Delete Area of FOCUS"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1875,14 +2051,10 @@ export default function SandEngine({
                           setShowMobileDetailModal(false);
                           setIsEditingFocus(false);
                         }}
-                        className={`p-2 rounded-xl transition-all border cursor-pointer ml-1 ${
-                          theme === 'light'
-                            ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300'
-                            : 'bg-black/70 hover:bg-black text-white/60 hover:text-white border-white/10'
-                        }`}
+                        className="p-2 rounded-full transition-all border cursor-pointer ml-1 shadow-sm shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300"
                         title="Close modal"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
@@ -1895,13 +2067,12 @@ export default function SandEngine({
                         <button
                           type="button"
                           onClick={() => {
-                            if (onDeleteCollection) {
-                              onDeleteCollection(activeCollection.id);
-                            }
-                            setIsEditingFocus(false);
-                            setShowMobileDetailModal(false);
+                            confirmDeleteFocus(activeCollection.id, activeCollection.title, () => {
+                              setIsEditingFocus(false);
+                              setShowMobileDetailModal(false);
+                            });
                           }}
-                          className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
+                          className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow"
                         >
                           <Trash2 className="w-4 h-4" /> Delete this Area of FOCUS
                         </button>
@@ -1914,6 +2085,20 @@ export default function SandEngine({
           </div>
         )}
       </AnimatePresence>
+
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm?.isOpen}
+        title={deleteConfirm?.title}
+        message={deleteConfirm?.message}
+        onConfirm={() => deleteConfirm?.onConfirm()}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+
+      <PrintPreviewModal
+        isOpen={printModalOpen}
+        onClose={() => setPrintModalOpen(false)}
+        item={printableItem}
+      />
     </div>
   );
 }

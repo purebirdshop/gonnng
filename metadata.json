@@ -1,6 +1,9 @@
 {
   "name": "Gonnng",
   "description": "An accountability and creative completion platform that helps people break ideas into manageable parts, learn from others, and finish projects before their deadlines.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

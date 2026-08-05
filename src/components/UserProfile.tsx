@@ -1,23 +1,35 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
-import { User, Shield, Users, Save, Globe, Lock, Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Sun, Moon, Camera, Image as ImageIcon, Disc3, Pencil, Octagon, ArrowUpRight, MessageSquare } from 'lucide-react';
+import { getFollowersOfUser, getFollowingOfUser, getCircleOfUser, isFollowingUser, isFollowedByUser, isUserInCircle } from '../utils/followUtils';
+import { User, Shield, Users, Save, Globe, Lock, Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Camera, Image as ImageIcon, Disc3, Pencil, Octagon, ArrowUpRight, MessageSquare, CircleDotDashed, Album, Cookie } from 'lucide-react';
 import Feed from './Feed';
 import FileUploadZone from './FileUploadZone';
-import { UploadedFile, uploadService } from '../services/uploadService';
+import { UploadedFile, uploadService, getPublicMediaUrl } from '../services/uploadService';
+import { permissionService } from '../services/permissionService';
+import { PermissionType, PermissionStatus } from '../lib/database.types';
 import { authService } from '../services/authService';
+
+export interface AppPermissions {
+  camera: boolean;
+  microphone: boolean;
+  files: boolean;
+}
 
 interface UserProfileProps {
   currentUser: Creator;
-  onUpdateUser: (updated: Creator) => void;
+  onUpdateUser: (updated: Creator) => void | Promise<void>;
   allCreators: Creator[];
   onToggleFollowCreator: (id: string) => void;
   onToggleCircleCreator?: (id: string) => void;
   onOpenPhilosophy?: () => void;
   onOpenCreatorProfile?: (creatorId: string) => void;
   onSignOut?: () => void;
-  theme?: 'dark' | 'light';
-  onToggleTheme?: (theme: 'dark' | 'light') => void;
+  onOpenCookiePreferences?: () => void;
+
+  // Permissions State
+  permissions?: AppPermissions;
+  onUpdatePermissions?: (updated: AppPermissions) => void;
 
   // Settings Drawer State
   isSettingsDrawerOpen: boolean;
@@ -46,8 +58,9 @@ export default function UserProfile({
   onOpenPhilosophy,
   onOpenCreatorProfile,
   onSignOut,
-  theme = 'dark',
-  onToggleTheme,
+  onOpenCookiePreferences,
+  permissions,
+  onUpdatePermissions,
   isSettingsDrawerOpen,
   setIsSettingsDrawerOpen,
   posts,
@@ -68,9 +81,91 @@ export default function UserProfile({
   const [isSaved, setIsSaved] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  // Followers / Following Modal State
+  // Device permissions table state
+  const [detailedPermissions, setDetailedPermissions] = useState<Record<PermissionType, PermissionStatus>>({
+    camera: permissions?.camera ? 'granted' : 'not_requested',
+    microphone: permissions?.microphone ? 'granted' : 'not_requested',
+    file_access: permissions?.files ? 'granted' : 'not_requested'
+  });
+
+  const [permissionGuidanceModal, setPermissionGuidanceModal] = useState<{
+    isOpen: boolean;
+    type: PermissionType;
+    title: string;
+    message: string;
+  } | null>(null);
+
+  // Flow 3: On settings drawer open / mount, run silent checkPermissionStatus for live status
+  React.useEffect(() => {
+    if (isSettingsDrawerOpen && currentUser?.id) {
+      permissionService.getProfileSettingsPermissions(currentUser.id).then(statusMap => {
+        setDetailedPermissions(statusMap);
+        if (onUpdatePermissions) {
+          onUpdatePermissions({
+            camera: statusMap.camera === 'granted',
+            microphone: statusMap.microphone === 'granted',
+            files: statusMap.file_access === 'granted'
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [isSettingsDrawerOpen, currentUser?.id]);
+
+  // Flow 4: Handle permission toggle interaction per strict requirements
+  const handleTogglePermission = async (type: PermissionType) => {
+    if (!currentUser?.id) return;
+
+    const currentStatus = detailedPermissions[type] || 'not_requested';
+
+    if (currentStatus === 'not_requested') {
+      // Toggling ON from not_requested -> Call requestPermission(type)
+      const result = await permissionService.requestPermission(type);
+      await permissionService.upsertPermission(currentUser.id, type, result);
+      setDetailedPermissions(prev => ({ ...prev, [type]: result }));
+
+      const isGranted = result === 'granted';
+      const updatedCamera = type === 'camera' ? isGranted : detailedPermissions.camera === 'granted';
+      const updatedMicrophone = type === 'microphone' ? isGranted : detailedPermissions.microphone === 'granted';
+      const updatedFiles = type === 'file_access' ? isGranted : detailedPermissions.file_access === 'granted';
+
+      if (onUpdatePermissions) {
+        onUpdatePermissions({
+          camera: updatedCamera,
+          microphone: updatedMicrophone,
+          files: updatedFiles
+        });
+      }
+
+      if (result === 'denied') {
+        setPermissionGuidanceModal({
+          isOpen: true,
+          type,
+          title: `Permission Denied`,
+          message: `Device permission for ${type.replace('_', ' ')} was denied in the dialog.`
+        });
+      }
+    } else if (currentStatus === 'denied') {
+      // Toggling ON when denied -> Do NOT call requestPermission. Deep-link / guide to OS settings
+      setPermissionGuidanceModal({
+        isOpen: true,
+        type,
+        title: `Enable Permission in Device Settings`,
+        message: `Permission for ${type.replace('_', ' ')} is currently denied at the OS/browser level. Calling request permission cannot re-prompt a denied permission. Please enable it in your device or browser settings.`
+      });
+    } else if (currentStatus === 'granted') {
+      // Toggling OFF when granted -> Cannot revoke OS-level grant. Show guidance, do NOT write denied to DB
+      setPermissionGuidanceModal({
+        isOpen: true,
+        type,
+        title: `Disable Permission in Device Settings`,
+        message: `To revoke ${type.replace('_', ' ')} access, please disable it in your device or browser settings. Upon returning to Gonnng, the status will automatically update.`
+      });
+    }
+  };
+
+  // Followers / Following / Circle Modal State
   const [showUserListModal, setShowUserListModal] = useState(false);
-  const [modalTab, setModalTab] = useState<'followers' | 'following'>('followers');
+  const [modalTab, setModalTab] = useState<'circle' | 'followers' | 'following'>('circle');
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
   // Comment Modal State for superimposed post
@@ -87,48 +182,66 @@ export default function UserProfile({
     }
   }, [autoOpenCommentsPostId, superimposedPost, posts]);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdateUser({
-      ...currentUser,
-      name,
-      bio,
-      goals,
-      privacyDefault: privacy,
-      avatarUrl
-    });
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
-  };
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
 
-  const handleAvatarFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setIsUploadingAvatar(true);
-      try {
-        const uploaded = await uploadService.uploadFile(file);
-        setAvatarUrl(uploaded.url);
-        onUpdateUser({
-          ...currentUser,
-          avatarUrl: uploaded.url
-        });
-      } catch (err) {
-        console.error('Failed to upload avatar image:', err);
-      } finally {
-        setIsUploadingAvatar(false);
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    let finalAvatarUrl = avatarUrl;
+
+    try {
+      if (selectedAvatarFile) {
+        setIsUploadingAvatar(true);
+        try {
+          const uploaded = await uploadService.uploadAvatar(selectedAvatarFile);
+          finalAvatarUrl = uploaded.publicUrl || uploaded.url || finalAvatarUrl;
+          setAvatarUrl(finalAvatarUrl);
+        } catch (uploadErr) {
+          console.error('Failed to upload avatar during configuration save:', uploadErr);
+        } finally {
+          setIsUploadingAvatar(false);
+          setSelectedAvatarFile(null);
+        }
       }
+
+      await onUpdateUser({
+        ...currentUser,
+        name,
+        bio,
+        goals,
+        privacyDefault: privacy,
+        avatarUrl: finalAvatarUrl
+      });
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to save profile configuration:', err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const followersList = allCreators.filter(c => c.followsYou);
-  const followingList = allCreators.filter(c => c.isFollowing);
+  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedAvatarFile(file);
+      const previewUrl = URL.createObjectURL(file);
+      setAvatarUrl(previewUrl);
+    }
+  };
 
-  const currentTabList = modalTab === 'following' ? followingList : followersList;
+  const followersList = getFollowersOfUser(currentUser, allCreators);
+  const followingList = getFollowingOfUser(currentUser, allCreators);
+  const circleList = getCircleOfUser(currentUser, allCreators);
+
+  const currentTabList = modalTab === 'circle' ? circleList : modalTab === 'following' ? followingList : followersList;
 
   const displayedModalCreators = currentTabList.filter(c => {
     if (!userSearchQuery.trim()) return true;
     const q = userSearchQuery.toLowerCase();
-    return c.name.toLowerCase().includes(q) || (c.bio && c.bio.toLowerCase().includes(q));
+    const handle = (c.username || c.name.toLowerCase().replace(/\s+/g, '')).toLowerCase();
+    return c.name.toLowerCase().includes(q) || (c.bio && c.bio.toLowerCase().includes(q)) || handle.includes(q);
   });
 
   return (
@@ -138,12 +251,12 @@ export default function UserProfile({
     >
       {/* Superimposed Post Modal Overlay from Updates / Shared Messages */}
       {superimposedPost && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-40 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#FF5C00] bg-[#121212] text-white space-y-4 my-auto relative"
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#FF5C00] space-y-4 my-auto relative bg-white text-gray-900"
             id="superimposed-post-container"
           >
             {/* Header Badge & Icon-only Close Action */}
@@ -153,7 +266,7 @@ export default function UserProfile({
                 <span className="text-xs font-mono font-black text-[#FF5C00] uppercase tracking-wider">
                   LINKED UPDATE POST
                 </span>
-                <span className="text-[10px] font-mono text-white/50 hidden sm:inline">
+                <span className="text-[10px] font-mono text-gray-500 hidden sm:inline">
                   • gonnng.com/g/{superimposedPost.id}
                 </span>
               </div>
@@ -162,7 +275,7 @@ export default function UserProfile({
                 <button
                   type="button"
                   onClick={onClearSuperimposedPost}
-                  className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg cursor-pointer transition-colors flex items-center justify-center"
+                  className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg cursor-pointer transition-colors flex items-center justify-center"
                   title="Close Post Modal"
                   aria-label="Close Post Modal"
                 >
@@ -172,10 +285,10 @@ export default function UserProfile({
             </div>
 
             {/* Embedded Post Matching Standard Structure: Image, Votes Cluster + Comments Link, Poster, Title, Description */}
-            <div className="bg-black border border-white/10 p-3 sm:p-4 rounded-xl space-y-3">
+            <div className="p-3 sm:p-4 rounded-xl space-y-3 border bg-white border-gray-200 text-gray-900 shadow-md">
               
               {/* 1. Image with Share Button & Bottom Overlay (Votes Cluster + Comments Count) */}
-              <div className="relative w-full rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg">
+              <div className="relative w-full rounded-xl overflow-hidden border shadow-lg border-gray-200 bg-gray-100">
                 <img 
                   src={superimposedPost.image || 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800'} 
                   alt={superimposedPost.title} 
@@ -188,18 +301,15 @@ export default function UserProfile({
                   <button
                     type="button"
                     onClick={() => onOpenShareDrawer(superimposedPost)}
-                    className="absolute top-2 right-2 bg-black/80 hover:bg-[#FF5C00] text-white hover:text-black p-2 rounded-xl transition-all cursor-pointer z-30 border border-white/20 shadow-lg flex items-center justify-center"
+                    className="absolute top-2 right-2 p-2 rounded-xl transition-all cursor-pointer z-30 border shadow-lg flex items-center justify-center bg-white/95 hover:bg-[#FF5C00] text-gray-800 hover:text-black border-gray-300"
                     title="Share post & copy permalink"
                   >
                     <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
                   </button>
                 )}
 
-                {/* Gradient Overlay for bottom button readability */}
-                <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none" />
-
                 {/* Votes Cluster + Comments Link overlay at bottom of image */}
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between bg-black/85 backdrop-blur-md p-1.5 sm:p-2 rounded-none border-0 shadow-2xl z-10 gap-1">
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between p-1.5 sm:p-2 rounded-xl border shadow-2xl z-10 gap-1 bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <button
                       type="button"
@@ -269,15 +379,13 @@ export default function UserProfile({
                     className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover border border-white/20 shrink-0"
                     referrerPolicy="no-referrer"
                   />
-                  <span className={`font-bold group-hover:underline ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+                  <span className="font-bold group-hover:underline text-gray-900">
                     {superimposedPost.userName}
                   </span>
-                  <span className={`text-[10px] font-mono ${theme === 'light' ? 'text-gray-500' : 'text-white/40'}`}>• {superimposedPost.timeString}</span>
+                  <span className="text-[10px] font-mono text-gray-500">• {superimposedPost.timeString}</span>
                 </div>
 
-                <div className={`flex items-center gap-1 border px-2 py-0.5 rounded-md text-[10px] font-mono ${
-                  theme === 'light' ? 'bg-gray-100 border-gray-200 text-gray-700' : 'bg-white/5 border-white/10 text-white/60'
-                }`}>
+                <div className="flex items-center gap-1 border px-2 py-0.5 rounded-md text-[10px] font-mono bg-gray-100 border-gray-200 text-gray-700">
                   {superimposedPost.privacy === 'public' && (
                     <>
                       <Globe className="w-3 h-3 text-[#FF5C00]" />
@@ -286,13 +394,13 @@ export default function UserProfile({
                   )}
                   {superimposedPost.privacy === 'internal' && (
                     <>
-                      <Users className="w-3 h-3 text-[#FF5C00]" />
+                      <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" />
                       <span className="uppercase">Circle</span>
                     </>
                   )}
                   {superimposedPost.privacy === 'private' && (
                     <>
-                      <Lock className="w-3 h-3 text-[#FF5C00]" />
+                      <Album className="w-3 h-3 text-[#FF5C00]" />
                       <span className="uppercase">Private</span>
                     </>
                   )}
@@ -300,14 +408,12 @@ export default function UserProfile({
               </div>
 
               {/* 3. Title */}
-              <h3 className={`text-base font-display font-bold px-1 break-words ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+              <h3 className="text-base font-display font-bold px-1 break-words text-gray-900">
                 {superimposedPost.title}
               </h3>
 
               {/* 4. Full Description */}
-              <div className={`p-3 sm:p-4 rounded-xl space-y-2 border ${
-                theme === 'light' ? 'bg-white border-gray-200 text-gray-900' : 'bg-white/5 border-white/10 text-white/90'
-              }`}>
+              <div className="p-3 sm:p-4 rounded-xl space-y-2 border bg-white border-gray-200 text-gray-900">
                 <p className="text-xs sm:text-sm font-sans leading-relaxed whitespace-pre-wrap break-words">
                   {superimposedPost.content}
                 </p>
@@ -332,28 +438,22 @@ export default function UserProfile({
 
       {/* Header Visual Panel - Full Screen First Tile on Mobile for Sticky Scroll */}
       <div 
-        className={`snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto shrink-0 flex flex-col justify-between border p-5 sm:p-6 shadow-2xl relative mb-0 sm:mb-6 rounded-none ${
-          theme === 'light' ? 'bg-white border-gray-200 text-gray-900 shadow-sm' : 'bg-black border-white/10 text-white shadow-2xl'
-        }`}
+        className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto shrink-0 flex flex-col justify-between border p-5 sm:p-6 relative mb-0 sm:mb-6 rounded-none bg-white border-gray-200 text-gray-900 shadow-sm"
         id="profile-first-tile"
       >
         {/* Top Section */}
         <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 min-w-0 w-full">
-          <div className={`w-28 h-28 sm:w-20 sm:h-20 rounded-full flex items-center justify-center font-display font-bold shadow-lg border-4 relative overflow-hidden shrink-0 mx-auto sm:mx-0 ${
-            theme === 'light'
-              ? 'bg-gray-200 border-gray-300 text-gray-800'
-              : 'bg-black/80 border-[#FF5C00] text-white shadow-[0_0_20px_rgba(255,92,0,0.3)]'
-          }`}>
-            {currentUser.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <div className="w-28 h-28 sm:w-20 sm:h-20 rounded-full flex items-center justify-center font-display font-bold shadow-lg border-4 relative overflow-hidden shrink-0 mx-auto sm:mx-0 bg-gray-200 border-gray-300 text-gray-800">
+            {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
+              <img src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <User className={`w-14 h-14 sm:w-10 sm:h-10 ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`} />
+              <User className="w-14 h-14 sm:w-10 sm:h-10 text-gray-600" />
             )}
           </div>
 
           <div className="min-w-0 flex-1 text-center sm:text-left space-y-1">
             <div className="flex items-center justify-center sm:justify-start gap-2">
-              <h2 className={`text-xl sm:text-2xl font-display font-black truncate ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+              <h2 className="text-xl sm:text-2xl font-display font-black truncate text-gray-900">
                 {currentUser.name}
               </h2>
               <button
@@ -381,34 +481,41 @@ export default function UserProfile({
                 <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
-            <p className={`text-xs font-mono truncate ${theme === 'light' ? 'text-gray-600' : 'text-[#FF5C00]'}`}>
+            <p className="text-xs font-mono truncate text-gray-600">
               @{currentUser.name.toLowerCase().replace(/\s+/g, '')} • {currentUser.email}
             </p>
           </div>
         </div>
 
         {/* Middle Section: Bio & Goal */}
-        <div className={`my-auto py-4 space-y-3 border p-4 rounded-2xl ${
-          theme === 'light' ? 'bg-gray-50 border-gray-200 text-gray-800' : 'bg-white/5 border-white/10 text-white'
-        }`}>
-          <p className={`text-xs leading-relaxed italic ${theme === 'light' ? 'text-gray-800' : 'text-white/80'}`}>
+        <div className="my-auto py-4 space-y-3 border p-4 rounded-2xl bg-gray-50 border-gray-200 text-gray-800">
+          <p className="text-xs leading-relaxed italic text-gray-800">
             "{currentUser.bio || 'Creative architect building process blueprints and execution sequence algorithms.'}"
           </p>
           {currentUser.goals && (
-            <div className={`text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 ${
-              theme === 'light' ? 'border-gray-200 text-gray-600' : 'border-white/10 text-white/60'
-            }`}>
+            <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
               <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
-              <span>Current Goal: <strong className={`font-sans ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{currentUser.goals}</strong></span>
+              <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals}</strong></span>
             </div>
           )}
         </div>
 
-        {/* Bottom Section: Followers/Following Stats & Privacy */}
-        <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t w-full ${
-          theme === 'light' ? 'border-gray-200' : 'border-white/10'
-        }`}>
+        {/* Bottom Section: Followers/Following/Circle Stats & Privacy */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t w-full border-gray-200">
           <div className="flex items-center justify-center sm:justify-start gap-3 w-full sm:w-auto">
+            <button
+              type="button"
+              id="profile-circle-btn"
+              onClick={() => {
+                setModalTab('circle');
+                setUserSearchQuery('');
+                setShowUserListModal(true);
+              }}
+              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              title="Click to view My Circle"
+            >
+              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{circleList.length}</strong> MY CIRCLE
+            </button>
             <button
               type="button"
               id="profile-followers-btn"
@@ -417,14 +524,10 @@ export default function UserProfile({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className={`text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 ${
-                theme === 'light'
-                  ? 'bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200'
-                  : 'bg-white/10 border-white/15 text-white/70 hover:text-white hover:bg-white/15'
-              }`}
+              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Click to view Followers"
             >
-              <strong className={`font-sans text-sm group-hover:text-[#FF5C00] transition-colors ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{currentUser.followersCount}</strong> FOLLOWERS
+              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{followersList.length}</strong> FOLLOWERS
             </button>
             <button
               type="button"
@@ -434,20 +537,14 @@ export default function UserProfile({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className={`text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 ${
-                theme === 'light'
-                  ? 'bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200'
-                  : 'bg-white/10 border-white/15 text-white/70 hover:text-white hover:bg-white/15'
-              }`}
+              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Click to view Following"
             >
-              <strong className={`font-sans text-sm group-hover:text-[#FF5C00] transition-colors ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{currentUser.followingCount}</strong> FOLLOWING
+              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{followingList.length}</strong> FOLLOWING
             </button>
           </div>
 
-          <div className={`flex items-center gap-2 border px-3 py-2 rounded-xl ${
-            theme === 'light' ? 'bg-gray-50 border-gray-200 text-gray-700' : 'bg-white/5 border-white/10 text-white/70'
-          }`}>
+          <div className="flex items-center gap-2 border px-3 py-2 rounded-xl bg-gray-50 border-gray-200 text-gray-700">
             <Shield className="w-3.5 h-3.5 text-[#FF5C00]" />
             <span className="text-[10px] font-mono uppercase">
               Privacy: <strong className="text-[#FF5C00] font-sans">{privacy}</strong>
@@ -469,22 +566,38 @@ export default function UserProfile({
           onAddComment={onAddComment}
           onToggleCommentHeart={onToggleCommentHeart}
           onOpenCreatorProfile={onOpenCreatorProfile}
+          onOpenShareDrawer={onOpenShareDrawer}
         />
       </div>
       {/* Followers & Following User List Modal */}
       <AnimatePresence>
         {showUserListModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="bg-[#141414] border border-white/10 rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[85vh] space-y-4"
+              className="rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[85vh] space-y-4 border bg-white border-gray-200 text-gray-900"
             >
               {/* Modal Header with Tabs */}
               <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                <div className="flex items-center gap-1.5 bg-white/5 p-1 rounded-2xl border border-white/10">
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-white/5 p-1 rounded-2xl border border-white/10">
+                  <button
+                    type="button"
+                    id="modal-tab-circle-btn"
+                    onClick={() => {
+                      setModalTab('circle');
+                      setUserSearchQuery('');
+                    }}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                      modalTab === 'circle'
+                        ? 'bg-[#FF5C00] text-black shadow'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    My Circle ({circleList.length})
+                  </button>
                   <button
                     type="button"
                     id="modal-tab-followers-btn"
@@ -492,13 +605,13 @@ export default function UserProfile({
                       setModalTab('followers');
                       setUserSearchQuery('');
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'followers'
                         ? 'bg-[#FF5C00] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
-                    Followers ({currentUser.followersCount})
+                    Followers ({followersList.length})
                   </button>
                   <button
                     type="button"
@@ -507,13 +620,13 @@ export default function UserProfile({
                       setModalTab('following');
                       setUserSearchQuery('');
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'following'
                         ? 'bg-[#FF5C00] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
-                    Following ({currentUser.followingCount})
+                    Following ({followingList.length})
                   </button>
                 </div>
 
@@ -551,70 +664,103 @@ export default function UserProfile({
               {/* User List Container */}
               <div className="overflow-y-auto flex-1 space-y-2 pr-1 max-h-[400px]">
                 {displayedModalCreators.length > 0 ? (
-                  displayedModalCreators.map((creator) => (
-                    <div
-                      key={creator.id}
-                      className="bg-white/5 border border-white/10 rounded-2xl p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:border-white/20 transition-all"
-                    >
-                      <div 
-                        onClick={() => {
-                          setShowUserListModal(false);
-                          onOpenCreatorProfile?.(creator.id);
-                        }}
-                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-all group"
-                        title={`View ${creator.name}'s profile`}
+                  displayedModalCreators.map((creator) => {
+                    const isMe = creator.id === currentUser.id;
+                    const amIFollowing = isFollowingUser(currentUser, creator.id, allCreators);
+                    const doesUserFollowMe = isFollowedByUser(currentUser, creator.id, allCreators);
+                    const isMutualCircle = amIFollowing && doesUserFollowMe;
+
+                    return (
+                      <div
+                        key={creator.id}
+                        className="bg-white/5 border border-white/10 rounded-2xl p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:border-white/20 transition-all"
                       >
-                        <img
-                          src={creator.avatarUrl}
-                          alt={creator.name}
-                          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
-                            creator.isFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
-                          }`}
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className="text-xs font-bold text-white truncate group-hover:underline">{creator.name}</h4>
-                            {creator.isFollowing && creator.followsYou && (
-                              <span className="text-[9px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30 px-1.5 py-0.2 rounded-full">
-                                In Circle
-                              </span>
-                            )}
-                            {!creator.isFollowing && creator.followsYou && (
-                              <span className="text-[9px] font-mono text-white/60 bg-white/10 px-1.5 py-0.2 rounded-full">
-                                Follows you
-                              </span>
-                            )}
+                        <div 
+                          onClick={() => {
+                            setShowUserListModal(false);
+                            onOpenCreatorProfile?.(creator.id);
+                          }}
+                          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-all group"
+                          title={`View ${creator.name}'s profile`}
+                        >
+                          <img
+                            src={getPublicMediaUrl('Gonnng', creator.avatarUrl)}
+                            alt={creator.name}
+                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
+                              amIFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
+                            }`}
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="text-xs font-bold text-white truncate group-hover:underline">{creator.name}</h4>
+                              {isMe && (
+                                <span className="text-[9px] font-mono font-bold bg-white/20 text-white border border-white/30 px-1.5 py-0.2 rounded-full">
+                                  You
+                                </span>
+                              )}
+                              {!isMe && isMutualCircle && (
+                                <span className="text-[9px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30 px-1.5 py-0.2 rounded-full">
+                                  In Circle
+                                </span>
+                              )}
+                              {!isMe && !amIFollowing && doesUserFollowMe && (
+                                <span className="text-[9px] font-mono text-white/60 bg-white/10 px-1.5 py-0.2 rounded-full">
+                                  Follows you
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] font-mono text-white/50 truncate">
+                              @{creator.username || creator.name.toLowerCase().replace(/\s+/g, '')}
+                            </p>
                           </div>
                         </div>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => onToggleFollowCreator(creator.id)}
-                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-                          creator.isFollowing
-                            ? 'bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 border border-white/10 hover:border-red-500/30'
-                            : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
-                        }`}
-                      >
-                        {creator.isFollowing ? (
-                          <>
-                            <UserCheck className="w-3 h-3" /> Following
-                          </>
+                        {!isMe ? (
+                          <button
+                            type="button"
+                            onClick={() => onToggleFollowCreator(creator.id)}
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                              isMutualCircle
+                                ? 'bg-[#FF5C00]/20 hover:bg-red-500/20 text-[#FF5C00] hover:text-red-400 border border-[#FF5C00]/40 hover:border-red-500/30'
+                                : amIFollowing
+                                ? 'bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 border border-white/10 hover:border-red-500/30'
+                                : doesUserFollowMe
+                                ? 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                                : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                            }`}
+                          >
+                            {isMutualCircle ? (
+                              <>
+                                <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" /> Circle
+                              </>
+                            ) : amIFollowing ? (
+                              <>
+                                <UserCheck className="w-3 h-3" /> Following
+                              </>
+                            ) : doesUserFollowMe ? (
+                              <>
+                                <UserPlus className="w-3 h-3" /> Follow Back
+                              </>
+                            ) : (
+                              <>
+                                <UserPlus className="w-3 h-3" /> Follow
+                              </>
+                            )}
+                          </button>
                         ) : (
-                          <>
-                            <UserPlus className="w-3 h-3" /> Follow
-                          </>
+                          <span className="text-[10px] font-mono text-white/40 italic px-2">Account</span>
                         )}
-                      </button>
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="text-center py-8 text-white/40 text-xs font-sans space-y-2">
                     <p>
                       {userSearchQuery
-                        ? `No ${modalTab} matching "${userSearchQuery}"`
+                        ? `No ${modalTab === 'circle' ? 'circle members' : modalTab} matching "${userSearchQuery}"`
+                        : modalTab === 'circle'
+                        ? 'No members in your circle yet. Mutual followers automatically belong to your circle!'
                         : modalTab === 'following'
                         ? "You aren't following any creators yet."
                         : 'No followers found.'}
@@ -634,7 +780,7 @@ export default function UserProfile({
       {/* Profile Settings Slide-out Drawer */}
       <AnimatePresence>
         {isSettingsDrawerOpen && (
-          <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex justify-end">
+          <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/40 backdrop-blur-sm">
             {/* Backdrop click overlay */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -649,17 +795,17 @@ export default function UserProfile({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 220 }}
-              className="relative bg-[#141414] border-l border-white/10 w-full max-w-md h-full overflow-y-auto p-5 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between"
+              className="relative border-l w-full max-w-md h-full overflow-y-auto p-5 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between bg-white border-gray-200 text-gray-900"
             >
               <div className="space-y-6">
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
-                  <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
+                <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+                  <h3 className="text-lg font-display font-bold text-gray-900 flex items-center gap-2">
                     <User className="w-5 h-5 text-[#FF5C00]" /> Profile Settings
                   </h3>
                   <button
                     type="button"
                     onClick={() => setIsSettingsDrawerOpen(false)}
-                    className="p-2 text-white/40 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                    className="p-2 text-gray-400 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -667,20 +813,18 @@ export default function UserProfile({
 
                 <form onSubmit={handleSave} className="space-y-6">
                   {/* Space at top of drawer for updating Profile Image */}
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3.5">
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3.5">
                     <label className="block text-xs font-mono text-[#FF5C00] uppercase font-bold tracking-wider flex items-center gap-1.5">
                       <Camera className="w-4 h-4 text-[#FF5C00]" /> Update Profile Picture
                     </label>
 
                     <div className="flex items-center gap-4">
                       <div className="relative group shrink-0">
-                        <div className={`w-16 h-16 rounded-full overflow-hidden border-2 border-[#FF5C00] flex items-center justify-center font-display font-bold text-2xl shadow-md ${
-                          theme === 'light' ? 'bg-gray-200 text-gray-800' : 'bg-black text-white'
-                        }`}>
-                          {avatarUrl ? (
-                            <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+                        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#FF5C00] flex items-center justify-center font-display font-bold text-2xl shadow-md bg-gray-200 text-gray-800">
+                          {avatarUrl && avatarUrl.trim() !== '' ? (
+                            <img src={getPublicMediaUrl('Gonnng', avatarUrl.trim())} alt={name} className="w-full h-full object-cover" />
                           ) : (
-                            <User className={`w-8 h-8 ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`} />
+                            <User className="w-8 h-8 text-gray-600" />
                           )}
                         </div>
                         <label 
@@ -706,7 +850,7 @@ export default function UserProfile({
                             className="px-3 py-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm"
                           >
                             <Upload className="w-3.5 h-3.5" />
-                            {isUploadingAvatar ? 'Uploading...' : 'Choose File'}
+                            {selectedAvatarFile ? 'Photo Selected ✓' : isUploadingAvatar ? 'Uploading...' : 'Choose File'}
                           </label>
                           {avatarUrl && (
                             <button
@@ -775,42 +919,6 @@ export default function UserProfile({
                     </div>
                   </div>
 
-                  {/* Light Mode / Dark Mode Theme Controller */}
-                  <div className="space-y-2.5 pt-2 border-t border-white/10 w-full min-w-0">
-                    <label className="block text-xs font-mono text-white/40 uppercase tracking-wider flex items-center justify-between">
-                      <span>App Appearance & Theme Mode</span>
-                      <span className="text-[10px] text-[#FF5C00] font-bold uppercase">{theme} Mode Active</span>
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        id="theme-dark-btn"
-                        onClick={() => onToggleTheme && onToggleTheme('dark')}
-                        className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-xs transition-all cursor-pointer ${
-                          theme === 'dark'
-                            ? 'bg-[#FF5C00] text-black border-[#FF5C00] shadow-md'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                        }`}
-                      >
-                        <Moon className="w-4 h-4" /> Dark Mode
-                      </button>
-
-                      <button
-                        type="button"
-                        id="theme-light-btn"
-                        onClick={() => onToggleTheme && onToggleTheme('light')}
-                        className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-xs transition-all cursor-pointer ${
-                          theme === 'light'
-                            ? 'bg-[#FF5C00] text-black border-[#FF5C00] shadow-md'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                        }`}
-                      >
-                        <Sun className="w-4 h-4" /> Light Mode
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Privacy Default Controller */}
                   <div className="space-y-3 pt-2 w-full min-w-0">
                     <label className="block text-xs font-mono text-white/40 uppercase tracking-wider mb-1.5">
@@ -843,7 +951,7 @@ export default function UserProfile({
                             : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20'
                         }`}
                       >
-                        <Users className={`w-5 h-5 shrink-0 ${privacy === 'internal' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
+                        <CircleDotDashed className={`w-5 h-5 shrink-0 ${privacy === 'internal' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
                         <div className="text-left min-w-0 flex-1">
                           <span className="text-xs font-sans font-bold block text-white">Internal</span>
                           <span className="text-[10px] font-mono text-white/50 block break-words">Circle Only - shared only with your followers & circle members</span>
@@ -859,11 +967,131 @@ export default function UserProfile({
                             : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20'
                         }`}
                       >
-                        <Lock className={`w-5 h-5 shrink-0 ${privacy === 'private' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
+                        <Album className={`w-5 h-5 shrink-0 ${privacy === 'private' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
                         <div className="text-left min-w-0 flex-1">
                           <span className="text-xs font-sans font-bold block text-white">Private</span>
                           <span className="text-[10px] font-mono text-white/50 block break-words">Personal Log - strictly private, only you can see and track this</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Device & Hardware Permissions Management */}
+                  <div id="permissions-section" className="space-y-3 pt-3 border-t border-white/10 w-full min-w-0 bg-[#FF5C00]/5 p-4 rounded-2xl border border-[#FF5C00]/20">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-mono font-bold text-[#FF5C00] uppercase tracking-wider flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-[#FF5C00]" /> Device Permissions
+                      </h4>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        Active
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-white/70 font-sans leading-relaxed">
+                      Manage Gonnng's access permissions to your device camera, microphone, and file storage for recording progress shots and uploading attachments.
+                    </p>
+
+                    <div className="space-y-2 pt-1">
+                      {/* Camera Toggle */}
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2.5">
+                          <Camera className="w-4 h-4 text-[#FF5C00]" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white block">Camera Access</span>
+                              <span className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border ${
+                                detailedPermissions.camera === 'granted'
+                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                  : detailedPermissions.camera === 'denied'
+                                  ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                                  : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                              }`}>
+                                {detailedPermissions.camera}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-white/50 block">Allow Gonnng to take progress photos</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          id="toggle-camera-permission-btn"
+                          onClick={() => handleTogglePermission('camera')}
+                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                            detailedPermissions.camera === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
+                            detailedPermissions.camera === 'granted' ? 'right-1' : 'left-1'
+                          }`} />
+                        </button>
+                      </div>
+
+                      {/* Microphone Toggle */}
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2.5">
+                          <Disc3 className="w-4 h-4 text-[#FF5C00]" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white block">Microphone Access</span>
+                              <span className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border ${
+                                detailedPermissions.microphone === 'granted'
+                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                  : detailedPermissions.microphone === 'denied'
+                                  ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                                  : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                              }`}>
+                                {detailedPermissions.microphone}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-white/50 block">Allow Gonnng to record video audio</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          id="toggle-microphone-permission-btn"
+                          onClick={() => handleTogglePermission('microphone')}
+                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                            detailedPermissions.microphone === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
+                            detailedPermissions.microphone === 'granted' ? 'right-1' : 'left-1'
+                          }`} />
+                        </button>
+                      </div>
+
+                      {/* Files Access Toggle */}
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2.5">
+                          <File className="w-4 h-4 text-[#FF5C00]" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white block">Device File Access</span>
+                              <span className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border ${
+                                detailedPermissions.file_access === 'granted'
+                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                  : detailedPermissions.file_access === 'denied'
+                                  ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                                  : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                              }`}>
+                                {detailedPermissions.file_access}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-white/50 block">Allow Gonnng to upload images/videos</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          id="toggle-files-permission-btn"
+                          onClick={() => handleTogglePermission('file_access')}
+                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                            detailedPermissions.file_access === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
+                            detailedPermissions.file_access === 'granted' ? 'right-1' : 'left-1'
+                          }`} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -952,6 +1180,29 @@ export default function UserProfile({
                           </button>
                         )}
                       </div>
+
+                      {/* Privacy & Cookie Preferences Block */}
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2.5 w-full min-w-0">
+                        <h5 className="text-xs font-mono font-bold text-[#FF5C00] uppercase flex items-center gap-1.5">
+                          <Cookie className="w-3.5 h-3.5 text-[#FF5C00]" /> Privacy & Cookie Preferences
+                        </h5>
+                        <p className="text-xs text-white/60 leading-relaxed font-sans">
+                          Manage your visitor cookie consent, tracking settings, and governance choices.
+                        </p>
+                        {onOpenCookiePreferences && (
+                          <button
+                            id="profile-settings-cookie-prefs-btn"
+                            type="button"
+                            onClick={() => {
+                              onOpenCookiePreferences();
+                              setIsSettingsDrawerOpen(false);
+                            }}
+                            className="w-full mt-2 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/15 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Cookie className="w-4 h-4 text-[#FF5C00]" /> Manage Cookie Preferences
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -966,9 +1217,18 @@ export default function UserProfile({
                     <button
                       type="submit"
                       id="drawer-save-profile-btn"
-                      className="w-full justify-center px-6 py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                      disabled={isSaving}
+                      className="w-full justify-center px-6 py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
-                      <Save className="w-4 h-4" /> Save Configuration
+                      {isSaving ? (
+                        <>
+                          <Disc3 className="w-4 h-4 animate-spin" /> Saving Configuration...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" /> Save Configuration
+                        </>
+                      )}
                     </button>
 
                     {/* Sign Out Action Button at Bottom of Drawer */}
@@ -1001,16 +1261,14 @@ export default function UserProfile({
       {/* Comments Modal for Superimposed or Profile Post */}
       <AnimatePresence>
         {commentModalPost && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className={`w-full max-w-lg max-h-[85vh] rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border ${
-                theme === 'light' ? 'bg-white border-gray-200 text-gray-900' : 'bg-[#141414] border-white/15 text-white'
-              }`}
+              className="w-full max-w-lg max-h-[85vh] rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
             >
-              <div className={`flex justify-between items-center pb-3 border-b ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}>
+              <div className="flex justify-between items-center pb-3 border-b border-gray-200">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-[#FF5C00]" />
                   <h3 className="text-base font-display font-bold truncate">
@@ -1020,9 +1278,7 @@ export default function UserProfile({
                 <button
                   type="button"
                   onClick={() => setCommentModalPost(null)}
-                  className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                    theme === 'light' ? 'hover:bg-gray-100 text-gray-600' : 'hover:bg-white/10 text-white/70'
-                  }`}
+                  className="p-1.5 rounded-full transition-colors cursor-pointer hover:bg-gray-100 text-gray-600"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1034,7 +1290,7 @@ export default function UserProfile({
                   const allComments = commentModalPost.comments || [];
                   if (allComments.length === 0) {
                     return (
-                      <div className={`text-center py-8 text-xs font-sans ${theme === 'light' ? 'text-gray-500' : 'text-white/40'}`}>
+                      <div className="text-center py-8 text-xs font-sans text-gray-500">
                         No comments yet. Leave constructive feedback!
                       </div>
                     );
@@ -1069,9 +1325,7 @@ export default function UserProfile({
                   });
 
                   return sortedComments.map(c => (
-                    <div key={c.id} className={`p-3 border rounded-2xl space-y-1.5 ${
-                      theme === 'light' ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-white/5 border-white/10 text-white'
-                    }`}>
+                    <div key={c.id} className="p-3 border rounded-2xl space-y-1.5 bg-gray-50 border-gray-200 text-gray-900">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <img src={c.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
@@ -1081,7 +1335,7 @@ export default function UserProfile({
                               replying to @{c.replyToUser}
                             </span>
                           )}
-                          <span className={`text-[10px] font-mono ${theme === 'light' ? 'text-gray-500' : 'text-white/40'}`}>• {c.timeString}</span>
+                          <span className="text-[10px] font-mono text-gray-500">• {c.timeString}</span>
                         </div>
                         <button
                           type="button"
@@ -1093,13 +1347,13 @@ export default function UserProfile({
                             } : null);
                           }}
                           className={`text-xs font-mono flex items-center gap-1 cursor-pointer transition-colors ${
-                            c.isHearted ? 'text-red-500 font-bold' : theme === 'light' ? 'text-gray-400 hover:text-red-500' : 'text-white/40 hover:text-red-400'
+                            c.isHearted ? 'text-red-500 font-bold' : 'text-gray-400 hover:text-red-500'
                           }`}
                         >
                           ♥ {c.heartCount || 0}
                         </button>
                       </div>
-                      <p className={`text-xs font-sans pl-7 ${theme === 'light' ? 'text-gray-700' : 'text-white/80'}`}>{c.content}</p>
+                      <p className="text-xs font-sans pl-7 text-gray-700">{c.content}</p>
                       
                       <div className="pl-7 pt-1 flex items-center gap-3">
                         <button
@@ -1119,7 +1373,7 @@ export default function UserProfile({
               {replyingToComment && (
                 <div className="flex items-center justify-between px-3 py-1.5 bg-[#FF5C00]/10 border border-[#FF5C00]/30 rounded-xl mb-2 text-xs text-[#FF5C00] font-mono">
                   <span>Replying to @{replyingToComment.userName}</span>
-                  <button type="button" onClick={() => setReplyingToComment(null)} className="hover:text-white">
+                  <button type="button" onClick={() => setReplyingToComment(null)} className="hover:text-gray-900">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1155,16 +1409,14 @@ export default function UserProfile({
                   setCommentInput('');
                   setReplyingToComment(null);
                 }}
-                className={`pt-3 border-t flex gap-2 ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}
+                className="pt-3 border-t flex gap-2 border-gray-200"
               >
                 <input
                   type="text"
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   placeholder="Add constructive comment..."
-                  className={`flex-1 px-3.5 py-2 border rounded-xl text-xs focus:outline-none focus:border-[#FF5C00] ${
-                    theme === 'light' ? 'bg-gray-100 border-gray-300 text-gray-900' : 'bg-white/5 border-white/15 text-white'
-                  }`}
+                  className="flex-1 px-3.5 py-2 border rounded-xl text-xs focus:outline-none focus:border-[#FF5C00] bg-gray-100 border-gray-300 text-gray-900"
                 />
                 <button
                   type="submit"
@@ -1174,6 +1426,62 @@ export default function UserProfile({
                   Send
                 </button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Device OS Settings Guidance Modal */}
+      <AnimatePresence>
+        {permissionGuidanceModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="w-full max-w-md rounded-3xl p-6 bg-slate-900 border border-white/10 shadow-2xl space-y-4 text-white relative"
+            >
+              <button
+                type="button"
+                onClick={() => setPermissionGuidanceModal(null)}
+                className="absolute top-4 right-4 p-2 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
+                  <Shield className="w-5 h-5 text-[#FF5C00]" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider block">
+                    OS Permission Management
+                  </span>
+                  <h3 className="text-base font-bold text-white">
+                    {permissionGuidanceModal.title}
+                  </h3>
+                </div>
+              </div>
+
+              <p className="text-xs text-white/80 leading-relaxed font-sans bg-white/5 p-4 rounded-2xl border border-white/10">
+                {permissionGuidanceModal.message}
+              </p>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Deep link / settings guidance
+                    if (navigator.permissions && (navigator as any).userAgent) {
+                      // Attempt window focus/settings or guide user
+                    }
+                    setPermissionGuidanceModal(null);
+                  }}
+                  className="w-full py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                >
+                  Got It
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

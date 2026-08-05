@@ -8,6 +8,9 @@ import {
   MessageSquare, 
   ArrowLeft, 
   ChevronRight, 
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
   Send, 
   Check, 
   CheckCheck, 
@@ -38,6 +41,7 @@ export interface PostNotification {
   recipeId?: string;
   originalRecipeId?: string;
   timeString: string;
+  timestamp: number;
   isRead: boolean;
 }
 
@@ -45,6 +49,7 @@ export interface FollowerNotification {
   id: string;
   creator: Creator;
   timeString: string;
+  timestamp: number;
   isRead: boolean;
 }
 
@@ -52,16 +57,18 @@ export interface AppInfoNotification {
   id: string;
   title: string;
   subtitle: string;
-  category: 'System Update' | 'Account Notice' | 'Gonnng Announcement';
+  details?: string;
+  category: 'Platform Release' | 'Feature Launch' | 'Account Notice' | 'System Update' | 'Gonnng Announcement';
   timeString: string;
+  timestamp: number;
   isRead: boolean;
 }
 
 export interface DirectMessage {
   id: string;
-  senderId: string; // 'user-current' or creator ID
+  senderId: string;
   text: string;
-  timestamp: string; // ISO string or relative time
+  timestamp: string;
   isRead: boolean;
   postThumbnail?: string;
   postId?: string;
@@ -70,7 +77,7 @@ export interface DirectMessage {
 export interface MessageThread {
   creator: Creator;
   messages: DirectMessage[];
-  lastUpdated: number; // timestamp in ms for sorting
+  lastUpdated: number;
   unreadCount: number;
 }
 
@@ -78,7 +85,6 @@ interface UpdatesViewProps {
   currentUser: Creator;
   creators: Creator[];
   posts: FeedPost[];
-  theme?: 'dark' | 'light';
   onFollowToggle?: (creatorId: string) => void;
   messageThreads: MessageThread[];
   onSendMessage: (creatorId: string, text: string, postThumbnail?: string, postId?: string) => void;
@@ -91,13 +97,13 @@ interface UpdatesViewProps {
   setActiveChatUser: (user: Creator | null) => void;
   onMarkThreadAsRead?: (creatorId: string) => void;
   onNotificationRead?: (type: 'post' | 'follower' | 'appinfo', id: string) => void;
+  onUnreadNotifsCountChange?: (count: number) => void;
 }
 
 export default function UpdatesView({
   currentUser,
   creators,
   posts,
-  theme = 'dark',
   onFollowToggle,
   messageThreads,
   onSendMessage,
@@ -109,108 +115,158 @@ export default function UpdatesView({
   activeChatUser,
   setActiveChatUser,
   onMarkThreadAsRead,
-  onNotificationRead
+  onNotificationRead,
+  onUnreadNotifsCountChange
 }: UpdatesViewProps) {
 
-  // Unread Tracking States
-  const [postNotifications, setPostNotifications] = useState<PostNotification[]>([
+  // Base timestamp for test data calculations
+  const baseTime = React.useMemo(() => Date.now(), []);
+
+  // Default Post Notifications
+  const defaultPostNotifications = React.useMemo<PostNotification[]>(() => [
     {
       id: 'pnotif-1',
       postId: 'post-user-1',
       postTitle: 'My Custom Portfolio Framework Initiated',
       postImage: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&q=80&w=800',
-      actorName: 'Clara Monet',
-      actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
+      actorName: 'Bruce Wayne',
+      actorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
       actionType: 'gong_continue',
-      timeString: '10m ago',
-      isRead: false
-    },
-    {
-      id: 'pnotif-recipe-save',
-      postId: 'recipe-custom-1784771489038',
-      recipeId: 'recipe-custom-1784771489038',
-      postTitle: 'Full-Stack Web App Blueprint',
-      postImage: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&q=80&w=600',
-      actorName: 'Ada Lovelace',
-      actorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-      actionType: 'recipe_save',
-      commentSnippet: 'Saved your recipe "Full-Stack Web App Blueprint" to her Process Library!',
-      timeString: '15m ago',
-      isRead: false
-    },
-    {
-      id: 'pnotif-recipe-fork',
-      postId: 'recipe-custom-1784771489038',
-      recipeId: 'recipe-custom-1784771489038',
-      originalRecipeId: 'recipe-custom-1784771489038',
-      postTitle: 'Modular Design System',
-      postImage: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&q=80&w=600',
-      actorName: 'Clara Monet',
-      actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
-      actionType: 'recipe_fork',
-      commentSnippet: 'Forked your recipe "Modular Design System" for her own creative workspace!',
-      timeString: '40m ago',
+      timeString: '2m ago',
+      timestamp: baseTime - 2 * 60 * 1000,
       isRead: false
     },
     {
       id: 'pnotif-2',
       postId: 'post-user-1',
-      postTitle: 'My Custom Portfolio Framework Initiated',
-      postImage: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&q=80&w=800',
-      actorName: 'Ada Lovelace',
-      actorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-      actionType: 'comment',
-      commentSnippet: 'The 3-phase structural breakdown is crisp. What font pairing are you considering for display headers?',
-      timeString: '1h ago',
+      recipeId: 'recipe-sandwich',
+      originalRecipeId: 'recipe-sandwich',
+      postTitle: 'Make a Sandwich Blueprint',
+      postImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
+      actorName: 'Clara Monet',
+      actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
+      actionType: 'recipe_save',
+      commentSnippet: 'Saved your recipe "Make a Sandwich" to her Process Library!',
+      timeString: '15m ago',
+      timestamp: baseTime - 15 * 60 * 1000,
       isRead: false
     },
     {
       id: 'pnotif-3',
+      postId: 'post-user-1',
+      recipeId: 'recipe-paint',
+      originalRecipeId: 'recipe-paint',
+      postTitle: 'Paint an Oil Canvas',
+      actorName: 'Ada Lovelace',
+      actorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
+      actionType: 'recipe_fork',
+      commentSnippet: 'Forked your recipe "Paint an Oil Canvas" for her workspace!',
+      timeString: '40m ago',
+      timestamp: baseTime - 40 * 60 * 1000,
+      isRead: false
+    },
+    {
+      id: 'pnotif-4',
+      postId: 'post-viral-1',
+      postTitle: 'The Great Wave Off Kanagawa',
+      postImage: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800',
+      actorName: 'Hokusai Katsushika',
+      actorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120',
+      actionType: 'comment',
+      commentSnippet: 'The 3-phase structural breakdown is crisp. What font pairing are you considering for headers?',
+      timeString: '1h ago',
+      timestamp: baseTime - 60 * 60 * 1000,
+      isRead: false
+    },
+    {
+      id: 'pnotif-5',
       postId: 'post-viral-2',
-      postTitle: 'Analytical Engine: Universal Bernoulli Algorithm Published',
-      postImage: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=800',
+      postTitle: 'Analytical Engine: Universal Algorithm',
       actorName: 'Satoshi Nakamoto',
       actorAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
       actionType: 'comment',
       commentSnippet: 'Replied to your comment: Pure cryptographic logic. Mechanical state machines proving truth...',
       timeString: '3h ago',
-      isRead: false
+      timestamp: baseTime - 3 * 60 * 60 * 1000,
+      isRead: true
     },
     {
-      id: 'pnotif-4',
-      postId: 'post-user-2',
-      postTitle: '✓ Select 5 best creative works to highlight',
-      postImage: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=800',
-      actorName: 'Bruce Wayne',
+      id: 'pnotif-6',
+      postId: 'post-viral-3',
+      postTitle: 'Mona Lisa Sfumato Glazing Sequence',
+      actorName: 'Quentin Tarantino',
       actorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
       actionType: 'gong_refine',
       timeString: '5h ago',
-      isRead: false
+      timestamp: baseTime - 5 * 60 * 60 * 1000,
+      isRead: true
     }
-  ]);
+  ], [baseTime]);
 
-  const [followerNotifications, setFollowerNotifications] = useState<FollowerNotification[]>([
+  // Default Follower Notifications
+  const defaultFollowerNotifications = React.useMemo<FollowerNotification[]>(() => [
     {
-      id: 'fnotif-1',
-      creator: creators.find(c => c.id === 'creator-ada') || {
-        id: 'creator-ada',
-        name: 'Ada Lovelace',
-        email: 'ada@analytical.org',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-        bio: 'Mathematician modeling complex analytical loops.',
-        goals: 'Complete simulator logic.',
+      id: 'fnotif-bruce',
+      creator: creators.find(c => c.id === 'creator-bruce') || {
+        id: 'creator-bruce',
+        name: 'Bruce Wayne',
+        username: 'brucewayne',
+        email: 'bruce@wayne.tech',
+        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
+        bio: 'Architecting nocturnal surveillance and defense systems.',
+        goals: 'Modular armor design.',
         privacyDefault: 'public',
-        followersCount: 2890,
-        followingCount: 88,
-        isFollowing: true
+        followersCount: 5210,
+        followingCount: 12,
+        isFollowing: false
       },
-      timeString: '2h ago',
+      timeString: '10m ago',
+      timestamp: baseTime - 10 * 60 * 1000,
       isRead: false
     },
     {
-      id: 'fnotif-2',
+      id: 'fnotif-ada',
+      creator: creators.find(c => c.id === 'creator-ada') || {
+        id: 'creator-ada',
+        name: 'Ada Lovelace',
+        username: 'adalovelace',
+        email: 'ada@analyticalengine.io',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
+        bio: 'Pioneer of algorithmic computing and analytical engines.',
+        goals: 'Bernoulli numbers computation.',
+        privacyDefault: 'public',
+        followersCount: 3890,
+        followingCount: 140,
+        isFollowing: true
+      },
+      timeString: '2h ago',
+      timestamp: baseTime - 2 * 60 * 60 * 1000,
+      isRead: false
+    },
+    {
+      id: 'fnotif-satoshi',
+      creator: creators.find(c => c.id === 'creator-satoshi') || {
+        id: 'creator-satoshi',
+        username: 'satoshinakamoto',
+        name: 'Satoshi Nakamoto',
+        email: 'satoshi@bitcoin.org',
+        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
+        bio: 'Cryptographic consensus and distributed state machine research.',
+        goals: 'Decentralized fault-tolerant consensus.',
+        privacyDefault: 'public',
+        followersCount: 9400,
+        followingCount: 3,
+        isFollowing: true
+      },
+      timeString: '5h ago',
+      timestamp: baseTime - 5 * 60 * 60 * 1000,
+      isRead: false
+    },
+    {
+      id: 'fnotif-clara',
       creator: creators.find(c => c.id === 'creator-clara') || {
         id: 'creator-clara',
+        username: 'claramonet',
         name: 'Clara Monet',
         email: 'clara@impressionism.art',
         avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
@@ -222,60 +278,173 @@ export default function UpdatesView({
         isFollowing: true
       },
       timeString: '1d ago',
-      isRead: false
+      timestamp: baseTime - 24 * 60 * 60 * 1000,
+      isRead: true
     }
-  ]);
+  ], [baseTime, creators]);
 
-  const [appInfoNotifications, setAppInfoNotifications] = useState<AppInfoNotification[]>([
+  // Default App Info Notifications
+  const defaultAppInfoNotifications = React.useMemo<AppInfoNotification[]>(() => [
     {
       id: 'anotif-1',
-      title: 'Gonnng Platform v2.4 Live Release',
-      subtitle: 'Process Blueprint Library integrated into Sand Engine. Unique post permalinks and direct messaging updates now active.',
-      category: 'System Update',
+      title: 'Version 1.4 Released',
+      subtitle: 'Introducing Recipe Forking and Project Sharing',
+      details: 'Full Release Notes v1.4:\n• Process Blueprint Library fully synchronized with workspace state.\n• Unique post permalinks generated for direct sharing across public circles.\n• Integrated 1-on-1 direct messaging threads with post preview links.\n• Enhanced drill-down navigation and real-time activity filters.',
+      category: 'Platform Release',
       timeString: '1h ago',
+      timestamp: baseTime - 60 * 60 * 1000,
       isRead: false
     },
     {
-      id: 'anotif-2',
+      id: 'anotif-capacity',
+      title: 'Process Engine Capacity Expanded',
+      subtitle: 'Sand computation quotas increased by 500% for active creative architects.',
+      details: 'Your workspace container now supports high-throughput real-time process monitoring and multi-step recipe executions without speed caps.',
+      category: 'Feature Launch',
+      timeString: '4h ago',
+      timestamp: baseTime - 4 * 60 * 60 * 1000,
+      isRead: false
+    },
+    {
+      id: 'anotif-sync',
       title: 'Creative Architect Account Sync',
-      subtitle: 'Your workspace state, Sand capacity metrics, and custom recipes are fully backed up and secured.',
+      subtitle: 'Your workspace state, Sand capacity metrics, and custom recipes are fully backed up.',
+      details: 'Automated cloud snapshots are running smoothly. All project stages and process logs are cryptographically hashed and verified.',
       category: 'Account Notice',
-      timeString: '2d ago',
+      timeString: '1d ago',
+      timestamp: baseTime - 24 * 60 * 60 * 1000,
+      isRead: true
+    },
+    {
+      id: 'anotif-community',
+      title: 'Community Process Library Launch',
+      subtitle: 'Explore 500+ curated workflow blueprints and fork recipes directly to your workspace.',
+      details: 'Discover community blueprints across software design, mechanical engineering, fine art, and literature.',
+      category: 'Gonnng Announcement',
+      timeString: '3d ago',
+      timestamp: baseTime - 3 * 24 * 60 * 60 * 1000,
       isRead: true
     }
-  ]);
+  ], [baseTime]);
 
+  // Persistent States
+  const [postNotifications, setPostNotifications] = useState<PostNotification[]>(() => {
+    const saved = localStorage.getItem('gonnng_post_notifs');
+    if (saved) {
+      try {
+        const parsed: PostNotification[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const upgraded = parsed.map(item => {
+            if (item.postId === 'post-[#1]') return { ...item, postId: 'post-user-1' };
+            if (item.postId === 'post-[#2]') return { ...item, postId: 'post-user-1', recipeId: 'recipe-sandwich' };
+            if (item.postId === 'post-[#3]') return { ...item, postId: 'post-user-1', recipeId: 'recipe-paint' };
+            if (item.postId === 'post-[#4]') return { ...item, postId: 'post-viral-2' };
+            if (item.postId === 'post-[#5]') return { ...item, postId: 'post-viral-3' };
+            return item;
+          });
+          return upgraded;
+        }
+      } catch (e) {}
+    }
+    return defaultPostNotifications;
+  });
+
+  const [followerNotifications, setFollowerNotifications] = useState<FollowerNotification[]>(() => {
+    const saved = localStorage.getItem('gonnng_follower_notifs');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return defaultFollowerNotifications;
+  });
+
+  const [appInfoNotifications, setAppInfoNotifications] = useState<AppInfoNotification[]>(() => {
+    const saved = localStorage.getItem('gonnng_appinfo_notifs');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return defaultAppInfoNotifications;
+  });
+
+  const [expandedAppInfoId, setExpandedAppInfoId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState('');
 
   // Auto mark chat thread as read when activeChatUser is opened
+  const onMarkThreadAsReadRef = React.useRef(onMarkThreadAsRead);
   React.useEffect(() => {
-    if (activeChatUser && onMarkThreadAsRead) {
-      onMarkThreadAsRead(activeChatUser.id);
+    onMarkThreadAsReadRef.current = onMarkThreadAsRead;
+  });
+
+  React.useEffect(() => {
+    if (activeChatUser && onMarkThreadAsReadRef.current) {
+      onMarkThreadAsReadRef.current(activeChatUser.id);
     }
-  }, [activeChatUser, onMarkThreadAsRead]);
+  }, [activeChatUser]);
+
+  // Save updates to localStorage on change
+  React.useEffect(() => {
+    localStorage.setItem('gonnng_post_notifs', JSON.stringify(postNotifications));
+  }, [postNotifications]);
+
+  React.useEffect(() => {
+    localStorage.setItem('gonnng_follower_notifs', JSON.stringify(followerNotifications));
+  }, [followerNotifications]);
+
+  React.useEffect(() => {
+    localStorage.setItem('gonnng_appinfo_notifs', JSON.stringify(appInfoNotifications));
+  }, [appInfoNotifications]);
 
   // Unread Count Calculations
   const unreadUpdatesCount = postNotifications.filter(n => !n.isRead).length;
   const unreadFollowersCount = followerNotifications.filter(n => !n.isRead).length;
   const unreadAppInfoCount = appInfoNotifications.filter(n => !n.isRead).length;
+  const totalUnreadNotifs = unreadUpdatesCount + unreadFollowersCount + unreadAppInfoCount;
 
-  // Open Parent Item Handler
+  const onUnreadNotifsCountChangeRef = React.useRef(onUnreadNotifsCountChange);
+  React.useEffect(() => {
+    onUnreadNotifsCountChangeRef.current = onUnreadNotifsCountChange;
+  });
+
+  React.useEffect(() => {
+    if (onUnreadNotifsCountChangeRef.current) {
+      onUnreadNotifsCountChangeRef.current(totalUnreadNotifs);
+    }
+  }, [totalUnreadNotifs]);
+
+  // Open Category Handler
   const handleOpenCategory = (cat: 'updates' | 'followers' | 'appinfo') => {
     setActiveCategory(cat);
     setActiveChatUser(null);
+  };
 
-    // Mark items as read when parent category is opened
-    if (cat === 'updates') {
-      setPostNotifications(prev => prev.map(p => ({ ...p, isRead: true })));
-    } else if (cat === 'followers') {
-      setFollowerNotifications(prev => prev.map(f => ({ ...f, isRead: true })));
-    } else if (cat === 'appinfo') {
-      setAppInfoNotifications(prev => prev.map(a => ({ ...a, isRead: true })));
+  // Helper to mark an individual item as read when clicked
+  const handleMarkItemRead = (type: 'post' | 'follower' | 'appinfo', id: string) => {
+    if (type === 'post') {
+      setPostNotifications(prev => prev.map(item => item.id === id ? { ...item, isRead: true } : item));
+    } else if (type === 'follower') {
+      setFollowerNotifications(prev => prev.map(item => item.id === id ? { ...item, isRead: true } : item));
+    } else if (type === 'appinfo') {
+      setAppInfoNotifications(prev => prev.map(item => item.id === id ? { ...item, isRead: true } : item));
     }
+    if (onNotificationRead) onNotificationRead(type, id);
   };
 
   // Sort Message Threads dynamically based on most recent activity
-  const sortedThreads = [...messageThreads].sort((a, b) => b.lastUpdated - a.lastUpdated);
+  const sortedThreads = React.useMemo(() => {
+    return [...messageThreads].sort((a, b) => b.lastUpdated - a.lastUpdated);
+  }, [messageThreads]);
+
+  // Sorted notification categories (most recent at the top)
+  const sortedPostNotifications = React.useMemo(() => {
+    return [...postNotifications].sort((a, b) => b.timestamp - a.timestamp);
+  }, [postNotifications]);
+
+  const sortedFollowerNotifications = React.useMemo(() => {
+    return [...followerNotifications].sort((a, b) => b.timestamp - a.timestamp);
+  }, [followerNotifications]);
+
+  const sortedAppInfoNotifications = React.useMemo(() => {
+    return [...appInfoNotifications].sort((a, b) => b.timestamp - a.timestamp);
+  }, [appInfoNotifications]);
 
   const handleSendChatMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,628 +455,666 @@ export default function UpdatesView({
   };
 
   return (
-    <div className={`max-w-4xl mx-auto space-y-6 pb-28 sm:pb-8 ${theme === 'light' ? 'text-gray-900' : 'text-white'}`} id="updates-view-root">
+    <div className="max-w-4xl mx-auto space-y-6 pb-28 sm:pb-8 text-gray-900" id="updates-view-root">
       
-      {/* Container Box */}
-      <div className={`p-4 sm:p-6 w-full min-w-0 rounded-none ${
-        theme === 'light' ? 'bg-white border-4 border-gray-200 shadow-md' : 'bg-black border-[10px] border-white/5 shadow-2xl'
-      }`}>
+      {/* Main Outer Container */}
+      <div className="p-4 sm:p-6 w-full min-w-0 rounded-2xl bg-white border-2 border-gray-200 shadow-sm">
         
-        {/* LEVEL 0: Main Parent View (Contains Updates, Followers, App Info, and Conversation Heading Tiles directly) */}
-        {activeCategory === null && activeChatUser === null && (
-          <motion.div
-            key="updates-level-0"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="space-y-6"
-          >
-            {/* Header Banner */}
-            <div className={`flex justify-between items-center pb-4 border-b ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
-                  <Bell className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h2 className={`text-base font-display font-bold uppercase tracking-wider ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>Updates & Activity</h2>
-                  <p className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>Notifications, followers, announcements, and direct conversations.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Parent Items & Conversations in Main List */}
-            <div className="space-y-3" id="updates-main-list">
-              
-              {/* 1. UPDATES */}
-              <div
-                id="parent-item-updates"
-                onClick={() => handleOpenCategory('updates')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
-                  unreadUpdatesCount > 0
-                    ? theme === 'light' ? 'bg-orange-50 border-2 border-[#FF5C00] shadow-sm' : 'bg-[#181818] border-2 border-[#FF5C00] shadow-[0_0_15px_rgba(255,92,0,0.15)]'
-                    : theme === 'light' ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300' : 'bg-[#121212] border-white/10 hover:border-white/25 hover:bg-[#181818]'
-                }`}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    unreadUpdatesCount > 0 ? 'bg-[#FF5C00] text-black font-black' : theme === 'light' ? 'bg-gray-200 text-gray-800' : 'bg-white/10 text-white'
-                  }`}>
-                    <Bell className="w-5 h-5" />
+        <AnimatePresence mode="wait">
+          {/* LEVEL 0: Main Updates Root View */}
+          {activeCategory === null && activeChatUser === null && (
+            <motion.div
+              key="updates-level-0"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.18 }}
+              className="space-y-6"
+            >
+              {/* Header Banner */}
+              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
+                    <Bell className="w-5 h-5 stroke-[2.5]" />
                   </div>
-                  <div className="min-w-0">
-                    <h3 className={`text-sm ${unreadUpdatesCount > 0 ? 'font-black text-[#FF5C00]' : theme === 'light' ? 'font-bold text-gray-900' : 'font-bold text-white'}`}>
-                      UPDATES
-                    </h3>
-                    <p className={`text-xs truncate ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>Notifications about your posts, feedback & comments</p>
+                  <div>
+                    <h2 className="text-base font-display font-bold uppercase tracking-wider text-gray-900">Updates & Activity</h2>
+                    <p className="text-xs text-gray-500">Notifications, new followers, announcements, and direct conversations.</p>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  {unreadUpdatesCount > 0 && (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-md">
-                      {unreadUpdatesCount}
-                    </span>
-                  )}
-                  <ChevronRight className={`w-5 h-5 transition-colors ${theme === 'light' ? 'text-gray-400 group-hover:text-gray-900' : 'text-white/40 group-hover:text-white'}`} />
                 </div>
               </div>
 
-              {/* 2. NEW FOLLOWERS */}
-              <div
-                id="parent-item-followers"
-                onClick={() => handleOpenCategory('followers')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
-                  unreadFollowersCount > 0
-                    ? theme === 'light' ? 'bg-orange-50 border-2 border-[#FF5C00] shadow-sm' : 'bg-[#181818] border-2 border-[#FF5C00] shadow-[0_0_15px_rgba(255,92,0,0.15)]'
-                    : theme === 'light' ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300' : 'bg-[#121212] border-white/10 hover:border-white/25 hover:bg-[#181818]'
-                }`}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    unreadFollowersCount > 0 ? 'bg-[#FF5C00] text-black font-black' : theme === 'light' ? 'bg-gray-200 text-gray-800' : 'bg-white/10 text-white'
-                  }`}>
-                    <UserPlus className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={`text-sm ${unreadFollowersCount > 0 ? 'font-black text-[#FF5C00]' : theme === 'light' ? 'font-bold text-gray-900' : 'font-bold text-white'}`}>
-                      NEW FOLLOWERS
-                    </h3>
-                    <p className={`text-xs truncate ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>Creators who recently started following your profile</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  {unreadFollowersCount > 0 && (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-md">
-                      {unreadFollowersCount}
-                    </span>
-                  )}
-                  <ChevronRight className={`w-5 h-5 transition-colors ${theme === 'light' ? 'text-gray-400 group-hover:text-gray-900' : 'text-white/40 group-hover:text-white'}`} />
-                </div>
-              </div>
-
-              {/* 3. APP INFO */}
-              <div
-                id="parent-item-appinfo"
-                onClick={() => handleOpenCategory('appinfo')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
-                  unreadAppInfoCount > 0
-                    ? theme === 'light' ? 'bg-orange-50 border-2 border-[#FF5C00] shadow-sm' : 'bg-[#181818] border-2 border-[#FF5C00] shadow-[0_0_15px_rgba(255,92,0,0.15)]'
-                    : theme === 'light' ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300' : 'bg-[#121212] border-white/10 hover:border-white/25 hover:bg-[#181818]'
-                }`}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    unreadAppInfoCount > 0 ? 'bg-[#FF5C00] text-black font-black' : theme === 'light' ? 'bg-gray-200 text-gray-800' : 'bg-white/10 text-white'
-                  }`}>
-                    <Info className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={`text-sm ${unreadAppInfoCount > 0 ? 'font-black text-[#FF5C00]' : theme === 'light' ? 'font-bold text-gray-900' : 'font-bold text-white'}`}>
-                      APP INFO
-                    </h3>
-                    <p className={`text-xs truncate ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>System updates, Gonnng announcements & account notices</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  {unreadAppInfoCount > 0 && (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-md">
-                      {unreadAppInfoCount}
-                    </span>
-                  )}
-                  <ChevronRight className={`w-5 h-5 transition-colors ${theme === 'light' ? 'text-gray-400 group-hover:text-gray-900' : 'text-white/40 group-hover:text-white'}`} />
-                </div>
-              </div>
-
-              {/* DIRECT CONVERSATION TILES (MOVED OUT OF MESSAGES INTO MAIN LIST, SORTED BY MOST RECENT) */}
-              <div className={`pt-4 border-t ${theme === 'light' ? 'border-gray-200' : 'border-white/10'} space-y-3`}>
-                <div className="flex items-center justify-between pb-1">
-                  <h4 className={`text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>
-                    <MessageSquare className="w-3.5 h-3.5 text-[#FF5C00]" /> Direct Conversations
-                  </h4>
-                  <span className={`text-[10px] font-mono ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>{sortedThreads.length} Active</span>
-                </div>
-
-                {sortedThreads.length > 0 ? (
-                  sortedThreads.map(thread => {
-                    const lastMsg = thread.messages[thread.messages.length - 1];
-                    // Find if any message in thread shared a post thumbnail
-                    const sharedMsg = [...thread.messages].reverse().find(m => m.postThumbnail || m.text.includes('gonnng.com/g/'));
-                    const postThumbnail = sharedMsg?.postThumbnail || (
-                      sharedMsg?.text.includes('The Great Wave') ? 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800' : undefined
-                    );
-
-                    return (
-                      <div
-                        key={thread.creator.id}
-                        id={`msg-thread-${thread.creator.id}`}
-                        onClick={() => setActiveChatUser(thread.creator)}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
-                          thread.unreadCount > 0
-                            ? theme === 'light' ? 'bg-orange-50 border-2 border-[#FF5C00]' : 'bg-[#181818] border-2 border-[#FF5C00]'
-                            : theme === 'light' ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300' : 'bg-[#121212] border-white/10 hover:border-white/25 hover:bg-[#181818]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <img
-                            src={thread.creator.avatarUrl}
-                            alt={thread.creator.name}
-                            className={`w-11 h-11 rounded-full object-cover border shrink-0 ${theme === 'light' ? 'border-gray-300' : 'border-white/20'}`}
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className={`text-xs ${thread.unreadCount > 0 ? 'font-black text-[#FF5C00]' : theme === 'light' ? 'font-bold text-gray-900' : 'font-bold text-white'}`}>
-                                {thread.creator.name}
-                              </h4>
-                              <span className={`text-[10px] font-mono truncate ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>
-                                @{thread.creator.name.toLowerCase().replace(/\s+/g, '')}
-                              </span>
-                            </div>
-                            <p className={`text-xs truncate mt-0.5 ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`}>
-                              {lastMsg ? lastMsg.text : 'Tap to start conversation'}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Shared Post Image Thumbnail on Conversation Tile */}
-                        {postThumbnail && (
-                          <div className="relative ml-2 mr-1 shrink-0 group-hover:scale-105 transition-transform">
-                            <img
-                              src={postThumbnail}
-                              alt="Shared Post"
-                              className="w-10 h-10 rounded-xl object-cover border border-[#FF5C00]/40 shadow"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="absolute -bottom-1 -right-1 bg-[#FF5C00] text-black p-0.5 rounded-full shadow">
-                              <ArrowUpRight className="w-2.5 h-2.5 stroke-[3]" />
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          {thread.unreadCount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#FF5C00] text-black shadow">
-                              {thread.unreadCount}
-                            </span>
-                          )}
-                          <ChevronRight className="w-5 h-5 text-white/40 group-hover:text-white transition-colors" />
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-6 text-white/40 text-xs bg-white/5 rounded-2xl border border-white/10">
-                    No active message threads.
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </motion.div>
-        )}
-
-        {/* DRILL-DOWN VIEWS & DIRECT CHAT */}
-        {(activeCategory !== null || activeChatUser !== null) && (
-          <motion.div
-            key={`updates-drilldown-${activeCategory || 'none'}-${activeChatUser?.id || 'none'}`}
-            initial={{ opacity: 0, x: 15 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -15 }}
-            className="space-y-6"
-          >
-            {/* Header Toolbar: Back Button on Top Left, Centered Title */}
-            <div className={`grid grid-cols-3 items-center pb-4 border-b ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}>
-              {/* Top Left Back Button */}
-              <div className="justify-self-start">
-                <button
-                  type="button"
-                  id="updates-back-button"
-                  onClick={() => {
-                    if (activeChatUser) {
-                      setActiveChatUser(null);
-                    } else {
-                      setActiveCategory(null);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                    theme === 'light' 
-                      ? 'bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300' 
-                      : 'bg-white/5 hover:bg-white/15 text-white border-white/10'
+              {/* Parent Items & Conversations List */}
+              <div className="space-y-3" id="updates-main-list">
+                
+                {/* 1. NOTIFICATIONS */}
+                <div
+                  id="parent-item-notifications"
+                  onClick={() => handleOpenCategory('updates')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    unreadUpdatesCount > 0
+                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                   }`}
                 >
-                  <ArrowLeft className="w-4 h-4 text-[#FF5C00]" /> Back
-                </button>
-              </div>
-
-              {/* Centered Title */}
-              <div className="justify-self-center text-center">
-                <h3 className={`text-sm font-display font-black tracking-wider uppercase truncate max-w-[180px] sm:max-w-xs ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
-                  {activeChatUser
-                    ? activeChatUser.name
-                    : activeCategory === 'updates'
-                    ? 'Post Updates'
-                    : activeCategory === 'followers'
-                    ? 'New Followers'
-                    : 'App Info'}
-                </h3>
-              </div>
-
-              {/* Right Spacer */}
-              <div className="justify-self-end"></div>
-            </div>
-
-            {/* 1. DRILL DOWN: UPDATES (POST NOTIFICATIONS - PERMALINKS TO POST ON FEED) */}
-            {activeCategory === 'updates' && !activeChatUser && (
-              <div className="space-y-3" id="drilldown-updates-list">
-                {postNotifications.length > 0 ? (
-                  postNotifications.map(n => (
-                    <div
-                      key={n.id}
-                      onClick={() => {
-                        setPostNotifications(prev => prev.map(item => item.id === n.id ? { ...item, isRead: true } : item));
-                        if (onNotificationRead) onNotificationRead('post', n.id);
-                        if (n.actionType === 'recipe_save' || n.actionType === 'recipe_fork') {
-                          if (onSelectRecipe) onSelectRecipe(n.originalRecipeId || n.recipeId || n.postId);
-                        }
-                      }}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 group shadow-sm ${
-                        theme === 'light'
-                          ? 'bg-gray-50 border-gray-200 hover:border-[#FF5C00] hover:bg-gray-100/80 text-gray-900'
-                          : 'bg-[#121212] border-white/10 hover:border-[#FF5C00] text-white'
-                      }`}
-                    >
-                      <img
-                        src={n.actorAvatar}
-                        alt={n.actorName}
-                        className={`w-10 h-10 rounded-full object-cover border shrink-0 ${theme === 'light' ? 'border-gray-300' : 'border-white/20'}`}
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`text-xs font-bold truncate ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{n.actorName}</span>
-                          <span className={`text-[10px] font-mono shrink-0 ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>{n.timeString}</span>
-                        </div>
-
-                        <p className={`text-xs leading-snug ${theme === 'light' ? 'text-gray-700' : 'text-white/80'}`}>
-                          {n.actionType === 'comment' && (
-                            <span>
-                              {n.commentSnippet?.startsWith('Replied') ? (
-                                <>
-                                  {n.commentSnippet} on <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong>
-                                </>
-                              ) : (
-                                <>
-                                  commented on <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong>
-                                  {n.commentSnippet && <>: <span className={theme === 'light' ? 'text-gray-800' : 'text-white/90'}>"{n.commentSnippet}"</span></>}
-                                </>
-                              )}
-                            </span>
-                          )}
-                          {n.actionType === 'recipe_save' && (
-                            <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
-                              <Bookmark className="w-3.5 h-3.5 shrink-0" /> saved your recipe <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong> to Process Library
-                            </span>
-                          )}
-                          {n.actionType === 'recipe_fork' && (
-                            <span className="text-purple-400 font-bold inline-flex items-center gap-1 flex-wrap">
-                              <GitFork className="w-3.5 h-3.5 shrink-0" /> forked your recipe <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong> for her workspace
-                            </span>
-                          )}
-                          {n.actionType === 'gong_continue' && (
-                            <span className="text-emerald-600 font-bold inline-flex items-center gap-1 flex-wrap">
-                              <Disc3 className="w-3.5 h-3.5 shrink-0" /> voted Continue on <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong>
-                            </span>
-                          )}
-                          {n.actionType === 'gong_refine' && (
-                            <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
-                              <Pencil className="w-3.5 h-3.5 shrink-0" /> voted Refine on <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong>
-                            </span>
-                          )}
-                          {n.actionType === 'gong_reconsider' && (
-                            <span className="text-red-500 font-bold inline-flex items-center gap-1 flex-wrap">
-                              <Octagon className="w-3.5 h-3.5 shrink-0" /> voted Reconsider on <strong className={theme === 'light' ? 'text-gray-900 font-semibold' : 'text-white font-semibold'}>"{n.postTitle}"</strong>
-                            </span>
-                          )}
-                        </p>
-
-                        {/* Permalink Badge */}
-                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#FF5C00] pt-0.5 group-hover:underline">
-                          <Link className="w-3 h-3 text-[#FF5C00]" />
-                          <span>
-                            {n.actionType === 'recipe_save' || n.actionType === 'recipe_fork'
-                              ? `gonnng.com/r/${n.originalRecipeId || n.recipeId || n.postId}`
-                              : `gonnng.com/g/${n.postId}`}
-                          </span>
-                          {(n.actionType === 'recipe_save' || n.actionType === 'recipe_fork') && (
-                            <span className={`font-sans ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>
-                              • Click to view on Process view →
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {n.postImage && (
-                        <img
-                          src={n.postImage}
-                          alt={n.postTitle}
-                          className={`w-12 h-12 rounded-xl object-cover border shrink-0 ${theme === 'light' ? 'border-gray-200' : 'border-white/10'}`}
-                          referrerPolicy="no-referrer"
-                        />
-                      )}
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      unreadUpdatesCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                    }`}>
+                      <Bell className="w-5 h-5" />
                     </div>
-                  ))
-                ) : (
-                  <div className={`text-center py-10 text-xs ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>No post updates yet.</div>
-                )}
-              </div>
-            )}
-
-            {/* 2. DRILL DOWN: NEW FOLLOWERS (PERMALINKS TO USER PROFILE ON HOME VIEW) */}
-            {activeCategory === 'followers' && !activeChatUser && (
-              <div className="space-y-3" id="drilldown-followers-list">
-                {followerNotifications.length > 0 ? (
-                  followerNotifications.map(f => (
-                    <div
-                      key={f.id}
-                      onClick={() => {
-                        setFollowerNotifications(prev => prev.map(item => item.id === f.id ? { ...item, isRead: true } : item));
-                        if (onNotificationRead) onNotificationRead('follower', f.id);
-                        if (onSelectUser) onSelectUser(f.creator.id);
-                      }}
-                      className={`p-4 rounded-2xl border flex items-center justify-between gap-3 transition-all cursor-pointer group ${
-                        theme === 'light'
-                          ? 'bg-gray-50 border-gray-200 hover:border-[#FF5C00] hover:bg-gray-100/80 text-gray-900'
-                          : 'bg-[#121212] border-white/10 hover:border-[#FF5C00] text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img
-                          src={f.creator.avatarUrl}
-                          alt={f.creator.name}
-                          className={`w-10 h-10 rounded-full object-cover border shrink-0 ${theme === 'light' ? 'border-gray-300' : 'border-white/20'}`}
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="min-w-0">
-                          <h4 className={`text-xs font-bold truncate ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{f.creator.name}</h4>
-                          <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#FF5C00] group-hover:underline">
-                            <Link className="w-3 h-3 text-[#FF5C00]" />
-                            <span>gonnng.com/u/{f.creator.name.toLowerCase().replace(/\s+/g, '')}</span>
-                          </div>
-                          <p className={`text-[11px] line-clamp-1 mt-0.5 ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`}>{f.creator.bio}</p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onFollowToggle && onFollowToggle(f.creator.id);
-                        }}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-                          f.creator.isFollowing
-                            ? theme === 'light' ? 'bg-gray-200 text-gray-800 border border-gray-300' : 'bg-white/10 text-white border border-white/20'
-                            : 'bg-[#FF5C00] text-black font-black hover:bg-[#FF751A]'
-                        }`}
-                      >
-                        {f.creator.isFollowing ? (
-                          <>
-                            <UserCheck className="w-3.5 h-3.5" /> Following
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="w-3.5 h-3.5" /> Follow Back
-                          </>
-                        )}
-                      </button>
+                    <div className="min-w-0">
+                      <h3 className={`text-sm ${unreadUpdatesCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                        NOTIFICATIONS
+                      </h3>
+                      <p className="text-xs truncate text-gray-500">Activity on your posts, comments, saves & recipe forks</p>
                     </div>
-                  ))
-                ) : (
-                  <div className={`text-center py-10 text-xs ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>No new followers yet.</div>
-                )}
-              </div>
-            )}
-
-            {/* 3. DRILL DOWN: APP INFO */}
-            {activeCategory === 'appinfo' && !activeChatUser && (
-              <div className="space-y-3" id="drilldown-appinfo-list">
-                {appInfoNotifications.map(a => (
-                  <div
-                    key={a.id}
-                    className={`p-4 rounded-2xl border space-y-2 ${
-                      theme === 'light' ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-[#121212] border-white/10 text-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-[#FF5C00]/15 text-[#FF5C00] border border-[#FF5C00]/30">
-                        {a.category}
-                      </span>
-                      <span className={`text-[10px] font-mono ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>{a.timeString}</span>
-                    </div>
-
-                    <h4 className={`text-sm font-bold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{a.title}</h4>
-                    <p className={`text-xs leading-relaxed ${theme === 'light' ? 'text-gray-600' : 'text-white/70'}`}>{a.subtitle}</p>
                   </div>
-                ))}
-              </div>
-            )}
 
-            {/* DIRECT CHAT SCREEN */}
-            {activeChatUser && (
-              <div className="space-y-4" id="drilldown-chat-screen">
-                {/* Chat User Header */}
-                <div className={`flex items-center gap-3 p-3 rounded-2xl border ${
-                  theme === 'light' ? 'bg-gray-100 border-gray-200 text-gray-900' : 'bg-white/5 border-white/10 text-white'
-                }`}>
-                  <img
-                    src={activeChatUser.avatarUrl}
-                    alt={activeChatUser.name}
-                    className={`w-10 h-10 rounded-full object-cover border shrink-0 ${theme === 'light' ? 'border-gray-300' : 'border-white/20'}`}
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <h4 className={`text-xs font-bold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>{activeChatUser.name}</h4>
-                    <p className={`text-[10px] font-mono ${theme === 'light' ? 'text-gray-500' : 'text-white/50'}`}>@{activeChatUser.name.toLowerCase().replace(/\s+/g, '')}</p>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {unreadUpdatesCount > 0 && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                        {unreadUpdatesCount}
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 transition-colors text-gray-400 group-hover:text-gray-900" />
                   </div>
                 </div>
 
-                {/* Message History */}
-                <div className={`rounded-2xl p-4 min-h-[300px] max-h-[450px] overflow-y-auto space-y-3 border ${
-                  theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-[#101010] border-white/10'
-                }`}>
-                  {(() => {
-                    const thread = messageThreads.find(t => t.creator.id === activeChatUser.id);
-                    const msgs = thread?.messages || [];
-                    if (msgs.length === 0) {
+                {/* 2. NEW FOLLOWERS */}
+                <div
+                  id="parent-item-followers"
+                  onClick={() => handleOpenCategory('followers')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    unreadFollowersCount > 0
+                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      unreadFollowersCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                    }`}>
+                      <UserPlus className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className={`text-sm ${unreadFollowersCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                        NEW FOLLOWERS
+                      </h3>
+                      <p className="text-xs truncate text-gray-500">Creators who recently started following your profile</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    {unreadFollowersCount > 0 && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                        {unreadFollowersCount}
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 transition-colors text-gray-400 group-hover:text-gray-900" />
+                  </div>
+                </div>
+
+                {/* 3. APP INFO */}
+                <div
+                  id="parent-item-appinfo"
+                  onClick={() => handleOpenCategory('appinfo')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    unreadAppInfoCount > 0
+                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      unreadAppInfoCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                    }`}>
+                      <Info className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className={`text-sm ${unreadAppInfoCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                        APP INFO
+                      </h3>
+                      <p className="text-xs truncate text-gray-500">Platform releases, feature launches & account notices</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    {unreadAppInfoCount > 0 && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                        {unreadAppInfoCount}
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 transition-colors text-gray-400 group-hover:text-gray-900" />
+                  </div>
+                </div>
+
+                {/* 4. DIRECT CONVERSATIONS (ORDERED BY MOST RECENT ACTIVITY) */}
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <div className="flex items-center justify-between pb-1">
+                    <h4 className="text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 text-gray-500">
+                      <MessageSquare className="w-3.5 h-3.5 text-[#FF5C00]" /> Direct Conversations
+                    </h4>
+                    <span className="text-[10px] font-mono text-gray-400">{sortedThreads.length} Active</span>
+                  </div>
+
+                  {sortedThreads.length > 0 ? (
+                    sortedThreads.map(thread => {
+                      const lastMsg = thread.messages[thread.messages.length - 1];
+                      const sharedMsg = [...thread.messages].reverse().find(m => m.postThumbnail || m.text.includes('gonnng.com/g/'));
+                      const postThumbnail = sharedMsg?.postThumbnail || (
+                        sharedMsg?.text.includes('The Great Wave') ? 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800' : undefined
+                      );
+
                       return (
-                        <div className={`text-center py-12 text-xs ${theme === 'light' ? 'text-gray-400' : 'text-white/40'}`}>
-                          No previous messages. Type a message below to start chatting!
+                        <div
+                          key={thread.creator.id}
+                          id={`msg-thread-${thread.creator.id}`}
+                          onClick={() => setActiveChatUser(thread.creator)}
+                          className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
+                            thread.unreadCount > 0
+                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm'
+                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <img
+                              src={thread.creator.avatarUrl && thread.creator.avatarUrl.trim() !== '' ? thread.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                              alt={thread.creator.name}
+                              className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="text-xs font-bold truncate text-gray-900">{thread.creator.name}</h4>
+                                <span className="text-[10px] font-mono text-gray-400 shrink-0">{lastMsg?.timestamp || 'Just now'}</span>
+                              </div>
+                              <p className="text-xs truncate text-gray-600 mt-0.5">
+                                {lastMsg ? lastMsg.text : 'Click to start chatting...'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {postThumbnail && (
+                            <div className="ml-3 shrink-0 relative group-hover:scale-105 transition-transform">
+                              <img
+                                src={postThumbnail}
+                                alt="Shared Post"
+                                className="w-10 h-10 rounded-xl object-cover border border-[#FF5C00]/50"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute -bottom-1 -right-1 bg-[#FF5C00] text-black p-0.5 rounded-full shadow">
+                                <ArrowUpRight className="w-2.5 h-2.5 stroke-[3]" />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            {thread.unreadCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#FF5C00] text-black shadow">
+                                {thread.unreadCount}
+                              </span>
+                            )}
+                            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-900 transition-colors" />
+                          </div>
                         </div>
                       );
-                    }
-                    return msgs.map(m => {
-                      const isMe = m.senderId === 'user-current' || m.senderId === currentUser.id;
-                      const isSharedPost = Boolean(m.postThumbnail || m.postId);
-                      const postObj = m.postId ? posts.find(p => p.id === m.postId) : null;
-                      const postTitle = postObj?.title || 'Shared Gonnng Blueprint';
-                      const postImage = postObj?.image || m.postThumbnail;
-                      const permalink = `gonnng.com/g/${m.postId || 'post-1'}`;
+                    })
+                  ) : (
+                    <div className="text-center py-6 text-gray-400 text-xs bg-gray-50 rounded-2xl border border-gray-200">
+                      No active message threads.
+                    </div>
+                  )}
+                </div>
 
-                      if (isSharedPost) {
+              </div>
+            </motion.div>
+          )}
+
+          {/* LEVEL 1: DRILL-DOWN CATEGORY VIEWS & DIRECT CHAT */}
+          {(activeCategory !== null || activeChatUser !== null) && (
+            <motion.div
+              key={`updates-drilldown-${activeCategory || 'chat'}-${activeChatUser?.id || 'none'}`}
+              initial={{ opacity: 0, x: 15 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 15 }}
+              transition={{ duration: 0.18 }}
+              className="space-y-6"
+            >
+              {/* Header Toolbar for Category Views (Hidden in Direct Chat thread) */}
+              {!activeChatUser && (
+                <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+                  <button
+                    type="button"
+                    id="updates-back-button"
+                    onClick={() => setActiveCategory(null)}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300 shadow-sm"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-[#FF5C00]" /> Back
+                  </button>
+
+                  <h3 className="text-sm font-display font-black tracking-wider uppercase truncate max-w-[200px] sm:max-w-xs text-gray-900 text-center">
+                    {activeCategory === 'updates'
+                      ? 'Notifications'
+                      : activeCategory === 'followers'
+                      ? 'New Followers'
+                      : 'App Info'}
+                  </h3>
+
+                  <div className="w-16" />
+                </div>
+              )}
+
+              {/* 1. DRILL DOWN: NOTIFICATIONS (SORTED NEWEST FIRST) */}
+              {activeCategory === 'updates' && !activeChatUser && (
+                <div className="space-y-3" id="drilldown-updates-list">
+                  {sortedPostNotifications.length > 0 ? (
+                    sortedPostNotifications.map(n => {
+                      const isUnread = !n.isRead;
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            handleMarkItemRead('post', n.id);
+                            if (n.actionType === 'recipe_save' || n.actionType === 'recipe_fork') {
+                              if (onSelectRecipe) onSelectRecipe(n.originalRecipeId || n.recipeId || n.postId);
+                            } else {
+                              if (onSelectPost) onSelectPost(n.postId, n.actionType === 'comment' ? 'comment' : 'vote');
+                            }
+                          }}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 group ${
+                            isUnread
+                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/50 hover:bg-gray-100/80'
+                          } text-gray-900 relative`}
+                        >
+                          {isUnread && (
+                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
+                          )}
+                          <img
+                            src={n.actorAvatar && n.actorAvatar.trim() !== '' ? n.actorAvatar.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                            alt={n.actorName}
+                            className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 pr-4">
+                              <span className="text-xs font-bold truncate text-gray-900">{n.actorName}</span>
+                              <span className="text-[10px] font-mono shrink-0 text-gray-500">{n.timeString}</span>
+                            </div>
+
+                            <p className="text-xs leading-snug text-gray-700">
+                              {n.actionType === 'comment' && (
+                                <span>
+                                  {n.commentSnippet?.startsWith('Replied') ? (
+                                    <>
+                                      {n.commentSnippet} on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                    </>
+                                  ) : (
+                                    <>
+                                      commented on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                      {n.commentSnippet && <>: <span className="text-gray-800">"{n.commentSnippet}"</span></>}
+                                    </>
+                                  )}
+                                </span>
+                              )}
+                              {n.actionType === 'recipe_save' && (
+                                <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <Bookmark className="w-3.5 h-3.5 shrink-0" /> saved your recipe <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong> to Process Library
+                                </span>
+                              )}
+                              {n.actionType === 'recipe_fork' && (
+                                <span className="text-purple-600 font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <GitFork className="w-3.5 h-3.5 shrink-0" /> forked your recipe <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong> for her workspace
+                                </span>
+                              )}
+                              {n.actionType === 'gong_continue' && (
+                                <span className="text-emerald-600 font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <Disc3 className="w-3.5 h-3.5 shrink-0" /> celebrated your post <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                </span>
+                              )}
+                              {n.actionType === 'gong_refine' && (
+                                <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <Pencil className="w-3.5 h-3.5 shrink-0" /> suggested improvements on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                </span>
+                              )}
+                              {n.actionType === 'gong_reconsider' && (
+                                <span className="text-red-500 font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <Octagon className="w-3.5 h-3.5 shrink-0" /> requested reconsideration on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                </span>
+                              )}
+                            </p>
+
+                            {/* Permalink Link */}
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#FF5C00] pt-0.5 group-hover:underline">
+                              <Link className="w-3 h-3 text-[#FF5C00]" />
+                              <span>
+                                {n.actionType === 'recipe_save' || n.actionType === 'recipe_fork'
+                                  ? `gonnng.com/r/${n.originalRecipeId || n.recipeId || n.postId}`
+                                  : `gonnng.com/g/${n.postId}`}
+                              </span>
+                              <span className="font-sans text-gray-500">
+                                • Click to view content →
+                              </span>
+                            </div>
+                          </div>
+
+                          {n.postImage && (
+                            <img
+                              src={n.postImage}
+                              alt={n.postTitle}
+                              className="w-12 h-12 rounded-xl object-cover border border-gray-200 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-10 text-xs text-gray-400">No notifications yet.</div>
+                  )}
+                </div>
+              )}
+
+              {/* 2. DRILL DOWN: NEW FOLLOWERS (SORTED NEWEST FIRST) */}
+              {activeCategory === 'followers' && !activeChatUser && (
+                <div className="space-y-3" id="drilldown-followers-list">
+                  {sortedFollowerNotifications.length > 0 ? (
+                    sortedFollowerNotifications.map(f => {
+                      const isUnread = !f.isRead;
+                      const username = `@${f.creator.username || f.creator.name.toLowerCase().replace(/\s+/g, '')}`;
+                      return (
+                        <div
+                          key={f.id}
+                          onClick={() => {
+                            handleMarkItemRead('follower', f.id);
+                            if (onSelectUser) onSelectUser(f.creator.id);
+                          }}
+                          className={`p-4 rounded-2xl border flex items-center justify-between gap-3 transition-all cursor-pointer group ${
+                            isUnread
+                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/50 hover:bg-gray-100/80'
+                          } text-gray-900 relative`}
+                        >
+                          {isUnread && (
+                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
+                          )}
+                          <div className="flex items-center gap-3.5 min-w-0 pr-2">
+                            <img
+                              src={f.creator.avatarUrl && f.creator.avatarUrl.trim() !== '' ? f.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                              alt={f.creator.name}
+                              className="w-11 h-11 rounded-full object-cover border border-gray-300 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs font-bold truncate text-gray-900">{f.creator.name}</h4>
+                                <span className="text-[11px] font-mono text-gray-500">{username}</span>
+                              </div>
+                              <p className="text-xs font-medium text-[#FF5C00] flex items-center gap-1.5">
+                                <span>Started following you</span>
+                                <span className="text-gray-400 font-mono text-[10px]">• {f.timeString}</span>
+                              </p>
+                              {f.creator.bio && (
+                                <p className="text-[11px] text-gray-600 line-clamp-1">{f.creator.bio}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkItemRead('follower', f.id);
+                              onFollowToggle && onFollowToggle(f.creator.id);
+                            }}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                              f.creator.isFollowing
+                                ? 'bg-gray-200 text-gray-800 border border-gray-300 hover:bg-gray-300'
+                                : 'bg-[#FF5C00] text-black font-black hover:bg-[#FF751A] shadow-sm'
+                            }`}
+                          >
+                            {f.creator.isFollowing ? (
+                              <>
+                                <UserCheck className="w-3.5 h-3.5" /> Following
+                              </>
+                            ) : (
+                              <>
+                                <UserPlus className="w-3.5 h-3.5" /> Follow Back
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-10 text-xs text-gray-400">No new followers yet.</div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. DRILL DOWN: APP INFO (SORTED NEWEST FIRST) */}
+              {activeCategory === 'appinfo' && !activeChatUser && (
+                <div className="space-y-3" id="drilldown-appinfo-list">
+                  {sortedAppInfoNotifications.map(a => {
+                    const isExpanded = expandedAppInfoId === a.id;
+                    const isUnread = !a.isRead;
+                    return (
+                      <div
+                        key={a.id}
+                        onClick={() => {
+                          setExpandedAppInfoId(prev => prev === a.id ? null : a.id);
+                          handleMarkItemRead('appinfo', a.id);
+                        }}
+                        className={`p-4 rounded-2xl border space-y-2 cursor-pointer transition-all ${
+                          isUnread
+                            ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                            : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/40 hover:bg-gray-100/80'
+                        } text-gray-900 relative`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#FF5C00]/15 text-[#FF5C00] border border-[#FF5C00]/30">
+                              {a.category}
+                            </span>
+                            {isUnread && (
+                              <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-[#FF5C00] text-black">
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-gray-500">{a.timeString}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            )}
+                          </div>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-gray-900">{a.title}</h4>
+                        <p className="text-xs leading-relaxed text-gray-600">{a.subtitle}</p>
+
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="pt-3 mt-2 border-t border-gray-200 text-xs text-gray-800 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-gray-200 space-y-1.5"
+                          >
+                            <div className="whitespace-pre-line">
+                              {a.details || "Full release notes: Process Blueprint library integrated, live messaging enabled, and circle updates synchronized across all workspaces."}
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* DIRECT CHAT SCREEN */}
+              {activeChatUser && (
+                <div className="space-y-4" id="drilldown-chat-screen">
+                  {/* Chat User Header Bar (Centered user info with Left Chevron back button) */}
+                  <div className="flex items-center justify-between p-3.5 rounded-2xl border bg-gray-100 border-gray-200 text-gray-900 shadow-sm">
+                    <button
+                      type="button"
+                      id="chat-back-button"
+                      onClick={() => setActiveChatUser(null)}
+                      title="Back to Conversations"
+                      className="p-2 rounded-xl text-gray-700 hover:text-gray-900 hover:bg-gray-200/80 transition-all cursor-pointer flex items-center justify-center shrink-0 border border-transparent hover:border-gray-300"
+                    >
+                      <ChevronLeft className="w-6 h-6 text-[#FF5C00] stroke-[2.5]" />
+                    </button>
+
+                    <div 
+                      onClick={() => {
+                        if (onSelectUser && activeChatUser) onSelectUser(activeChatUser.id);
+                      }}
+                      className="flex items-center gap-3 cursor-pointer group hover:opacity-90 transition-opacity mx-auto"
+                    >
+                      <img
+                        src={activeChatUser.avatarUrl && activeChatUser.avatarUrl.trim() !== '' ? activeChatUser.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                        alt={activeChatUser.name}
+                        className="w-10 h-10 rounded-full object-cover border-2 border-[#FF5C00]/40 group-hover:border-[#FF5C00] transition-colors shrink-0 shadow-sm"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="text-center sm:text-left">
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 group-hover:text-[#FF5C00] transition-colors leading-tight">
+                          {activeChatUser.name}
+                        </h4>
+                        <p className="text-[10px] sm:text-[11px] font-mono text-gray-500">
+                          @{activeChatUser.username || activeChatUser.name.toLowerCase().replace(/\s+/g, '')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="w-10 shrink-0" />
+                  </div>
+
+                  {/* Message History */}
+                  <div className="rounded-2xl p-4 min-h-[300px] max-h-[450px] overflow-y-auto space-y-3 border bg-gray-50 border-gray-200">
+                    {(() => {
+                      const thread = messageThreads.find(t => t.creator.id === activeChatUser.id);
+                      const msgs = thread?.messages || [];
+                      if (msgs.length === 0) {
                         return (
-                          <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                            <div 
-                              onClick={() => {
-                                if (onSelectPost) {
-                                  onSelectPost(m.postId || 'post-1', 'shared_message');
-                                }
-                              }}
-                              className={`w-full max-w-sm rounded-2xl p-3 border transition-all cursor-pointer group shadow-md hover:border-[#FF5C00] ${
-                                isMe
-                                  ? 'bg-[#FF5C00]/10 border-[#FF5C00]/50 text-black'
-                                  : theme === 'light'
-                                    ? 'bg-white border-gray-300 text-gray-900 hover:shadow-lg'
-                                    : 'bg-[#181818] border-white/20 text-white hover:border-[#FF5C00]'
-                              }`}
-                            >
-                              {/* Full-width Large Thumbnail */}
-                              {postImage && (
-                                <div className="w-full h-44 sm:h-52 rounded-xl overflow-hidden mb-2.5 border border-black/10 bg-black/50 relative">
-                                  <img
-                                    src={postImage}
-                                    alt={postTitle}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-mono font-bold text-[#FF5C00] border border-[#FF5C00]/30 uppercase">
-                                    Shared from {m.senderId === 'user-current' || m.senderId === currentUser.id ? 'You' : (activeChatUser ? activeChatUser.name : 'Message Thread')}
+                          <div className="text-center py-12 text-xs text-gray-400">
+                            No previous messages. Type a message below to start chatting!
+                          </div>
+                        );
+                      }
+                      return msgs.map(m => {
+                        const isMe = m.senderId === currentUser.id || (currentUser.id === 'user-current' && m.senderId === 'user-current');
+                        const isSharedPost = Boolean(m.postThumbnail || m.postId);
+                        const postObj = m.postId ? posts.find(p => p.id === m.postId) : null;
+                        const postTitle = postObj?.title || 'Shared Gonnng Blueprint';
+                        const postImage = postObj?.image || m.postThumbnail;
+                        const permalink = `gonnng.com/g/${m.postId || 'post-1'}`;
+
+                        if (isSharedPost) {
+                          return (
+                            <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div 
+                                onClick={() => {
+                                  if (onSelectPost) {
+                                    onSelectPost(m.postId || 'post-1', 'shared_message');
+                                  }
+                                }}
+                                className={`w-full max-w-sm rounded-2xl p-3 border transition-all cursor-pointer group shadow-md hover:border-[#FF5C00] ${
+                                  isMe
+                                    ? 'bg-[#FF5C00]/10 border-[#FF5C00]/50 text-black'
+                                    : 'bg-white border-gray-300 text-gray-900 hover:shadow-lg'
+                                }`}
+                              >
+                                {postImage && (
+                                  <div className="w-full h-44 sm:h-52 rounded-xl overflow-hidden mb-2.5 border border-black/10 bg-black/50 relative">
+                                    <img
+                                      src={postImage}
+                                      alt={postTitle}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-mono font-bold text-[#FF5C00] border border-[#FF5C00]/30 uppercase">
+                                      Shared from {isMe ? 'You' : (activeChatUser ? activeChatUser.name : 'Message Thread')}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <h4 className="text-xs sm:text-sm font-bold leading-tight mb-1.5 group-hover:text-[#FF5C00] transition-colors text-gray-900">
+                                  {postTitle}
+                                </h4>
+
+                                <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-[#FF5C00] pt-1">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <Link className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{permalink}</span>
+                                  </div>
+                                  <div className="flex items-center gap-0.5 shrink-0 font-sans font-bold group-hover:translate-x-0.5 transition-transform">
+                                    <span>View</span>
+                                    <ArrowUpRight className="w-3.5 h-3.5" />
                                   </div>
                                 </div>
-                              )}
 
-                              {/* Title */}
-                              <h4 className={`text-xs sm:text-sm font-bold leading-tight mb-1.5 group-hover:text-[#FF5C00] transition-colors ${
-                                theme === 'light' ? 'text-gray-900' : 'text-white'
-                              }`}>
-                                {postTitle}
-                              </h4>
-
-                              {/* Permalink & CTA */}
-                              <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-[#FF5C00] pt-1">
-                                <div className="flex items-center gap-1 min-w-0">
-                                  <Link className="w-3.5 h-3.5 shrink-0" />
-                                  <span className="truncate">{permalink}</span>
-                                </div>
-                                <div className="flex items-center gap-0.5 shrink-0 font-sans font-bold group-hover:translate-x-0.5 transition-transform">
-                                  <span>View</span>
-                                  <ArrowUpRight className="w-3.5 h-3.5" />
+                                <div className={`text-[9px] font-mono text-right mt-1.5 ${
+                                  isMe ? 'text-black/60' : 'text-gray-400'
+                                }`}>
+                                  {m.timestamp}
                                 </div>
                               </div>
+                            </div>
+                          );
+                        }
 
-                              {/* Timestamp */}
-                              <div className={`text-[9px] font-mono text-right mt-1.5 ${
-                                isMe ? 'text-black/60' : theme === 'light' ? 'text-gray-400' : 'text-white/40'
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed space-y-1.5 ${
+                              isMe
+                                ? 'bg-[#FF5C00] text-black font-semibold rounded-br-none shadow'
+                                : 'bg-white text-gray-900 border border-gray-200 shadow-sm rounded-bl-none'
+                            }`}>
+                              <p>{m.text}</p>
+
+                              <div className={`text-[9px] font-mono text-right ${
+                                isMe ? 'text-black/60' : 'text-gray-400'
                               }`}>
                                 {m.timestamp}
                               </div>
                             </div>
                           </div>
                         );
-                      }
+                      });
+                    })()}
+                  </div>
 
-                      return (
-                        <div
-                          key={m.id}
-                          className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed space-y-1.5 ${
-                            isMe
-                              ? 'bg-[#FF5C00] text-black font-semibold rounded-br-none shadow'
-                              : theme === 'light'
-                                ? 'bg-white text-gray-900 border border-gray-200 shadow-sm rounded-bl-none'
-                                : 'bg-white/10 text-white border border-white/10 rounded-bl-none'
-                          }`}>
-                            <p>{m.text}</p>
-
-                            <div className={`text-[9px] font-mono text-right ${
-                              isMe ? 'text-black/60' : theme === 'light' ? 'text-gray-400' : 'text-white/40'
-                            }`}>
-                              {m.timestamp}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                  {/* Chat Input Bar */}
+                  <form onSubmit={handleSendChatMessage} className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={chatInputText}
+                      onChange={(e) => setChatInputText(e.target.value)}
+                      placeholder={`Message @${activeChatUser.username || activeChatUser.name.toLowerCase().replace(/\s+/g, '')}...`}
+                      className="flex-1 px-4 py-2.5 rounded-xl text-xs border focus:outline-none focus:border-[#FF5C00] bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInputText.trim()}
+                      className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] disabled:opacity-50 text-black font-black rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow"
+                    >
+                      <Send className="w-4 h-4" /> Send
+                    </button>
+                  </form>
                 </div>
+              )}
 
-                {/* Chat Input Bar */}
-                <form onSubmit={handleSendChatMessage} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    value={chatInputText}
-                    onChange={(e) => setChatInputText(e.target.value)}
-                    placeholder={`Message @${activeChatUser.name.toLowerCase().replace(/\s+/g, '')}...`}
-                    className={`flex-1 px-4 py-2.5 rounded-xl text-xs border focus:outline-none focus:border-[#FF5C00] ${
-                      theme === 'light'
-                        ? 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400'
-                        : 'bg-[#101010] border-white/15 text-white placeholder:text-white/40'
-                    }`}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!chatInputText.trim()}
-                    className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] disabled:opacity-50 text-black font-black rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow"
-                  >
-                    <Send className="w-4 h-4" /> Send
-                  </button>
-                </form>
-              </div>
-            )}
-
-          </motion.div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>

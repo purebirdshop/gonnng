@@ -5,6 +5,11 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    define: {
+      'process.env.SUPABASE_DATA_URL': JSON.stringify(process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || ''),
+      'process.env.SUPABASE_STORAGE_URL': JSON.stringify(process.env.SUPABASE_STORAGE_URL || ''),
+      'process.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || ''),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
