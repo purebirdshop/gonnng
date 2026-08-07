@@ -30,7 +30,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl border bg-white border-gray-200 text-gray-900 relative space-y-4"
+          className="w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl border bg-white border-gray-200 text-gray-900 relative space-y-4 flex flex-col justify-between"
         >
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-gray-200">

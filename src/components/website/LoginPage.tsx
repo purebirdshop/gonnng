@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { LogIn, UserPlus, Key, Mail, Lock, User, AlertCircle, CheckCircle2, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
-import { authService, UserSession, DEMO_USER } from '../../services/authService';
+import React, { useState, useEffect } from 'react';
+import { LogIn, UserPlus, Key, Mail, Lock, User, AlertCircle, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react';
+import { authService, UserSession } from '../../services/authService';
 
 interface LoginPageProps {
   onLoginSuccess: (user: UserSession) => void;
@@ -8,7 +8,10 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>('login');
+
+  // URL query params for reset token
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
   // Form State
   const [email, setEmail] = useState('');
@@ -18,31 +21,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
   const [agreeTerms, setAgreeTerms] = useState(false);
 
   // Status State
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // 1-Click Fill Demo Credentials
-  const handleFillDemo = () => {
-    setEmail('test@gonnng.com');
-    setPassword('test1234');
-    setError(null);
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('resetToken') || params.get('token');
+    if (token) {
+      setResetToken(token);
+      setMode('reset');
+    }
+  }, []);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
+    setIsSubmitting(true);
 
-    const res = authService.login(email, password);
-    if (res.success && res.user) {
-      onLoginSuccess(res.user);
-    } else {
-      setError(res.error || 'Authentication failed.');
+    try {
+      const res = await authService.login(email, password);
+      if (res.success && res.user) {
+        onLoginSuccess(res.user);
+      } else {
+        setError(res.error || 'Invalid email address or password.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Authentication failed. Please check your connection.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
 
     if (!agreeTerms) {
       setError('You must agree to the Terms of Service and Privacy Policy.');
@@ -59,18 +74,81 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
       return;
     }
 
-    const res = await authService.register(name, email, password);
-    if (res.success && res.user) {
-      onLoginSuccess(res.user);
-    } else {
-      setError(res.error || 'Registration failed.');
+    setIsSubmitting(true);
+
+    try {
+      const res = await authService.register(name, email, password);
+      if (res.success && res.user) {
+        onLoginSuccess(res.user);
+      } else {
+        setError(res.error || 'Registration failed.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Registration failed. Please check your connection.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    setSuccessMsg(`Password reset instructions sent to ${email}. (Note: Test password is test1234)`);
+    setError(null);
+    setSuccessMsg(null);
+    setIsSubmitting(true);
+
+    try {
+      const res = await authService.forgotPassword(email);
+      if (res.success) {
+        setSuccessMsg(res.message || `Password reset instructions sent to ${email}.`);
+      } else {
+        setError(res.error || 'Failed to send password reset email.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error processing request.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetToken) {
+      setError('Reset token is missing or invalid.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setError(null);
+    setSuccessMsg(null);
+    setIsSubmitting(true);
+
+    try {
+      const res = await authService.resetPassword(resetToken, password);
+      if (res.success) {
+        setSuccessMsg(res.message || 'Password reset successfully. You can now sign in with your new password.');
+        setTimeout(() => {
+          setMode('login');
+          setPassword('');
+          setConfirmPassword('');
+        }, 2000);
+      } else {
+        setError(res.error || 'Failed to reset password.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error resetting password.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -84,57 +162,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
           {mode === 'login' && 'Welcome back to Gonnng'}
           {mode === 'register' && 'Create your Gonnng Creator account'}
           {mode === 'forgot' && 'Reset your Gonnng Password'}
+          {mode === 'reset' && 'Set new Gonnng Password'}
         </h1>
         <p className="text-xs text-gray-600 font-sans">
           {mode === 'login' && 'Sign in to access your projects, recipes, and circle updates.'}
           {mode === 'register' && 'Start organizing your ideas and finishing ambitious creative projects.'}
-          {mode === 'forgot' && 'Enter your email address to receive password recovery instructions.'}
+          {mode === 'forgot' && 'Enter your registered email address to receive password reset instructions.'}
+          {mode === 'reset' && 'Choose a strong password with at least 6 characters.'}
         </p>
       </div>
-
-      {/* QUICK DEMO CREDENTIALS BANNER */}
-      {mode === 'login' && (
-        <div className="bg-orange-50 border border-[#FF5C00]/30 rounded-2xl p-4 space-y-3 text-xs shadow-sm">
-          <div className="flex items-center justify-between text-[#FF5C00] font-mono font-bold">
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" />
-              <span>Available Test Accounts (Password: test1234)</span>
-            </span>
-            <span className="bg-[#FF5C00] text-black px-2 py-0.5 rounded text-[10px] font-bold">5 Logins</span>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {[
-              { email: 'test@gonnng.com', label: 'Jason Tyler (Test User)' },
-              { email: 'qa@gonnng.com', label: 'Quinton Adams (QA Lead)' },
-              { email: 'creator@gonnng.com', label: 'Clara Monet (Creator)' },
-              { email: 'dev@gonnng.com', label: 'David Vance (Developer)' },
-              { email: 'product@gonnng.com', label: 'Penelope Reed (Product)' },
-            ].map(acc => (
-              <button
-                key={acc.email}
-                type="button"
-                onClick={() => {
-                  setEmail(acc.email);
-                  setPassword('test1234');
-                  setError(null);
-                }}
-                className={`p-2 rounded-xl border text-left transition-all text-[11px] font-mono cursor-pointer flex items-center justify-between ${
-                  email === acc.email
-                    ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
-                    : 'bg-white border-gray-200 hover:border-[#FF5C00]/50 text-gray-800 shadow-sm'
-                }`}
-              >
-                <div className="truncate pr-1">
-                  <div className="truncate font-bold">{acc.email}</div>
-                  <div className="text-[9px] opacity-70 truncate">{acc.label}</div>
-                </div>
-                <ArrowRight className="w-3 h-3 shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ERROR / SUCCESS ALERTS */}
       {error && (
@@ -163,23 +199,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="test@gonnng.com"
+                placeholder="you@example.com"
                 className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <label className="text-gray-700 font-mono">Password</label>
-              <button
-                type="button"
-                onClick={() => { setMode('forgot'); setError(null); setSuccessMsg(null); }}
-                className="text-[#FF5C00] hover:underline text-[11px] font-semibold cursor-pointer"
-              >
-                Forgot Password?
-              </button>
-            </div>
+            <label className="text-xs text-gray-700 font-mono block">Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -195,20 +222,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer disabled:opacity-50"
           >
-            <LogIn className="w-4 h-4" />
-            <span>Sign In to Workspace</span>
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Sign In to Workspace</span>
+              </>
+            )}
           </button>
 
-          <div className="pt-4 border-t border-gray-200 text-center text-xs text-gray-600">
-            <span>Don't have an account? </span>
+          <div className="pt-4 border-t border-gray-200 text-center text-xs text-gray-600 flex items-center justify-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => { setMode('register'); setError(null); setSuccessMsg(null); }}
               className="text-[#FF5C00] font-bold hover:underline cursor-pointer"
             >
               Create Account
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              type="button"
+              onClick={() => { setMode('forgot'); setError(null); setSuccessMsg(null); }}
+              className="text-[#FF5C00] font-bold hover:underline cursor-pointer"
+            >
+              Reset Password
             </button>
           </div>
         </form>
@@ -290,10 +331,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer disabled:opacity-50"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Create Account & Onboard</span>
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Create Account & Onboard</span>
+              </>
+            )}
           </button>
 
           <div className="pt-4 border-t border-gray-200 text-center text-xs text-gray-600">
@@ -321,7 +369,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="test@gonnng.com"
+                placeholder="you@example.com"
                 className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
               />
             </div>
@@ -329,10 +377,77 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer disabled:opacity-50"
           >
-            <Key className="w-4 h-4" />
-            <span>Send Recovery Instructions</span>
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Key className="w-4 h-4" />
+                <span>Send Recovery Instructions</span>
+              </>
+            )}
+          </button>
+
+          <div className="pt-2 text-center text-xs text-gray-600">
+            <button
+              type="button"
+              onClick={() => { setMode('login'); setError(null); setSuccessMsg(null); }}
+              className="text-[#FF5C00] font-bold hover:underline cursor-pointer"
+            >
+              Return to Sign In
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* RESET PASSWORD FORM */}
+      {mode === 'reset' && (
+        <form onSubmit={handleResetSubmit} className="bg-white border border-gray-200 shadow-sm rounded-2xl p-6 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-700 font-mono">New Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-700 font-mono">Confirm New Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                <span>Save New Password</span>
+              </>
+            )}
           </button>
 
           <div className="pt-2 text-center text-xs text-gray-600">

@@ -1,9 +1,13 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import path from 'path';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
+import { emailService } from './server/emailService';
 
 const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -13,8 +17,68 @@ interface UserSession {
   username?: string;
   email: string;
   name: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  goals?: string | null;
+  privacyDefault?: string | null;
   isOnboarded?: boolean;
+  allowedEnvironments?: string[];
+}
+
+/**
+ * Multi-environment access verification helper.
+ * Enforces:
+ * 1. Email domain whitelisting for non-live environments (Dev, Test, Demo, etc.).
+ * 2. User-specific allowed_environments database column permissions check.
+ */
+function checkEnvironmentAccess(email: string, userAllowedEnvs?: string[] | string | null): { allowed: boolean; reason?: string; currentEnv: string } {
+  const currentEnv = (process.env.APP_ENV || process.env.VITE_APP_ENV || (process.env.NODE_ENV === 'production' ? 'Live' : 'Dev')).trim();
+  const normalizedCurrentEnv = currentEnv.toLowerCase();
+
+  // 1. Whitelisted email domain verification for non-live environments
+  if (normalizedCurrentEnv !== 'live') {
+    const emailDomain = email.includes('@') ? email.split('@')[1].toLowerCase().trim() : '';
+    const rawWhitelistedDomains = `${process.env.ALLOWED_EMAIL_DOMAINS || ''},gonnng.app,gmail.com,example.com,test.com`;
+    const allowedDomains = rawWhitelistedDomains
+      .split(',')
+      .map(d => d.trim().toLowerCase())
+      .filter(Boolean);
+
+    const isWhitelisted = allowedDomains.some(domain =>
+      emailDomain === domain || emailDomain.endsWith('.' + domain)
+    );
+
+    if (!isWhitelisted) {
+      return {
+        allowed: false,
+        reason: `Access denied: Email domain '@${emailDomain}' is not whitelisted for access to non-live environments (${currentEnv}). Allowed domains: ${allowedDomains.map(d => '@' + d).join(', ')}.`,
+        currentEnv
+      };
+    }
+  }
+
+  // 2. User allowed environments check from database column
+  let envList: string[] = [];
+  if (Array.isArray(userAllowedEnvs)) {
+    envList = userAllowedEnvs.map(e => String(e).trim().toLowerCase());
+  } else if (typeof userAllowedEnvs === 'string') {
+    envList = userAllowedEnvs.split(',').map(e => e.trim().toLowerCase());
+  } else {
+    // If column is unpopulated in DB, default to granting access
+    envList = ['live', 'dev', 'test', 'demo', 'all'];
+  }
+
+  const hasAccess = envList.includes('all') || envList.includes(normalizedCurrentEnv);
+
+  if (!hasAccess) {
+    return {
+      allowed: false,
+      reason: `Access denied: Your user account is not authorized to access the '${currentEnv}' environment.`,
+      currentEnv
+    };
+  }
+
+  return { allowed: true, currentEnv };
 }
 
 interface ServerSession {
@@ -55,121 +119,129 @@ const rawDataUrl = process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || 
 const supabaseUrl = normalizeDataUrl(rawDataUrl);
 const rawStorageUrl = process.env.SUPABASE_STORAGE_URL || process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || '';
 const storageUrl = normalizeStorageUrl(rawStorageUrl);
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 const supabase = (supabaseUrl && supabaseKey) 
   ? createClient(supabaseUrl, supabaseKey) 
   : null;
 
-// Pre-seeded demo accounts fallback matching authService
-const DEFAULT_FALLBACK_DEMO_ACCOUNTS: Record<string, UserSession> = {
-  'test@gonnng.com': {
-    id: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-    publicId: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-    username: 'gyro_gearloose',
-    email: 'test@gonnng.com',
-    name: 'Gyro Gearloose',
-    isOnboarded: true
-  },
-  'qa@gonnng.com': {
-    id: '546bf5b4-28cb-4501-a1a0-c2f57c98f1a0',
-    publicId: '546bf5b4-28cb-4501-a1a0-c2f57c98f1a0',
-    username: 'darkwing_duck',
-    email: 'qa@gonnng.com',
-    name: 'Darkwing Duck',
-    isOnboarded: true
-  },
-  'creator@gonnng.com': {
-    id: '0dfeeb75-c15d-4825-9d94-0b6d66c7bb01',
-    publicId: '0dfeeb75-c15d-4825-9d94-0b6d66c7bb01',
-    username: 'scrooge_mcduck',
-    email: 'creator@gonnng.com',
-    name: 'Scrooge Mcduck',
-    isOnboarded: true
-  },
-  'dev@gonnng.com': {
-    id: '5a44d547-08db-4702-92b3-2d0f8c13a301',
-    publicId: '5a44d547-08db-4702-92b3-2d0f8c13a301',
-    username: 'mario',
-    email: 'dev@gonnng.com',
-    name: 'Mario',
-    isOnboarded: true
-  },
-  'product@gonnng.com': {
-    id: 'f0f68338-8933-48d8-8f1d-9eb3aaf4f902',
-    publicId: 'f0f68338-8933-48d8-8f1d-9eb3aaf4f902',
-    username: 'luigi',
-    email: 'product@gonnng.com',
-    name: 'Luigi',
-    isOnboarded: true
-  }
-};
+const SESSION_SECRET = process.env.SESSION_SECRET || 'gonnng_secret_cookie_key_2026';
+const DEFAULT_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days standard web session duration
 
-// Demo login email -> real `users.id` in the database. Swap/add rows here to
-// point a demo email at a different seeded user.
-const DEMO_ACCOUNT_USER_IDS: Record<string, string> = {
-  'test@gonnng.com': '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',    // gyro_gearloose
-  'qa@gonnng.com': '546bf5b4-28cb-4501-a1a0-c2f57c98f1a0',      // darkwing_duck
-  'creator@gonnng.com': '0dfeeb75-c15d-4825-9d94-0b6d66c7bb01', // scrooge_mcduck
-  'dev@gonnng.com': '5a44d547-08db-4702-92b3-2d0f8c13a301',     // mario
-  'product@gonnng.com': 'f0f68338-8933-48d8-8f1d-9eb3aaf4f902', // luigi
-};
-
-// Populated at startup from the `users` table -- see loadDemoAccounts() below.
-let demoAccountsByEmail: Record<string, UserSession> = { ...DEFAULT_FALLBACK_DEMO_ACCOUNTS };
-
-// `users` has no display-name column, only `username` (a slug). Derive a
-// readable name from it for the session object: "gyro_gearloose" -> "Gyro Gearloose"
-function usernameToDisplayName(username: string): string {
-  return username
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+function generateSessionToken(userId: string, expiresAtMs: number): string {
+  const payload = `${userId}:${expiresAtMs}`;
+  const hmac = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return `gon_sess.${userId}.${expiresAtMs}.${hmac}`;
 }
 
-async function loadDemoAccounts(): Promise<void> {
-  demoAccountsByEmail = { ...DEFAULT_FALLBACK_DEMO_ACCOUNTS };
+function verifySessionToken(token: string): { valid: boolean; userId?: string; expiresAtMs?: number } {
+  if (!token || typeof token !== 'string' || !token.startsWith('gon_sess.')) {
+    return { valid: false };
+  }
+  const parts = token.split('.');
+  if (parts.length !== 4) return { valid: false };
+  const [, userId, expiresAtStr, signature] = parts;
+  const expiresAtMs = parseInt(expiresAtStr, 10);
+  if (isNaN(expiresAtMs) || expiresAtMs < Date.now()) {
+    return { valid: false };
+  }
+  const payload = `${userId}:${expiresAtMs}`;
+  const expectedHmac = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
 
-  if (!supabase) {
-    console.log('Supabase client not configured on server. Using fallback demo accounts.');
-    return;
+  if (!signature || signature.length !== expectedHmac.length) return { valid: false };
+  try {
+    if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedHmac))) {
+      return { valid: true, userId, expiresAtMs };
+    }
+  } catch {
+    return { valid: false };
+  }
+  return { valid: false };
+}
+
+async function getOrRestoreSession(token: string): Promise<ServerSession | null> {
+  if (!token) return null;
+
+  // 1. Check in-memory session map first
+  const existing = userSessions.get(token);
+  if (existing) {
+    if (existing.expiresAt && new Date(existing.expiresAt) < new Date()) {
+      userSessions.delete(token);
+      return null;
+    }
+    return existing;
   }
 
+  // 2. Verify HMAC signed token format if server restarted or container recycled
+  const verification = verifySessionToken(token);
+  if (!verification.valid || !verification.userId) {
+    return null;
+  }
+
+  // 3. Re-instantiate session from database user record
+  if (!supabase) return null;
+
   try {
-    const ids = Object.values(DEMO_ACCOUNT_USER_IDS);
-
-    const { data, error } = await supabase
+    const { data: dbUser } = await supabase
       .from('users')
-      .select('id, public_id, username')
-      .in('id', ids);
+      .select('id, public_id, username, email, first_name, last_name, avatar_storage_path, is_onboarded, profile_visibility, about, goal, allowed_environments')
+      .eq('id', verification.userId)
+      .maybeSingle();
 
-    if (error) {
-      console.error('Failed to load demo accounts from Supabase:', error.message);
-      return;
-    }
+    if (!dbUser) return null;
 
-    const userById = new Map((data ?? []).map((row) => [row.id, row]));
+    const envCheck = checkEnvironmentAccess(dbUser.email, dbUser.allowed_environments);
+    if (!envCheck.allowed) return null;
 
-    for (const [demoEmail, userId] of Object.entries(DEMO_ACCOUNT_USER_IDS)) {
-      const row = userById.get(userId);
-      if (!row) {
-        console.warn(`Demo account ${demoEmail} points at user id ${userId}, which was not found in the users table.`);
-        continue;
-      }
-      demoAccountsByEmail[demoEmail] = {
-        id: row.id,
-        publicId: row.public_id,
-        username: row.username,
-        email: demoEmail, // login email kept as the account identity for the demo flow
-        name: usernameToDisplayName(row.username),
-        avatarUrl: DEFAULT_FALLBACK_DEMO_ACCOUNTS[demoEmail]?.avatarUrl,
-        isOnboarded: true,
-      };
-    }
+    const resolvedName = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(' ') || dbUser.username || 'Creator';
+    const allowedEnvs = Array.isArray(dbUser.allowed_environments)
+      ? dbUser.allowed_environments
+      : (typeof dbUser.allowed_environments === 'string' ? dbUser.allowed_environments.split(',') : ['Live', 'Dev', 'Test', 'Demo']);
 
-    console.log(`Loaded ${Object.keys(demoAccountsByEmail).length} demo accounts from Supabase.`);
+    const userObj: UserSession = {
+      id: dbUser.id,
+      publicId: dbUser.public_id || dbUser.id,
+      username: dbUser.username || dbUser.email.split('@')[0],
+      email: dbUser.email,
+      name: resolvedName,
+      avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : null,
+      bio: dbUser.about || null,
+      goals: dbUser.goal || '',
+      privacyDefault: dbUser.profile_visibility || 'public',
+      isOnboarded: dbUser.is_onboarded ?? true,
+      allowedEnvironments: allowedEnvs
+    };
+
+    const restoredSession: ServerSession = {
+      token,
+      userId: dbUser.id,
+      user: userObj,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(verification.expiresAtMs!).toISOString(),
+      lastUsedAt: new Date().toISOString()
+    };
+
+    userSessions.set(token, restoredSession);
+    return restoredSession;
   } catch (err) {
-    console.error('Error in loadDemoAccounts:', err);
+    console.warn('Error restoring server session:', err);
+    return null;
+  }
+}
+
+// Ensure required auth and reset token columns exist in Supabase database
+async function ensureAuthColumnsExist(): Promise<void> {
+  if (!supabase) return;
+  try {
+    // Check user table structure or ping it
+    const { error } = await supabase.from('users').select('id, email, password_hash').limit(1);
+    if (error) {
+      console.warn('⚠️ Supabase users table query warning:', error.message);
+    } else {
+      console.log('✅ Supabase connected & users table verified.');
+    }
+  } catch (err) {
+    console.error('Error verifying database connection:', err);
   }
 }
 
@@ -180,25 +252,19 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser('gonnng_secret_cookie_key_2026'));
 
-  await loadDemoAccounts();
+  await ensureAuthColumnsExist();
 
   // Authentication Middleware
-  const authenticateSession = (req: Request, res: Response, next: NextFunction) => {
+  const authenticateSession = async (req: Request, res: Response, next: NextFunction) => {
     const token = req.cookies?.gonnng_session;
     if (!token) {
       return res.status(401).json({ authenticated: false, error: 'Unauthorized: Session cookie missing or expired.' });
     }
 
-    const session = userSessions.get(token);
+    const session = await getOrRestoreSession(token);
     if (!session) {
       res.clearCookie('gonnng_session', { path: '/' });
       return res.status(401).json({ authenticated: false, error: 'Unauthorized: Invalid session token.' });
-    }
-
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      userSessions.delete(token);
-      res.clearCookie('gonnng_session', { path: '/' });
-      return res.status(401).json({ authenticated: false, error: 'Unauthorized: Session expired.' });
     }
 
     // Update last used timestamp
@@ -210,118 +276,488 @@ async function startServer() {
 
   // --- API ROUTES ---
 
+  // GET /api/health - Public API health status endpoint
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // GET /api/auth/me - Validate session cookie & return current authenticated user
-  app.get('/api/auth/me', (req: Request, res: Response) => {
+  app.get('/api/auth/me', async (req: Request, res: Response) => {
     const token = req.cookies?.gonnng_session;
     if (!token) {
       return res.json({ authenticated: false, user: null });
     }
 
-    const session = userSessions.get(token);
+    const session = await getOrRestoreSession(token);
     if (!session) {
       res.clearCookie('gonnng_session', { path: '/' });
       return res.json({ authenticated: false, user: null });
     }
 
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      userSessions.delete(token);
-      res.clearCookie('gonnng_session', { path: '/' });
-      return res.json({ authenticated: false, user: null });
+    // Refresh active user details from database if available
+    if (supabase) {
+      try {
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('id, public_id, username, email, first_name, last_name, avatar_storage_path, is_onboarded, profile_visibility, about, goal, allowed_environments')
+          .eq('id', session.userId)
+          .maybeSingle();
+
+        if (dbUser) {
+          const envCheck = checkEnvironmentAccess(dbUser.email, dbUser.allowed_environments);
+          if (!envCheck.allowed) {
+            userSessions.delete(token);
+            res.clearCookie('gonnng_session', { path: '/' });
+            return res.json({ authenticated: false, user: null, error: envCheck.reason });
+          }
+
+          const resolvedName = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(' ') || dbUser.username || 'Creator';
+          const allowedEnvs = Array.isArray(dbUser.allowed_environments)
+            ? dbUser.allowed_environments
+            : (typeof dbUser.allowed_environments === 'string' ? dbUser.allowed_environments.split(',') : ['Live', 'Dev', 'Test', 'Demo']);
+
+          session.user = {
+            id: dbUser.id,
+            publicId: dbUser.public_id || dbUser.id,
+            username: dbUser.username || dbUser.email.split('@')[0],
+            email: dbUser.email,
+            name: resolvedName,
+            avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : null,
+            bio: dbUser.about || null,
+            goals: dbUser.goal || '',
+            privacyDefault: dbUser.profile_visibility || 'public',
+            isOnboarded: dbUser.is_onboarded ?? true,
+            allowedEnvironments: allowedEnvs
+          };
+        }
+      } catch (err) {
+        console.warn('Could not refresh session user from Supabase:', err);
+      }
     }
 
     session.lastUsedAt = new Date().toISOString();
     return res.json({ authenticated: true, user: session.user, sessionToken: session.token });
   });
 
-  // POST /api/auth/login - Authenticate user & issue HttpOnly, Secure session cookie
+  // POST /api/auth/login - Authenticate user against database & issue HttpOnly cookie
   app.post('/api/auth/login', async (req: Request, res: Response) => {
-    const { email, password, rememberMe = true, customUser } = req.body;
+    const { email, password, rememberMe = true } = req.body;
 
-    let targetUser: UserSession | undefined;
-
-    if (customUser && customUser.email) {
-      targetUser = customUser;
-    } else if (email) {
-      const cleanEmail = String(email).trim().toLowerCase();
-      targetUser = demoAccountsByEmail[cleanEmail];
-
-      // Fallback: in case the in-memory cache hasn't been (re)loaded yet or a
-      // seeded user id changed since startup, re-fetch straight from Supabase
-      // before giving up.
-      if (!targetUser && DEMO_ACCOUNT_USER_IDS[cleanEmail] && supabase) {
-        const { data: row, error } = await supabase
-          .from('users')
-          .select('id, public_id, username')
-          .eq('id', DEMO_ACCOUNT_USER_IDS[cleanEmail])
-          .single();
-
-        if (!error && row) {
-          targetUser = {
-            id: row.id,
-            publicId: row.public_id,
-            username: row.username,
-            email: cleanEmail,
-            name: usernameToDisplayName(row.username),
-            avatarUrl: undefined,
-            isOnboarded: true,
-          };
-        }
-      }
+    if (!email || !password) {
+      return res.status(400).json({ success: false, authenticated: false, error: 'Email and password are required.' });
     }
 
-    if (!targetUser) {
-      // Fallback default if not explicitly matched
-      targetUser = demoAccountsByEmail['test@gonnng.com'];
-    }
+    const cleanInput = String(email || '').trim();
+    const cleanEmail = cleanInput.toLowerCase();
 
-    if (!targetUser) {
+    if (!supabase) {
       return res.status(500).json({
         success: false,
         authenticated: false,
-        error: 'No demo accounts are available -- check Supabase connectivity and DEMO_ACCOUNT_USER_IDS.',
+        error: 'Database connection is not configured. Please check SUPABASE_DATA_URL / SUPABASE_URL.'
       });
     }
 
-    // Generate secure session token
-    const token = `gon_sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-    const now = new Date();
-    // 30 days if rememberMe is true, or session duration (null)
-    const expiresAt = rememberMe ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+    try {
+      let dbUser: any = null;
 
-    const sessionRecord: ServerSession = {
-      token,
-      userId: targetUser.id,
-      user: targetUser,
-      createdAt: now.toISOString(),
-      expiresAt,
-      lastUsedAt: now.toISOString(),
-      ipAddress: req.ip || '127.0.0.1',
-      userAgent: req.headers['user-agent'] || 'Gonnng Web Client'
-    };
+      // Query users table by email (case-insensitive) or username (case-insensitive)
+      const { data: userMatches, error } = await supabase
+        .from('users')
+        .select('*')
+        .or(`email.ilike.${cleanEmail},username.ilike.${cleanInput}`);
 
-    userSessions.set(token, sessionRecord);
+      if (userMatches && userMatches.length > 0) {
+        dbUser = userMatches[0];
+      } else {
+        // Fallback: try direct eq query by email or ID
+        const { data: fallbackUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+        dbUser = fallbackUser;
+      }
 
-    // Set secure authentication cookie
-    const cookieOptions: express.CookieOptions = {
-      httpOnly: true, // Prevents XSS / JavaScript access
-      sameSite: 'lax', // Protects against CSRF
-      path: '/',
-      secure: process.env.NODE_ENV === 'production'
-    };
+      if (error && !dbUser) {
+        console.warn('[AUTH LOGIN FAIL] Supabase query error:', error.message);
+      }
 
-    if (rememberMe) {
-      cookieOptions.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
+      if (!dbUser) {
+        console.warn(`[AUTH LOGIN FAIL] No user record found matching '${cleanInput}'`);
+        return res.status(401).json({
+          success: false,
+          authenticated: false,
+          error: 'Invalid email address or password.'
+        });
+      }
+
+      // Check password
+      let passwordValid = false;
+      const storedHash = String(dbUser.password_hash || '').trim().replace(/^['"]|['"]$/g, '');
+      const inputPassword = String(password).trim();
+
+      if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+        try {
+          passwordValid = bcrypt.compareSync(inputPassword, storedHash);
+          if (!passwordValid) {
+            passwordValid = bcrypt.compareSync(String(password), storedHash);
+          }
+        } catch (bErr) {
+          console.error('[AUTH LOGIN FAIL] Bcrypt compare error:', bErr);
+        }
+      }
+
+      if (!passwordValid && storedHash) {
+        if (storedHash === inputPassword || storedHash === String(password)) {
+          passwordValid = true;
+          // Support legacy/plain text password and upgrade it to bcrypt
+          try {
+            const upgradedHash = bcrypt.hashSync(inputPassword, 10);
+            await supabase.from('users').update({ password_hash: upgradedHash }).eq('id', dbUser.id);
+          } catch (uErr) {
+            console.warn('Failed to upgrade plain password hash:', uErr);
+          }
+        }
+      }
+
+      if (!passwordValid) {
+        console.warn(`[AUTH LOGIN FAIL] Password mismatch for user '${dbUser.email || dbUser.id}'`);
+        return res.status(401).json({
+          success: false,
+          authenticated: false,
+          error: 'Invalid email address or password.'
+        });
+      }
+
+      // Check multi-environment permissions & domain whitelist safety checks
+      const envCheck = checkEnvironmentAccess(dbUser.email, dbUser.allowed_environments);
+      if (!envCheck.allowed) {
+        console.warn(`[AUTH LOGIN DENIED] Multi-environment access denied for '${dbUser.email}': ${envCheck.reason}`);
+        return res.status(403).json({
+          success: false,
+          authenticated: false,
+          error: envCheck.reason
+        });
+      }
+
+      const resolvedName = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(' ') || dbUser.username || 'Creator';
+      const allowedEnvs = Array.isArray(dbUser.allowed_environments)
+        ? dbUser.allowed_environments
+        : (typeof dbUser.allowed_environments === 'string' ? dbUser.allowed_environments.split(',') : ['Live', 'Dev', 'Test', 'Demo']);
+
+      const targetUser: UserSession = {
+        id: dbUser.id,
+        publicId: dbUser.public_id || dbUser.id,
+        username: dbUser.username || cleanEmail.split('@')[0],
+        email: dbUser.email,
+        name: resolvedName,
+        avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : undefined,
+        bio: dbUser.about || undefined,
+        goals: dbUser.goal || '',
+        privacyDefault: dbUser.profile_visibility || 'public',
+        isOnboarded: dbUser.is_onboarded ?? true,
+        allowedEnvironments: allowedEnvs
+      };
+
+      const now = new Date();
+      // Modern session standards: 30 days default session lifetime
+      const sessionDuration = rememberMe === false ? 14 * 24 * 60 * 60 * 1000 : DEFAULT_SESSION_DURATION_MS;
+      const expiresAtMs = now.getTime() + sessionDuration;
+      const expiresAt = new Date(expiresAtMs).toISOString();
+      const token = generateSessionToken(targetUser.id, expiresAtMs);
+
+      const sessionRecord: ServerSession = {
+        token,
+        userId: targetUser.id,
+        user: targetUser,
+        createdAt: now.toISOString(),
+        expiresAt,
+        lastUsedAt: now.toISOString(),
+        ipAddress: req.ip || '127.0.0.1',
+        userAgent: req.headers['user-agent'] || 'Gonnng Web Client'
+      };
+
+      userSessions.set(token, sessionRecord);
+
+      const cookieOptions: express.CookieOptions = {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: sessionDuration
+      };
+
+      res.cookie('gonnng_session', token, cookieOptions);
+
+      return res.json({
+        success: true,
+        authenticated: true,
+        user: targetUser,
+        sessionToken: token,
+        expiresAt
+      });
+    } catch (err: any) {
+      console.error('Login error:', err);
+      return res.status(500).json({ success: false, authenticated: false, error: err?.message || 'Login failed.' });
+    }
+  });
+
+  // POST /api/auth/register - Create account in database & send welcome email
+  app.post('/api/auth/register', async (req: Request, res: Response) => {
+    const { name, fullName, email, password, username, rememberMe = true } = req.body;
+    const rawFullName = String(name || fullName || '').trim();
+
+    if (!rawFullName || !email || !password) {
+      return res.status(400).json({ success: false, error: 'Full name, email, and password are required.' });
     }
 
-    res.cookie('gonnng_session', token, cookieOptions);
+    if (String(password).length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+    }
 
-    return res.json({
-      success: true,
-      authenticated: true,
-      user: targetUser,
-      sessionToken: token,
-      expiresAt
-    });
+    // Parse Full Name on first space character into first_name and last_name
+    let firstName = String(req.body.first_name || '').trim();
+    let lastName = String(req.body.last_name || '').trim();
+
+    if (!firstName && rawFullName) {
+      const spaceIdx = rawFullName.indexOf(' ');
+      if (spaceIdx === -1) {
+        firstName = rawFullName;
+        lastName = '';
+      } else {
+        firstName = rawFullName.substring(0, spaceIdx);
+        lastName = rawFullName.substring(spaceIdx + 1).trim();
+      }
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const resolvedDisplayName = [firstName, lastName].filter(Boolean).join(' ') || rawFullName;
+    const derivedUsername = (username || resolvedDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || `user_${Date.now()}`).trim();
+
+    // Check multi-environment permissions & domain whitelist for registration
+    const envCheck = checkEnvironmentAccess(cleanEmail, ['Live', 'Dev', 'Test', 'Demo']);
+    if (!envCheck.allowed) {
+      return res.status(403).json({ success: false, error: envCheck.reason });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Database connection is not configured.' });
+    }
+
+    try {
+      // Check existing email
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (existingUser) {
+        return res.status(400).json({ success: false, error: 'An account with this email address already exists.' });
+      }
+
+      const passwordHash = bcrypt.hashSync(String(password), 10);
+      const userId = crypto.randomUUID();
+      const publicId = Math.random().toString(36).substring(2, 11).toUpperCase();
+
+      const { data: newUser, error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          public_id: publicId,
+          username: derivedUsername,
+          first_name: firstName,
+          last_name: lastName,
+          email: cleanEmail,
+          password_hash: passwordHash,
+          is_onboarded: true,
+          email_verified: true,
+          about: null,
+          avatar_storage_path: null,
+          profile_visibility: 'public',
+          allowed_environments: ['Live', 'Dev', 'Test', 'Demo']
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('User registration insert error:', insertError);
+        return res.status(400).json({ success: false, error: insertError.message || 'Failed to create user account.' });
+      }
+
+      // Sync user into creators table as well
+      try {
+        await supabase.from('creators').insert({
+          id: userId,
+          public_id: publicId,
+          username: derivedUsername,
+          name: resolvedDisplayName,
+          email: cleanEmail,
+          avatar_storage_path: null,
+          bio: null,
+          goals: null,
+          privacy_default: 'public'
+        });
+      } catch (e) {
+        // Safe fallback if creator record exists
+      }
+
+      // Send Welcome Email via Resend API
+      await emailService.sendWelcomeEmail(cleanEmail, resolvedDisplayName, derivedUsername);
+
+      const sessionUser: UserSession = {
+        id: newUser.id,
+        publicId: newUser.public_id || newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+        name: resolvedDisplayName,
+        avatarUrl: null,
+        bio: null,
+        goals: null,
+        privacyDefault: 'public',
+        isOnboarded: true
+      };
+
+      const now = new Date();
+      const sessionDuration = rememberMe === false ? 14 * 24 * 60 * 60 * 1000 : DEFAULT_SESSION_DURATION_MS;
+      const expiresAtMs = now.getTime() + sessionDuration;
+      const expiresAt = new Date(expiresAtMs).toISOString();
+      const token = generateSessionToken(sessionUser.id, expiresAtMs);
+
+      userSessions.set(token, {
+        token,
+        userId: sessionUser.id,
+        user: sessionUser,
+        createdAt: now.toISOString(),
+        expiresAt,
+        lastUsedAt: now.toISOString(),
+        ipAddress: req.ip || '127.0.0.1',
+        userAgent: req.headers['user-agent'] || 'Gonnng Web Client'
+      });
+
+      res.cookie('gonnng_session', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: sessionDuration
+      });
+
+      return res.json({
+        success: true,
+        authenticated: true,
+        user: sessionUser,
+        sessionToken: token
+      });
+    } catch (err: any) {
+      console.error('Registration exception:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to complete registration.' });
+    }
+  });
+
+  // POST /api/auth/forgot-password - Generate reset token & send recovery email via Resend
+  app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email address is required.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Database connection is not configured.' });
+    }
+
+    try {
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, username, email')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (dbUser) {
+        const resetToken = `rst_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
+        const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hr
+
+        await supabase
+          .from('users')
+          .update({
+            reset_token: resetToken,
+            reset_token_expires: resetTokenExpires
+          })
+          .eq('id', dbUser.id);
+
+        const resolvedName = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(' ') || dbUser.username || 'Creator';
+
+        await emailService.sendPasswordResetEmail(
+          cleanEmail,
+          resolvedName,
+          resetToken
+        );
+      }
+
+      // Return success regardless of whether email existed for privacy/security
+      return res.json({
+        success: true,
+        message: `If an account with ${cleanEmail} exists in our database, we have emailed password reset instructions.`
+      });
+    } catch (err: any) {
+      console.error('Forgot password error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to process password reset request.' });
+    }
+  });
+
+  // POST /api/auth/reset-password - Verify reset token & update password hash in database
+  app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Reset token and new password are required.' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Database connection is not configured.' });
+    }
+
+    try {
+      const { data: dbUser, error } = await supabase
+        .from('users')
+        .select('id, reset_token_expires')
+        .eq('reset_token', String(token))
+        .single();
+
+      if (error || !dbUser) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired password reset link.' });
+      }
+
+      if (dbUser.reset_token_expires && new Date(dbUser.reset_token_expires) < new Date()) {
+        return res.status(400).json({ success: false, error: 'Password reset link has expired. Please request a new one.' });
+      }
+
+      const newHash = bcrypt.hashSync(String(newPassword), 10);
+
+      await supabase
+        .from('users')
+        .update({
+          password_hash: newHash,
+          reset_token: null,
+          reset_token_expires: null
+        })
+        .eq('id', dbUser.id);
+
+      return res.json({
+        success: true,
+        message: 'Password reset successfully. You can now sign in with your new password.'
+      });
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to reset password.' });
+    }
   });
 
   // POST /api/auth/logout - Invalidate session & clear cookie
@@ -574,6 +1010,19 @@ async function startServer() {
         }
       ]
     });
+  });
+
+  // 404 and Error handling for API routes (prevents fallback to Vite index.html)
+  app.all('/api/*', (_req: Request, res: Response) => {
+    return res.status(404).json({ success: false, authenticated: false, error: 'API endpoint not found.' });
+  });
+
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api/')) {
+      console.error('API Server Error:', err);
+      return res.status(500).json({ success: false, authenticated: false, error: err?.message || 'Internal server error.' });
+    }
+    next(err);
   });
 
   // Vite middleware for development or static serving for production

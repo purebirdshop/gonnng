@@ -4,7 +4,7 @@ import {
   Bell, 
   Layers, 
   BookOpen, 
-  Hourglass, 
+  FileSliders, 
   Users, 
   User, 
   Plus, 
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Sparkles,
   Search,
+  Settings,
   GitFork,
   Menu,
   Home,
@@ -27,7 +28,7 @@ import {
   X
 } from 'lucide-react';
 
-import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase } from './types';
+import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase, ProfileVisibility } from './types';
 import { GonnngGIcon, GonnngGLogo } from './components/GonnngLogo';
 import { dataService } from './services/dataService';
 import { uploadService, getPublicMediaUrl } from './services/uploadService';
@@ -70,9 +71,9 @@ const DEFAULT_USER: Creator = {
   username: 'gyro_gearloose',
   name: 'Gyro Gearloose',
   email: 'test@gonnng.com',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
-  bio: 'Process creator and workflow explorer.',
-  goals: 'Executing clear process blueprints.',
+  avatarUrl: '',
+  bio: '',
+  goals: '',
   privacyDefault: 'public',
   followerIds: [],
   followingIds: [],
@@ -144,7 +145,37 @@ export default function App() {
     return DEFAULT_USER;
   });
 
-  // Routing logic helpers
+  const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>(() => {
+    const bookmarksStr = localStorage.getItem('gonnng_recipe_bookmarks');
+    if (bookmarksStr) {
+      try {
+        const parsed = JSON.parse(bookmarksStr);
+        if (Array.isArray(parsed)) {
+          return parsed.map((b: any) => typeof b === 'string' ? b : (b.recipeId || ''));
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    const uid = currentUser?.id || 'user-current';
+    dataService.getUserSavedRecipeIds(uid).then(ids => {
+      if (ids) setSavedRecipeIds(ids);
+    });
+  }, [currentUser?.id]);
+
+  const handleToggleSaveRecipe = async (recipeId: string) => {
+    const uid = currentUser?.id || 'user-current';
+    const isNowSaved = await dataService.toggleBookmarkRecipe(uid, recipeId);
+    setSavedRecipeIds(prev => {
+      if (isNowSaved) {
+        return prev.includes(recipeId) ? prev : [...prev, recipeId];
+      } else {
+        return prev.filter(id => id !== recipeId);
+      }
+    });
+  };
   const parsePath = (pathname: string): { 
     viewMode: 'website' | 'workspace'; 
     websiteTab: string; 
@@ -185,13 +216,13 @@ export default function App() {
 
     if (root === 'updates') {
       const sub = parts[1];
-      if (sub === 'notifications' || sub === 'activity') {
+      if (sub === 'notifications' || sub === 'activity' || sub === 'updates') {
         return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'updates' };
       }
-      if (sub === 'followers') {
+      if (sub === 'followers' || sub === 'new-followers') {
         return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'followers' };
       }
-      if (sub === 'system' || sub === 'appinfo' || sub === 'announcements') {
+      if (sub === 'system' || sub === 'appinfo' || sub === 'announcements' || sub === 'app-info') {
         return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'updates', updatesCategory: 'appinfo' };
       }
       if (sub === 'messages') {
@@ -335,6 +366,10 @@ export default function App() {
       setCurrentUser(prev => {
         const isDifferent =
           prev.id !== matchingCreator.id ||
+          prev.name !== matchingCreator.name ||
+          prev.bio !== matchingCreator.bio ||
+          prev.goals !== matchingCreator.goals ||
+          prev.privacyDefault !== matchingCreator.privacyDefault ||
           prev.followersCount !== matchingCreator.followersCount ||
           prev.followingCount !== matchingCreator.followingCount ||
           JSON.stringify(prev.followerIds) !== JSON.stringify(matchingCreator.followerIds) ||
@@ -343,7 +378,7 @@ export default function App() {
         if (isDifferent) {
           return {
             ...matchingCreator,
-            avatarUrl: authSession?.avatarUrl || matchingCreator.avatarUrl
+            avatarUrl: matchingCreator.avatarUrl || authSession?.avatarUrl
           };
         }
         return prev;
@@ -355,10 +390,10 @@ export default function App() {
         username: authSession.username || authSession.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
         name: authSession.name,
         email: authSession.email,
-        avatarUrl: authSession.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
-        bio: 'Process creator and workflow explorer.',
-        goals: 'Executing clear process blueprints.',
-        privacyDefault: 'public',
+        avatarUrl: authSession.avatarUrl || '',
+        bio: (authSession as any).bio || '',
+        goals: (authSession as any).goals || '',
+        privacyDefault: ((authSession as any).privacyDefault || 'public') as ProfileVisibility,
         followerIds: [],
         followingIds: [],
         followersCount: 0,
@@ -394,15 +429,21 @@ export default function App() {
 
   const [showPermissionsPromptModal, setShowPermissionsPromptModal] = useState<boolean>(false);
 
-  // Flow 1: Cold start / login permission check
+  // Flow 1: Cold start / login permission check (Silent - never prompts automatically)
   useEffect(() => {
     if (!currentUser?.id) return;
 
     permissionService.onLoginOrColdStart(currentUser.id).then(resMap => {
+      const saved = localStorage.getItem('gonnng_permissions');
+      let userDefined: AppPermissions | null = null;
+      if (saved) {
+        try { userDefined = JSON.parse(saved); } catch {}
+      }
+
       const updated: AppPermissions = {
-        camera: resMap.camera === 'granted',
-        microphone: resMap.microphone === 'granted',
-        files: resMap.file_access === 'granted'
+        camera: userDefined?.camera !== undefined ? userDefined.camera : (resMap.camera === 'granted'),
+        microphone: userDefined?.microphone !== undefined ? userDefined.microphone : (resMap.microphone === 'granted'),
+        files: userDefined?.files !== undefined ? userDefined.files : (resMap.file_access === 'granted')
       };
       setPermissions(updated);
       localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
@@ -416,10 +457,16 @@ export default function App() {
     const syncForegroundPermissions = () => {
       if (document.visibilityState === 'visible') {
         permissionService.onForegroundSync(currentUser.id).then(resMap => {
+          const saved = localStorage.getItem('gonnng_permissions');
+          let userDefined: AppPermissions | null = null;
+          if (saved) {
+            try { userDefined = JSON.parse(saved); } catch {}
+          }
+
           const updated: AppPermissions = {
-            camera: resMap.camera === 'granted',
-            microphone: resMap.microphone === 'granted',
-            files: resMap.file_access === 'granted'
+            camera: userDefined?.camera !== undefined ? userDefined.camera : (resMap.camera === 'granted'),
+            microphone: userDefined?.microphone !== undefined ? userDefined.microphone : (resMap.microphone === 'granted'),
+            files: userDefined?.files !== undefined ? userDefined.files : (resMap.file_access === 'granted')
           };
           setPermissions(updated);
           localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
@@ -466,6 +513,27 @@ export default function App() {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 350);
+  };
+
+  const handleRequestDevicePermissions = () => {
+    // Access request check only happens inside the launched app
+    if (viewMode !== 'workspace') return;
+
+    // Always check user's defined permissions before prompting for access
+    const saved = localStorage.getItem('gonnng_permissions');
+    if (saved) {
+      try {
+        const userDefined: AppPermissions = JSON.parse(saved);
+        setPermissions(userDefined);
+        // If user defined permissions have explicitly disabled camera/mic, navigate to settings to manage them
+        if (userDefined.camera === false && userDefined.microphone === false) {
+          handleNavigateToPermissions();
+          return;
+        }
+      } catch {}
+    }
+
+    setShowPermissionsPromptModal(true);
   };
 
   const [activeTab, setActiveTab] = useState<'updates' | 'recipes' | 'coach' | 'social' | 'profile'>(initialRoute.activeTab);
@@ -841,13 +909,14 @@ export default function App() {
   // Initial loader if Supabase is active
   useEffect(() => {
     if (dataService.isSupabaseActive()) {
+      const uid = currentUser?.id || 'user-current';
       dataService.getCreators().then(c => c.length > 0 && setCreators(c));
       dataService.getRecipes().then(r => r.length > 0 && setRecipes(r));
       dataService.getCollections().then(col => col.length > 0 && setCollections(col));
-      dataService.getProjects().then(p => p.length > 0 && setProjects(p));
+      dataService.getProjects(uid).then(p => setProjects(p));
       dataService.getPosts().then(pst => pst.length > 0 && setPosts(pst));
     }
-  }, []);
+  }, [currentUser?.id]);
 
   // Persistence side-effects via dataService (handles both Supabase and LocalStorage)
   useEffect(() => {
@@ -889,7 +958,11 @@ export default function App() {
       ...prev,
       name: updated.name,
       avatarUrl: updated.avatarUrl,
-      username: updated.username || prev.username
+      avatarPath: updated.avatarPath || updated.avatarStoragePath,
+      avatarStoragePath: updated.avatarPath || updated.avatarStoragePath,
+      username: updated.username || prev.username,
+      privacyDefault: updated.privacyDefault,
+      bio: updated.bio
     } : prev);
   };
 
@@ -1050,10 +1123,10 @@ export default function App() {
       id: viewedCreatorId,
       name: viewedCreatorId,
       email: '',
-      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
-      bio: 'Gonnng Community Creator',
-      goals: 'Building creative projects.',
-      privacyDefault: 'public' as const,
+      avatarUrl: '',
+      bio: '',
+      goals: '',
+      privacyDefault: null as any,
       followersCount: 0,
       followingCount: 0,
       isFollowing: false,
@@ -1454,14 +1527,14 @@ export default function App() {
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
-              <Hourglass className="w-4 h-4" /> Process
+              <FileSliders className="w-4 h-4" /> Process
             </button>
 
             {/* Centered plus action button */}
             <button
               onClick={() => setShowCreateModal(true)}
               className="p-1.5 mx-1 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-full transition-all shadow-md flex items-center justify-center cursor-pointer shrink-0 hover:scale-110 active:scale-95"
-              title="Start New Recipe"
+              title="New Recipe"
             >
               <Plus className="w-4.5 h-4.5 font-black" />
             </button>
@@ -1504,20 +1577,20 @@ export default function App() {
                 onClick={() => {
                   setIsProfileSettingsOpen(prev => !prev);
                 }}
-                className="p-1.5 sm:p-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
+                className="p-1.5 sm:p-2 text-black transition-all flex items-center justify-center cursor-pointer hover:opacity-75 hover:scale-110 active:scale-95"
                 title="Profile Settings"
               >
-                <Menu className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
               </button>
             ) : activeTab === 'social' ? (
               <button
                 type="button"
                 id="circle-search-btn"
                 onClick={() => setShowSearchModal(true)}
-                className="p-1.5 sm:p-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
+                className="p-1.5 sm:p-2 text-black transition-all flex items-center justify-center cursor-pointer hover:opacity-75 hover:scale-110 active:scale-95"
                 title="Search Circle"
               >
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+                <Search className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
               </button>
             ) : null}
           </div>
@@ -1578,14 +1651,14 @@ export default function App() {
           {activeTab === 'coach' && !showTutorial && (
             <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
           )}
-          <Hourglass className="w-4.5 h-4.5" /> Process
+          <FileSliders className="w-4.5 h-4.5" /> Process
         </button>
 
         {/* Centered circle plus button */}
         <button 
           onClick={() => setShowCreateModal(true)}
           className="w-11 h-11 rounded-full bg-[#FF5C00] text-black flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer hover:scale-105"
-          title="Start New Recipe"
+          title="New Recipe"
         >
           <Plus className="w-5.5 h-5.5 font-black" />
         </button>
@@ -1653,7 +1726,7 @@ export default function App() {
               >
                 <SandEngine 
                   collections={collections}
-                  allProjects={projects}
+                  sessionProjects={projects}
                   onUpdateCollectionMode={handleUpdateCollectionMode}
                   onUpdateCollectionBudget={handleUpdateCollectionBudget}
                   onUpdateProject={handleUpdateProject}
@@ -1669,6 +1742,8 @@ export default function App() {
                   activeProject={activeProject}
                   recipes={recipes}
                   onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
+                  savedRecipeIds={savedRecipeIds}
+                  onToggleSaveRecipe={handleToggleSaveRecipe}
                   initialTab={activeTab === 'recipes' ? 'library' : (processTab || 'projects')}
                   onTabChange={handleProcessTabChange}
                   currentUser={currentUser}
@@ -1847,7 +1922,7 @@ export default function App() {
           permissions={permissions}
           onNavigateToPermissions={handleNavigateToPermissions}
           onUpdatePermissions={handleUpdatePermissions}
-          onRequestDevicePermissions={() => setShowPermissionsPromptModal(true)}
+          onRequestDevicePermissions={handleRequestDevicePermissions}
           onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
           onUpdateRecipe={(updatedR) => {
             setRecipes(prev => prev.map(r => r.id === updatedR.id ? updatedR : r));
@@ -1896,19 +1971,19 @@ export default function App() {
 
       {/* Gonnng Feedback Philosophy Manual Modal */}
       {showPhilosophyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="rounded-3xl p-6 md:p-8 max-w-xl w-full border shadow-2xl space-y-6 bg-white border-gray-200 text-gray-900"
+            className="rounded-none sm:rounded-3xl p-6 md:p-8 max-w-none sm:max-w-xl w-full h-full sm:h-auto max-h-full sm:max-h-[90vh] overflow-y-auto border shadow-2xl space-y-6 bg-white border-gray-200 text-gray-900 flex flex-col justify-between"
           >
             <div className="flex justify-between items-start">
               <div>
                 <span className="bg-[#FF5C00]/15 text-[#FF5C00] font-mono text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-wider">
-                  The Gonnng Way
+                  Brand Mantra — Keep Gonnng.
                 </span>
-                <h3 className="text-xl font-display font-black text-white mt-1.5 uppercase tracking-tight">
-                  Feedback Philosophy Manual
+                <h3 className="text-xl font-display font-black text-gray-900 mt-1.5 uppercase tracking-tight">
+                  Your Ideas Deserve To Get Done
                 </h3>
               </div>
               <button 
@@ -1916,51 +1991,54 @@ export default function App() {
                   setShowPhilosophyModal(false);
                   localStorage.setItem('gonnng_philosophy_seen', 'true');
                 }}
-                className="text-white/40 hover:text-white transition-all font-mono text-sm cursor-pointer"
+                className="text-gray-400 hover:text-gray-900 transition-all font-mono text-sm cursor-pointer"
               >
                 ✕ Close
               </button>
             </div>
 
-            <div className="text-xs text-white/60 leading-relaxed space-y-3 font-sans">
-              <p>
-                Gonnng is built on a single, uncompromising belief: <strong className="text-white font-semibold">"The whole is a sum of its parts."</strong>
+            <div className="text-xs text-gray-600 leading-relaxed space-y-3 font-sans">
+              <p className="text-sm font-bold text-gray-900 italic">
+                "Progress over perfection. Make. Improve. Finish."
               </p>
               <p>
-                Too often, we only notice final, shiny outcomes and ignore the microscopic blocks of labor that made them real. Gonnng exists to expose that effort and give creators a framework to keep going. We use the structured simplicity of making a BLT sandwich as our blueprint model for executing great creative work.
+                Gonnng is a <strong className="text-gray-900 font-semibold">progress journal for creative work</strong>. Instead of only showcasing finished projects, Gonnng helps creators document, organize, improve, and complete ideas with encouragement from the people they trust most.
               </p>
-              <p className="text-white/80">
-                To keep our community highly productive and direct, our feed rejects empty praise. Instead, we use three surgical <strong className="text-white">"Gong Checks"</strong> to evaluate progress logs:
+              <p>
+                Ideas become skills. Skills become craftsmanship. Craftsmanship becomes confidence. Confidence creates better ideas.
+              </p>
+              <p className="text-gray-800 font-medium">
+                Every update in your Circle receives coaching feedback, not empty applause:
               </p>
             </div>
 
-            <div className="grid gap-3.5 pt-2">
-              <div className="bg-emerald-500/5 border border-emerald-500/10 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="continue">🟢</span>
+            <div className="grid gap-3.5 pt-1">
+              <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex items-start gap-3">
+                <span className="text-xl shrink-0" role="img" aria-label="perfect">🟢</span>
                 <div>
-                  <h4 className="text-xs font-mono font-black uppercase text-emerald-400">Continue</h4>
-                  <p className="text-[11px] text-white/60 leading-normal mt-0.5">
-                    Signal that the creator's sequence is incredibly effective. Urge them to proceed down this active path without distraction.
+                  <h4 className="text-xs font-mono font-black uppercase text-emerald-800">Perfect</h4>
+                  <p className="text-[11px] text-emerald-900/80 leading-normal mt-0.5 font-medium">
+                    You've got it. Signal that the creator's current step or technique is dialed in.
                   </p>
                 </div>
               </div>
 
-              <div className="bg-yellow-400/5 border border-yellow-400/10 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="refine">🟡</span>
+              <div className="bg-orange-50 border border-orange-200 p-3.5 rounded-2xl flex items-start gap-3">
+                <span className="text-xl shrink-0" role="img" aria-label="potential">🟡</span>
                 <div>
-                  <h4 className="text-xs font-mono font-black uppercase text-yellow-400">Refine</h4>
-                  <p className="text-[11px] text-white/60 leading-normal mt-0.5">
-                    Highlight micro-adjustments or polish. Suggest small tweaks to the active phase without derailing the overall creative schedule.
+                  <h4 className="text-xs font-mono font-black uppercase text-[#FF5C00]">Potential</h4>
+                  <p className="text-[11px] text-orange-950/80 leading-normal mt-0.5 font-medium">
+                    Keep working on it. Micro-adjustments and subtle polish will take this to the next level.
                   </p>
                 </div>
               </div>
 
-              <div className="bg-red-500/5 border border-red-500/10 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="reconsider">🔴</span>
+              <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex items-start gap-3">
+                <span className="text-xl shrink-0" role="img" aria-label="promise">🔴</span>
                 <div>
-                  <h4 className="text-xs font-mono font-black uppercase text-red-500">Reconsider</h4>
-                  <p className="text-[11px] text-white/60 leading-normal mt-0.5">
-                    Trigger a constructive pause. Flag highly redundant steps, structural bottlenecks, or misalignment with core project goals.
+                  <h4 className="text-xs font-mono font-black uppercase text-rose-700">Promise</h4>
+                  <p className="text-[11px] text-rose-950/80 leading-normal mt-0.5 font-medium">
+                    You're headed somewhere, try another approach. Back to the drawing board for a fresh angle.
                   </p>
                 </div>
               </div>
@@ -1983,13 +2061,13 @@ export default function App() {
 
       {/* Complete Project Celebration Modal */}
       {congratulateProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-2xl border bg-white border-gray-200 text-gray-900"
+            className="rounded-none sm:rounded-3xl p-6 sm:p-8 max-w-none sm:max-w-md w-full h-full sm:h-auto max-h-full sm:max-h-[85vh] overflow-y-auto text-center space-y-6 shadow-2xl border bg-white border-gray-200 text-gray-900 flex flex-col justify-between"
           >
-            <div className="inline-flex w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-600 items-center justify-center text-3xl">
+            <div className="inline-flex w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-600 items-center justify-center text-3xl mx-auto">
               🏆
             </div>
             <div className="space-y-1.5">
@@ -2015,12 +2093,12 @@ export default function App() {
 
       {/* Recipe Modal Overlay (Process View Permalinks) */}
       {selectedRecipeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-gray-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6 bg-gray-900/40 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className="w-full max-w-2xl max-h-[90vh] rounded-3xl p-5 sm:p-7 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
+            className="w-full h-full sm:h-auto max-w-none sm:max-w-2xl max-h-full sm:max-h-[90vh] rounded-none sm:rounded-3xl p-5 sm:p-7 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900 overflow-y-auto"
           >
             <div className="flex justify-between items-start pb-4 border-b border-gray-200">
               <div className="space-y-1 min-w-0 pr-4">

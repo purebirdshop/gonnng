@@ -58,7 +58,7 @@ export interface Recipe {
   authorId: string;
   authorName: string;
   authorUsername?: string;
-  category: 'Humorous' | 'Practical' | 'Creative' | 'Educational' | 'Strategy';
+  category: string;
   tags: string[];
   phases: RecipePhase[];
   visibility?: RecipeVisibility;
@@ -78,9 +78,11 @@ export interface Recipe {
 export interface Project {
   id: string;
   publicId?: string;
+  userId?: string;
   title: string;
   recipeId: string;
   recipeTitle: string;
+  category?: string;
   phases: Phase[];
   createdAt: string;
   completedAt?: string;
@@ -111,6 +113,7 @@ export interface Creator {
   avatarUrl: string;
   avatarBucket?: string;
   avatarPath?: string;
+  avatarStoragePath?: string;
   bio: string;
   goals: string;
   privacyDefault: ProfileVisibility;
@@ -121,6 +124,7 @@ export interface Creator {
   isFollowing?: boolean;
   followsYou?: boolean;
   isInCircle?: boolean;
+  allowedEnvironments?: string[];
 }
 
 export interface PostComment {

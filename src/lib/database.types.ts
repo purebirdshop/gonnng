@@ -21,28 +21,49 @@ export interface Database {
           id: string
           public_id: string
           username: string
+          first_name: string | null
+          last_name: string | null
           email: string
+          password_hash: string | null
+          avatar_storage_path: string | null
+          is_onboarded: boolean | null
+          email_verified: boolean | null
           about: string | null
           profile_visibility: ProfileVisibility
           created_at: string
+          updated_at?: string | null
         }
         Insert: {
           id?: string
           public_id: string
           username: string
+          first_name?: string | null
+          last_name?: string | null
           email: string
+          password_hash?: string | null
+          avatar_storage_path?: string | null
+          is_onboarded?: boolean | null
+          email_verified?: boolean | null
           about?: string | null
           profile_visibility?: ProfileVisibility
           created_at?: string
+          updated_at?: string | null
         }
         Update: {
           id?: string
           public_id?: string
           username?: string
+          first_name?: string | null
+          last_name?: string | null
           email?: string
+          password_hash?: string | null
+          avatar_storage_path?: string | null
+          is_onboarded?: boolean | null
+          email_verified?: boolean | null
           about?: string | null
           profile_visibility?: ProfileVisibility
           created_at?: string
+          updated_at?: string | null
         }
       }
       recipes: {

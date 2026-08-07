@@ -152,14 +152,12 @@ export default function HomeCreatorProfileView({
         {/* Bio & Goal */}
         <div className="my-auto py-4 space-y-3 bg-white/5 border border-white/10 p-4 rounded-2xl">
           <p className="text-xs text-white/80 leading-relaxed italic">
-            "{activeCreator.bio || 'Gonnng Community Creator'}"
+            "{activeCreator.bio && activeCreator.bio.trim() !== '' ? activeCreator.bio : ""}"
           </p>
-          {activeCreator.goals && (
-            <div className="text-[11px] font-mono text-white/60 pt-2 border-t border-white/10 flex items-center gap-1.5">
-              <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
-              <span>Current Goal: <strong className="text-white font-sans">{activeCreator.goals}</strong></span>
-            </div>
-          )}
+          <div className="text-[11px] font-mono text-white/60 pt-2 border-t border-white/10 flex items-center gap-1.5">
+            <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
+            <span>Current Goal: <strong className="text-white font-sans">{activeCreator.goals && activeCreator.goals.trim() !== '' ? activeCreator.goals : ""}</strong></span>
+          </div>
         </div>
 
         {/* Stats & Follow Button */}
@@ -348,14 +346,22 @@ export default function HomeCreatorProfileView({
                           className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-all group"
                           title={`View ${item.name}'s profile`}
                         >
-                          <img
-                            src={item.avatarUrl && item.avatarUrl.trim() !== '' ? getPublicMediaUrl('Gonnng', item.avatarUrl.trim()) : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                            alt={item.name}
-                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
+                          {item.avatarUrl && item.avatarUrl.trim() !== '' ? (
+                            <img
+                              src={getPublicMediaUrl('Gonnng', item.avatarUrl.trim())}
+                              alt={item.name}
+                              className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
+                                amIFollowingItem ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
+                              }`}
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/10 shrink-0 ${
                               amIFollowingItem ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
-                            }`}
-                            referrerPolicy="no-referrer"
-                          />
+                            }`}>
+                              <User className="w-5 h-5 text-white/70" />
+                            </div>
+                          )}
                           <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <h4 className="text-xs font-bold text-white truncate group-hover:underline">{item.name}</h4>

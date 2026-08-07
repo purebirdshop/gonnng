@@ -14,9 +14,11 @@ import {
   Hash,
   BookOpen,
   FolderKanban,
-  PrinterCheck
+  PrinterCheck,
+  User
 } from 'lucide-react';
 import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
+import { searchCategories } from '../data/categoriesData';
 
 interface SearchRecipesModalProps {
   onClose: () => void;
@@ -63,12 +65,18 @@ export default function SearchRecipesModal({
   });
 
   // Filter Recipes
+  const matchedCategoryNames = q ? searchCategories(q).map(m => m.category.name.toLowerCase()) : [];
+
   const filteredRecipes = communityRecipes.filter(recipe => {
     if (!q) return true;
+    const catLower = (recipe.category || '').toLowerCase();
+    const isCategoryMatch = catLower.includes(q) || matchedCategoryNames.includes(catLower);
+
     return (
       recipe.title.toLowerCase().includes(q) ||
       recipe.description.toLowerCase().includes(q) ||
       recipe.authorName.toLowerCase().includes(q) ||
+      isCategoryMatch ||
       recipe.tags.some(t => t.toLowerCase().includes(q))
     );
   });
@@ -113,8 +121,8 @@ export default function SearchRecipesModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="search-modal-root">
-      <div className="rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl border max-h-[90vh] flex flex-col bg-white text-gray-900 border-gray-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="search-modal-root">
+      <div className="rounded-none sm:rounded-3xl w-full h-full sm:h-auto max-w-none sm:max-w-4xl overflow-hidden shadow-2xl border max-h-full sm:max-h-[90vh] flex flex-col bg-white text-gray-900 border-gray-200">
         
         {/* Modal Header */}
         <div className="p-5 flex justify-between items-center shrink-0 border-b bg-gray-50 border-gray-200">
@@ -196,12 +204,18 @@ export default function SearchRecipesModal({
                         onClick={() => setSelectedCreator(creator)}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <img 
-                            src={creator.avatarUrl && creator.avatarUrl.trim() !== '' ? creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} 
-                            alt={creator.name} 
-                            className="w-10 h-10 rounded-full object-cover border border-white/20 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
+                          {creator.avatarUrl && creator.avatarUrl.trim() !== '' ? (
+                            <img 
+                              src={creator.avatarUrl.trim()} 
+                              alt={creator.name} 
+                              className="w-10 h-10 rounded-full object-cover border border-white/20 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
+                              <User className="w-5 h-5 text-white/70" />
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <h4 className="text-xs font-bold text-white truncate flex items-center gap-1">
                               {creator.name}
@@ -439,12 +453,18 @@ export default function SearchRecipesModal({
               </div>
 
               <div className="text-center space-y-3">
-                <img 
-                  src={selectedCreator.avatarUrl && selectedCreator.avatarUrl.trim() !== '' ? selectedCreator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} 
-                  alt={selectedCreator.name} 
-                  className="w-16 h-16 rounded-full object-cover mx-auto border-2 border-[#FF5C00]/40 shadow-md"
-                  referrerPolicy="no-referrer"
-                />
+                {selectedCreator.avatarUrl && selectedCreator.avatarUrl.trim() !== '' ? (
+                  <img 
+                    src={selectedCreator.avatarUrl.trim()} 
+                    alt={selectedCreator.name} 
+                    className="w-16 h-16 rounded-full object-cover mx-auto border-2 border-[#FF5C00]/40 shadow-md"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mx-auto border-2 border-[#FF5C00]/40 shadow-md">
+                    <User className="w-8 h-8 text-white/70" />
+                  </div>
+                )}
                 <div>
                   <h3 className="text-base font-bold text-white flex justify-center items-center gap-1.5">
                     {selectedCreator.name}
@@ -470,11 +490,15 @@ export default function SearchRecipesModal({
               <div className="space-y-3">
                 <div className="space-y-1">
                   <h5 className="text-[10px] font-mono text-white/40 uppercase font-bold">Creator Bio</h5>
-                  <p className="text-xs text-white/80 font-sans leading-relaxed">{selectedCreator.bio}</p>
+                  <p className="text-xs text-white/80 font-sans leading-relaxed">
+                    {selectedCreator.bio && selectedCreator.bio.trim() !== '' ? selectedCreator.bio : ""}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <h5 className="text-[10px] font-mono text-white/40 uppercase font-bold">Focus Goals</h5>
-                  <p className="text-xs text-white/70 font-mono leading-relaxed">{selectedCreator.goals}</p>
+                  <p className="text-xs text-white/70 font-mono leading-relaxed">
+                    {selectedCreator.goals && selectedCreator.goals.trim() !== '' ? selectedCreator.goals : ""}
+                  </p>
                 </div>
               </div>
 

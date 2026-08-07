@@ -87,7 +87,6 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
 
   if (path.startsWith('http://') || path.startsWith('https://')) {
     if (!isSupabaseUrl) {
-      // Keep external third-party images (e.g. Unsplash) untouched
       return path;
     }
   }

@@ -24,6 +24,7 @@ import FileUploadZone from './FileUploadZone';
 import { UploadedFile } from '../services/uploadService';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { ENABLE_AREA_OF_FOCUS } from '../featureFlags';
+import CategoryCombobox from './CategoryCombobox';
 
 interface CreateHubProps {
   onClose: () => void;
@@ -76,7 +77,7 @@ export default function CreateHub({
 }: CreateHubProps) {
   const myUserId = currentUser?.id || 'user-current';
   const myUserName = currentUser?.name || 'Creative Architect';
-  const myUserAvatar = currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120';
+  const myUserAvatar = currentUser?.avatarUrl || '';
   
   // Carousel Step State: 1 = Camera / Media Capture, 2 = Details Form, 3 = Preview
   const [carouselStep, setCarouselStep] = useState<1 | 2 | 3>(1);
@@ -481,6 +482,7 @@ export default function CreateHub({
   const [projFocusId, setProjFocusId] = useState<string>(''); // Optional Area of FOCUS
   const [selectedRecipeId, setSelectedRecipeId] = useState<string>(forkInitialData ? forkInitialData.id : ''); // Optional Recipe
   const [projTitle, setProjTitle] = useState(forkInitialData ? forkInitialData.title : '');
+  const [projCategory, setProjCategory] = useState(forkInitialData ? forkInitialData.category : 'Creative');
   const [projDesc, setProjDesc] = useState(forkInitialData ? forkInitialData.description : '');
   const [projTimeframe, setProjTimeframe] = useState(() => {
     if (forkInitialData?.phases) {
@@ -527,6 +529,7 @@ export default function CreateHub({
       setActiveMode('project');
       setSelectedRecipeId(forkInitialData.id);
       setProjTitle(forkInitialData.title);
+      setProjCategory(forkInitialData.category || 'Creative');
       setProjDesc(forkInitialData.description);
       const totalEst = forkInitialData.phases?.reduce((sum, ph) => sum + (ph.tasks?.reduce((ts, t) => ts + (t.estimatedHours || 2), 0) || 0), 0) || 8;
       setProjTimeframe(String(totalEst));
@@ -540,7 +543,7 @@ export default function CreateHub({
     } else if (editingRecipe) {
       setActiveMode('recipe');
       setRecipeTitle(editingRecipe.title);
-      setRecipeCategory(editingRecipe.category);
+      setRecipeCategory(editingRecipe.category || 'Creative');
       setRecipeDesc(editingRecipe.description);
       setRecipeTags(editingRecipe.tags ? editingRecipe.tags.join(', ') : '');
       if (editingRecipe.phases && editingRecipe.phases.length > 0) {
@@ -558,6 +561,7 @@ export default function CreateHub({
     const found = recipes.find(r => r.id === recipeId);
     if (found) {
       if (!projTitle) setProjTitle(found.title);
+      if (found.category) setProjCategory(found.category);
       if (!projDesc) setProjDesc(found.description);
       const totalEst = found.phases?.reduce((sum, ph) => sum + (ph.tasks?.reduce((ts, t) => ts + (t.estimatedHours || 2), 0) || 0), 0) || 0;
       if (totalEst > 0 && !projTimeframe) setProjTimeframe(String(totalEst));
@@ -829,6 +833,7 @@ export default function CreateHub({
     const newProject: Project = {
       id: `project-${Date.now()}`,
       title: projTitle.trim(),
+      category: projCategory || chosenRecipe?.category || 'Creative',
       recipeId: chosenRecipe ? chosenRecipe.id : 'recipe-custom',
       recipeTitle: chosenRecipe ? chosenRecipe.title : (projFocusId ? (collections.find(c => c.id === projFocusId)?.title || 'Area of FOCUS') : 'Standalone Project'),
       phases: projectPhases,
@@ -850,7 +855,7 @@ export default function CreateHub({
         title: projTitle.trim(),
         authorId: myUserId,
         authorName: myUserName,
-        category: chosenRecipe ? chosenRecipe.category : 'Creative',
+        category: projCategory || chosenRecipe?.category || 'Creative',
         description: projDesc.trim() || `Execution blueprint for ${projTitle.trim()}`,
         phases: projectPhases.map(ph => ({
           title: ph.title,
@@ -920,14 +925,13 @@ export default function CreateHub({
       ];
     }
 
-    const validCategories: ('Humorous' | 'Practical' | 'Creative' | 'Educational' | 'Strategy')[] = ['Humorous', 'Practical', 'Creative', 'Educational', 'Strategy'];
-    const matchedCategory = validCategories.find(c => c.toLowerCase() === recipeCategory.trim().toLowerCase()) || 'Creative';
+    const selectedCat = recipeCategory.trim() || 'Creative';
 
     if (editingRecipe) {
       const updatedRecipe: Recipe = {
         ...editingRecipe,
         title: recipeTitle.trim(),
-        category: matchedCategory,
+        category: selectedCat,
         description: recipeDesc.trim() || `Step-by-step process blueprint for ${recipeTitle.trim()}`,
         phases: recipePhases,
         tags: recipeTags ? recipeTags.split(',').map(t => t.trim()).filter(Boolean) : editingRecipe.tags,
@@ -947,7 +951,7 @@ export default function CreateHub({
       title: recipeTitle.trim(),
       authorId: myUserId,
       authorName: myUserName,
-      category: matchedCategory,
+      category: selectedCat,
       description: recipeDesc.trim() || `Step-by-step process blueprint for ${recipeTitle.trim()}`,
       phases: recipePhases,
       tags: recipeTags ? recipeTags.split(',').map(t => t.trim()).filter(Boolean) : ['custom', 'recipe'],
@@ -1111,7 +1115,7 @@ export default function CreateHub({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="creation-station-modal">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="creation-station-modal">
       <input
         type="file"
         ref={fileInputRef}
@@ -1121,7 +1125,7 @@ export default function CreateHub({
         className="hidden"
       />
 
-      <div className="rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border max-h-[92vh] flex flex-col relative transition-colors bg-white text-gray-900 border-gray-200">
+      <div className="rounded-none sm:rounded-3xl w-full h-full sm:h-auto max-w-none sm:max-w-xl overflow-hidden shadow-2xl border max-h-full sm:max-h-[92vh] flex flex-col relative transition-colors bg-white text-gray-900 border-gray-200">
         
         {/* Fixed Non-Scrollable Header */}
         <div className="p-4 sm:p-5 border-b flex items-center justify-between gap-3 shrink-0 border-gray-200 bg-gray-50/50">
@@ -1337,7 +1341,7 @@ export default function CreateHub({
           {/* STEP 2: DETAILS FORM */}
           {carouselStep === 2 && (
             <div className="space-y-4 flex-1 flex flex-col justify-between">
-              <div className="space-y-4 overflow-y-auto max-h-[480px] pr-1">
+              <div className="space-y-4 w-full max-w-full">
                 {/* Media Preview Header */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -1365,10 +1369,10 @@ export default function CreateHub({
                         <button
                           type="button"
                           onClick={() => removeMediaItem(mediaItems[0].id)}
-                          className="absolute top-2 right-2 p-1.5 bg-black/80 hover:bg-red-600 text-white rounded-full transition-all cursor-pointer shadow-lg"
+                          className="absolute top-2 right-2 p-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow-lg border border-white/30 z-10 flex items-center justify-center"
                           title="Remove media"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-4 h-4 stroke-[2.5]" />
                         </button>
                       </div>
 
@@ -1385,9 +1389,10 @@ export default function CreateHub({
                               <button
                                 type="button"
                                 onClick={() => removeMediaItem(item.id)}
-                                className="absolute top-0.5 right-0.5 p-1 bg-black/80 text-white hover:text-red-400 rounded-full text-[9px]"
+                                className="absolute top-0.5 right-0.5 p-1 bg-[#FF5C00] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow border border-white/30 z-10 flex items-center justify-center"
+                                title="Remove media"
                               >
-                                <X className="w-3 h-3" />
+                                <X className="w-3 h-3 stroke-[2.5]" />
                               </button>
                             </div>
                           ))}
@@ -1629,6 +1634,14 @@ export default function CreateHub({
                       />
                     </div>
 
+                    <CategoryCombobox
+                      value={projCategory}
+                      onChange={setProjCategory}
+                      label="Project Category"
+                      placeholder="Search category (e.g. Cinematography, Coding, Photography)..."
+                      id="project-category-combobox"
+                    />
+
                     <div className="space-y-1.5">
                       <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>
                       <textarea
@@ -1773,6 +1786,15 @@ export default function CreateHub({
                         placeholder="e.g. Standard Oil Canvas Preparation"
                       />
                     </div>
+
+                    <CategoryCombobox
+                      value={recipeCategory}
+                      onChange={setRecipeCategory}
+                      label="Recipe Category"
+                      placeholder="Search category (e.g. Culinary Arts, Cinematography, Crafts)..."
+                      id="recipe-category-combobox"
+                      required
+                    />
 
                     <div className="space-y-1.5">
                       <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Description</label>

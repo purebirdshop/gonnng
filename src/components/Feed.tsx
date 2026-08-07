@@ -21,7 +21,8 @@ import {
   BookOpen,
   Heart,
   CornerDownRight,
-  ArrowUpRight
+  ArrowUpRight,
+  User
 } from 'lucide-react';
 
 export function formatCount(num: number): string {
@@ -171,7 +172,6 @@ export default function Feed({
   };
 
   const getUserAvatar = (userId: string, fallbackAvatar?: string) => {
-    const defaultPlaceholder = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120';
     let avatarCandidate = '';
     if (currentUser && (userId === currentUser.id || userId === 'user-1')) {
       avatarCandidate = currentUser.avatarUrl?.trim() || '';
@@ -183,7 +183,7 @@ export default function Feed({
     if (!avatarCandidate) {
       avatarCandidate = fallbackAvatar?.trim() || '';
     }
-    if (!avatarCandidate) return defaultPlaceholder;
+    if (!avatarCandidate) return '';
     return getPublicMediaUrl('Gonnng', avatarCandidate);
   };
 
@@ -394,8 +394,8 @@ export default function Feed({
       const newCommentObj: PostComment = {
         id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         userId: currentUserId,
-        userName: currentUser?.name || 'You',
-        userAvatar: currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
+        userName: currentUser?.username,
+        userAvatar: currentUser?.avatarStoragePath,
         content: newCommentText.trim(),
         timeString: 'Just now',
         likes: 0,
@@ -485,14 +485,22 @@ export default function Feed({
                     className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-all group/user px-2.5 py-1 rounded-full border shadow-md bg-white/95 border-gray-300 text-gray-900 backdrop-blur-md"
                     title={`View ${getUserName(post.userId, post.userName)}'s profile`}
                   >
-                    <img 
-                      src={getUserAvatar(post.userId, post.userAvatar)} 
-                      alt={getUserName(post.userId, post.userName)} 
-                      className={`w-5 h-5 rounded-full object-cover shrink-0 border border-gray-300 ${
+                    {getUserAvatar(post.userId, post.userAvatar) ? (
+                      <img 
+                        src={getUserAvatar(post.userId, post.userAvatar)} 
+                        alt={getUserName(post.userId, post.userName)} 
+                        className={`w-5 h-5 rounded-full object-cover shrink-0 border border-gray-300 ${
+                          isUserFollowed(post.userId, post.userName) ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-white' : ''
+                        }`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className={`w-5 h-5 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0 ${
                         isUserFollowed(post.userId, post.userName) ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-white' : ''
-                      }`}
-                      referrerPolicy="no-referrer"
-                    />
+                      }`}>
+                        <User className="w-3 h-3 text-gray-600" />
+                      </div>
+                    )}
                     <span className="font-bold text-xs truncate max-w-[110px] sm:max-w-[150px] group-hover/user:underline text-gray-900">
                       {getUserName(post.userId, post.userName)}
                     </span>
@@ -646,7 +654,7 @@ export default function Feed({
                             ? 'bg-emerald-500 text-black font-black shadow-md'
                             : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-300'
                         }`}
-                        title="Keep going / Continue"
+                        title="Perfect — You've got it!"
                       >
                         <Disc3 className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                         <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.continue)}</span>
@@ -662,7 +670,7 @@ export default function Feed({
                             ? 'bg-[#FF5C00] text-black font-black shadow-md'
                             : 'bg-orange-50 text-[#FF5C00] hover:bg-orange-100 border border-orange-300'
                         }`}
-                        title="Needs work / Refine"
+                        title="Potential — Keep working on it"
                       >
                         <Pencil className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                         <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.refine)}</span>
@@ -678,7 +686,7 @@ export default function Feed({
                             ? 'bg-red-500 text-white font-black shadow-md'
                             : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-300'
                         }`}
-                        title="Stop / Reconsider"
+                        title="Promise — Try another approach"
                       >
                         <Octagon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                         <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.reconsider)}</span>
@@ -727,7 +735,7 @@ export default function Feed({
       {/* CONSOLIDATED GALLERY MODAL */}
       <AnimatePresence>
         {fullPostModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
             {/* Click backdrop to close */}
             <div className="absolute inset-0" onClick={() => setFullPostModal(null)} />
 
@@ -736,7 +744,7 @@ export default function Feed({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-              className="relative w-full max-w-2xl max-h-[90vh] rounded-3xl p-4 sm:p-6 shadow-2xl z-10 flex flex-col overflow-hidden border bg-white border-gray-200 text-gray-900"
+              className="relative w-full h-full sm:h-auto max-w-none sm:max-w-2xl max-h-full sm:max-h-[90vh] rounded-none sm:rounded-3xl p-4 sm:p-6 shadow-2xl z-10 flex flex-col overflow-hidden border bg-white border-gray-200 text-gray-900"
             >
               {/* Close Button Upper Right Corner */}
               <button
@@ -775,7 +783,7 @@ export default function Feed({
                           ? 'bg-emerald-500 text-black font-black'
                           : 'bg-white/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
                       }`}
-                      title="Continue / Keep going"
+                      title="Perfect — You've got it!"
                     >
                       <Disc3 className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                       <span>{formatCount(fullPostModal.gongs.continue)}</span>
@@ -802,7 +810,7 @@ export default function Feed({
                           ? 'bg-[#FF5C00] text-black font-black'
                           : 'bg-white/10 text-[#FF5C00] hover:bg-[#FF5C00]/20 border border-[#FF5C00]/30'
                       }`}
-                      title="Refine / Needs work"
+                      title="Potential — Keep working on it"
                     >
                       <Pencil className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                       <span>{formatCount(fullPostModal.gongs.refine)}</span>
@@ -829,7 +837,7 @@ export default function Feed({
                           ? 'bg-red-500 text-white font-black'
                           : 'bg-white/10 text-red-400 hover:bg-red-500/20 border border-red-500/30'
                       }`}
-                      title="Reconsider / Stop"
+                      title="Promise — Try another approach"
                     >
                       <Octagon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                       <span>{formatCount(fullPostModal.gongs.reconsider)}</span>
@@ -861,12 +869,18 @@ export default function Feed({
                     className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-all group"
                     title={`View ${getUserName(fullPostModal.userId, fullPostModal.userName)}'s profile`}
                   >
-                    <img 
-                      src={getUserAvatar(fullPostModal.userId, fullPostModal.userAvatar)} 
-                      alt={getUserName(fullPostModal.userId, fullPostModal.userName)} 
-                      className="w-8 h-8 rounded-full object-cover border border-white/20 shrink-0"
-                      referrerPolicy="no-referrer"
-                    />
+                    {getUserAvatar(fullPostModal.userId, fullPostModal.userAvatar) ? (
+                      <img 
+                        src={getUserAvatar(fullPostModal.userId, fullPostModal.userAvatar)} 
+                        alt={getUserName(fullPostModal.userId, fullPostModal.userName)} 
+                        className="w-8 h-8 rounded-full object-cover border border-white/20 shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
+                        <User className="w-4 h-4 text-white/70" />
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <h4 className="text-sm font-bold text-white leading-tight group-hover:underline">
                         {getUserName(fullPostModal.userId, fullPostModal.userName)}
@@ -1114,14 +1128,22 @@ function CommentCard({
           className="flex items-center gap-1.5 min-w-0 flex-wrap cursor-pointer hover:opacity-80 transition-all group"
           title={`View ${displayName}'s profile`}
         >
-          <img 
-            src={displayAvatar} 
-            alt={displayName} 
-            className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full object-cover shrink-0 border border-white/20 ${
+          {displayAvatar ? (
+            <img 
+              src={displayAvatar} 
+              alt={displayName} 
+              className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full object-cover shrink-0 border border-white/20 ${
+                isFollowed ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-black' : ''
+              }`}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/20 ${
               isFollowed ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-black' : ''
-            }`}
-            referrerPolicy="no-referrer"
-          />
+            }`}>
+              <User className="w-3 h-3 text-white/70" />
+            </div>
+          )}
           <span className="text-xs font-bold text-white truncate max-w-[120px] sm:max-w-[160px] group-hover:underline">{displayName}</span>
           
           {/* Softer color "replying to @User" indicator */}

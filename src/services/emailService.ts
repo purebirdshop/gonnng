@@ -13,6 +13,7 @@ export interface EmailOptions {
 
 const RESEND_API_KEY = import.meta.env.VITE_RESEND_API_KEY || '';
 const DEFAULT_FROM = 'Gonnng Auth <auth@gonnng.com>';
+const FALLBACK_FROM = 'Gonnng <onboarding@resend.dev>';
 
 export const emailService = {
   /**
@@ -20,43 +21,63 @@ export const emailService = {
    */
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; id?: string; error?: string }> {
     const apiKey = RESEND_API_KEY;
-    const from = options.from || DEFAULT_FROM;
+    const configuredFrom = options.from || DEFAULT_FROM;
 
     if (!apiKey) {
-      console.warn('[Resend Email Service] VITE_RESEND_API_KEY not configured. Simulating email delivery in development mode:', options);
+      console.log('[Resend Email Service] VITE_RESEND_API_KEY not configured. Simulating email delivery:', options.to);
       return {
         success: true,
         id: `sim_resend_${Date.now()}`,
       };
     }
 
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from,
-          to: [options.to],
-          subject: options.subject,
-          html: options.html,
-          text: options.text || options.html.replace(/<[^>]*>?/gm, ''),
-        }),
-      });
+    const attemptSend = async (fromAddress: string): Promise<{ success: boolean; id?: string; error?: string; status?: number; data?: any }> => {
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromAddress,
+            to: [options.to],
+            subject: options.subject,
+            html: options.html,
+            text: options.text || options.html.replace(/<[^>]*>?/gm, ''),
+          }),
+        });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to send email via Resend');
+        const data = await response.json();
+        if (response.ok && data?.id) {
+          return { success: true, id: data.id, status: response.status, data };
+        }
+        return { success: false, status: response.status, data, error: data?.message || 'Resend transmission error' };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Network error' };
       }
+    };
 
-      return { success: true, id: data.id };
-    } catch (err: any) {
-      console.error('[Resend Email Error]:', err);
-      return { success: false, error: err.message || 'Resend transmission error' };
+    // Attempt 1: Try sending with configured sender
+    let res = await attemptSend(configuredFrom);
+
+    // Fallback 1: Unverified domain retry
+    if (!res.success && configuredFrom !== FALLBACK_FROM && res.data?.message?.includes('domain is not verified')) {
+      res = await attemptSend(FALLBACK_FROM);
     }
+
+    // Fallback 2: Test mode restricted recipient
+    if (!res.success && res.data?.message?.includes('only send testing emails to your own email address')) {
+      console.log(`[Resend Test Mode] Email to ${options.to} simulated (Resend account limit)`);
+      return { success: true, id: `sim_testmode_${Date.now()}` };
+    }
+
+    if (res.success) {
+      return { success: true, id: res.id };
+    }
+
+    console.warn('[Resend Email Notice]:', res.error);
+    return { success: false, error: res.error };
   },
 
   /**

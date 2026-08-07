@@ -76,10 +76,21 @@ export default function UserProfile({
   const [name, setName] = useState(currentUser.name);
   const [bio, setBio] = useState(currentUser.bio);
   const [goals, setGoals] = useState(currentUser.goals);
-  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser.privacyDefault);
+  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser.privacyDefault || 'public');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  // Sync profile form state when currentUser or settings drawer state changes
+  React.useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.name || '');
+      setBio(currentUser.bio || '');
+      setGoals(currentUser.goals || '');
+      setPrivacy(currentUser.privacyDefault || 'public');
+      setAvatarUrl(currentUser.avatarUrl || '');
+    }
+  }, [currentUser, isSettingsDrawerOpen]);
 
   // Device permissions table state
   const [detailedPermissions, setDetailedPermissions] = useState<Record<PermissionType, PermissionStatus>>({
@@ -189,6 +200,7 @@ export default function UserProfile({
     e.preventDefault();
     setIsSaving(true);
     let finalAvatarUrl = avatarUrl;
+    let finalAvatarPath = currentUser.avatarPath || currentUser.avatarStoragePath || '';
 
     try {
       if (selectedAvatarFile) {
@@ -196,6 +208,7 @@ export default function UserProfile({
         try {
           const uploaded = await uploadService.uploadAvatar(selectedAvatarFile);
           finalAvatarUrl = uploaded.publicUrl || uploaded.url || finalAvatarUrl;
+          finalAvatarPath = uploaded.path;
           setAvatarUrl(finalAvatarUrl);
         } catch (uploadErr) {
           console.error('Failed to upload avatar during configuration save:', uploadErr);
@@ -211,7 +224,9 @@ export default function UserProfile({
         bio,
         goals,
         privacyDefault: privacy,
-        avatarUrl: finalAvatarUrl
+        avatarUrl: finalAvatarUrl,
+        avatarPath: finalAvatarPath,
+        avatarStoragePath: finalAvatarPath
       });
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 3000);
@@ -251,12 +266,12 @@ export default function UserProfile({
     >
       {/* Superimposed Post Modal Overlay from Updates / Shared Messages */}
       {superimposedPost && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-0 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#FF5C00] space-y-4 my-auto relative bg-white text-gray-900"
+            className="w-full h-full sm:h-auto max-w-none sm:max-w-2xl max-h-full sm:max-h-[90vh] overflow-y-auto rounded-none sm:rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#FF5C00] space-y-4 my-auto relative bg-white text-gray-900"
             id="superimposed-post-container"
           >
             {/* Header Badge & Icon-only Close Action */}
@@ -488,16 +503,18 @@ export default function UserProfile({
         </div>
 
         {/* Middle Section: Bio & Goal */}
-        <div className="my-auto py-4 space-y-3 border p-4 rounded-2xl bg-gray-50 border-gray-200 text-gray-800">
+        <div 
+          onClick={() => setIsSettingsDrawerOpen(true)}
+          className="my-auto py-4 space-y-3 border p-4 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 cursor-pointer hover:bg-gray-100/80 transition-colors"
+          title="Click to edit profile bio and goals"
+        >
           <p className="text-xs leading-relaxed italic text-gray-800">
-            "{currentUser.bio || 'Creative architect building process blueprints and execution sequence algorithms.'}"
+            "{currentUser.bio && currentUser.bio.trim() !== '' ? currentUser.bio : ""}"
           </p>
-          {currentUser.goals && (
-            <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
-              <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
-              <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals}</strong></span>
-            </div>
-          )}
+          <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
+            <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
+            <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals && currentUser.goals.trim() !== '' ? currentUser.goals : ""}</strong></span>
+          </div>
         </div>
 
         {/* Bottom Section: Followers/Following/Circle Stats & Privacy */}
@@ -572,13 +589,13 @@ export default function UserProfile({
       {/* Followers & Following User List Modal */}
       <AnimatePresence>
         {showUserListModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[85vh] space-y-4 border bg-white border-gray-200 text-gray-900"
+              className="rounded-none sm:rounded-3xl p-5 sm:p-6 w-full h-full sm:h-auto max-w-none sm:max-w-md shadow-2xl flex flex-col max-h-full sm:max-h-[85vh] space-y-4 border bg-white border-gray-200 text-gray-900"
             >
               {/* Modal Header with Tabs */}
               <div className="flex justify-between items-center border-b border-white/10 pb-3">
@@ -868,10 +885,10 @@ export default function UserProfile({
                         
                         <div>
                           <input
-                            type="url"
+                            type="text"
                             value={avatarUrl}
                             onChange={(e) => setAvatarUrl(e.target.value)}
-                            placeholder="Or paste image URL (https://...)"
+                            placeholder="Or paste image URL or path (/media/...)"
                             className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs font-mono text-white/80 focus:outline-none focus:border-[#FF5C00]"
                           />
                         </div>
@@ -900,7 +917,7 @@ export default function UserProfile({
                         onChange={(e) => setBio(e.target.value)}
                         rows={3}
                         className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] font-sans text-white/80 leading-relaxed"
-                        placeholder="Tell us what you make (paintings, sandwiches, tech, startups)..."
+                        placeholder="click here to enter"
                       />
                     </div>
 
@@ -914,7 +931,7 @@ export default function UserProfile({
                         id="drawer-profile-goals-input"
                         onChange={(e) => setGoals(e.target.value)}
                         className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] font-sans text-white font-medium"
-                        placeholder="e.g. Host an exhibition in 10 weeks, paint sunset over bay"
+                        placeholder="click here to enter"
                       />
                     </div>
                   </div>
@@ -1261,12 +1278,12 @@ export default function UserProfile({
       {/* Comments Modal for Superimposed or Profile Post */}
       <AnimatePresence>
         {commentModalPost && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="w-full max-w-lg max-h-[85vh] rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
+              className="w-full h-full sm:h-auto max-w-none sm:max-w-lg max-h-full sm:max-h-[85vh] rounded-none sm:rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
             >
               <div className="flex justify-between items-center pb-3 border-b border-gray-200">
                 <div className="flex items-center gap-2">
@@ -1328,7 +1345,7 @@ export default function UserProfile({
                     <div key={c.id} className="p-3 border rounded-2xl space-y-1.5 bg-gray-50 border-gray-200 text-gray-900">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          <img src={c.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
+                          <img src={c.userAvatar} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
                           <span className="text-xs font-bold">{c.userName}</span>
                           {c.replyToUser && (
                             <span className="text-[10px] font-mono text-[#FF5C00]">
@@ -1434,12 +1451,12 @@ export default function UserProfile({
       {/* Device OS Settings Guidance Modal */}
       <AnimatePresence>
         {permissionGuidanceModal?.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="w-full max-w-md rounded-3xl p-6 bg-slate-900 border border-white/10 shadow-2xl space-y-4 text-white relative"
+              className="w-full h-full sm:h-auto max-w-none sm:max-w-md max-h-full sm:max-h-[85vh] rounded-none sm:rounded-3xl p-6 bg-slate-900 border border-white/10 shadow-2xl space-y-4 text-white relative overflow-y-auto"
             >
               <button
                 type="button"

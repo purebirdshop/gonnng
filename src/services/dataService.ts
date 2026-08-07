@@ -104,17 +104,24 @@ export const dataService = {
         return users.map(u => {
           const followerIds = followsList.filter(f => f.followee_id === u.id).map(f => f.follower_id);
           const followingIds = followsList.filter(f => f.follower_id === u.id).map(f => f.followee_id);
+          const avatarStoragePath = u.avatar_storage_path || u.avatar_path || '';
+          const avatarUrl = avatarStoragePath
+            ? getPublicMediaUrl('Gonnng', avatarStoragePath)
+            : '';
 
+          const resolvedName = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || u.public_id || 'Creator';
           return {
             id: u.id,
             publicId: u.public_id,
             username: u.username,
-            name: u.username || u.public_id,
+            name: resolvedName,
             email: u.email,
-            avatarUrl: u.avatar_url || getPublicMediaUrl('avatars', `${u.public_id || u.id}/avatar.jpg`),
-            bio: u.about || '',
-            goals: '',
-            privacyDefault: (u.profile_visibility as ProfileVisibility) || 'public',
+            avatarUrl,
+            avatarPath: avatarStoragePath,
+            avatarStoragePath,
+            bio: u.about,
+            goals: u.goal || '',
+            privacyDefault: (u.profile_visibility || u.privacy_default || 'public') as ProfileVisibility,
             followersCount: followerIds.length,
             followingCount: followingIds.length,
             followerIds,
@@ -167,17 +174,57 @@ export const dataService = {
     setLocal(KEYS.RECIPES, updatedRecipes);
 
     if (this.isSupabaseActive() && supabase) {
-      const userPayload = {
+      const storagePath = updatedUser.avatarPath || updatedUser.avatarStoragePath;
+      const rawName = (updatedUser.name || '').trim();
+      const spaceIdx = rawName.indexOf(' ');
+      const firstName = spaceIdx === -1 ? rawName : rawName.substring(0, spaceIdx);
+      const lastName = spaceIdx === -1 ? '' : rawName.substring(spaceIdx + 1).trim();
+
+      const userPayload: any = {
         id: updatedUser.id,
-        public_id: updatedUser.publicId || updatedUser.username || updatedUser.id,
-        username: updatedUser.username || updatedUser.name.toLowerCase().replace(/[^a-z0-9_]/g, ''),
-        email: updatedUser.email || '',
+        public_id: updatedUser.publicId,
+        username: updatedUser.username || rawName.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+        first_name: firstName,
+        last_name: lastName,
+        email: updatedUser.email,
         about: updatedUser.bio || '',
+        goal: updatedUser.goals || '',
         profile_visibility: updatedUser.privacyDefault || 'public'
       };
 
+      if (storagePath) {
+        userPayload.avatar_storage_path = storagePath;
+      } else if (updatedUser.avatarUrl) {
+        userPayload.avatar_storage_path = updatedUser.avatarUrl;
+      } else {
+        userPayload.avatar_storage_path = null;
+      }
+
       const { error } = await supabase.from('users').upsert(userPayload, { onConflict: 'id' });
       if (error) console.error('Error updating user in Supabase:', error);
+
+      // Also sync to creators table if present
+      const creatorPayload: any = {
+        id: updatedUser.id,
+        public_id: updatedUser.publicId,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        bio: updatedUser.bio || '',
+        privacy_default: updatedUser.privacyDefault
+      };
+      if (storagePath) {
+        creatorPayload.avatar_storage_path = storagePath;
+      } else if (updatedUser.avatarUrl) {
+        creatorPayload.avatar_storage_path = updatedUser.avatarUrl;
+      } else {
+        creatorPayload.avatar_storage_path = null;
+      }
+      try {
+        await supabase.from('creators').upsert(creatorPayload, { onConflict: 'id' });
+      } catch (e) {
+        // Safe fallback
+      }
     }
 
     return { creators: updatedCreators, posts: updatedPosts, recipes: updatedRecipes };
@@ -270,7 +317,7 @@ export const dataService = {
             title: r.title,
             description: r.description || '',
             authorId: r.user_id,
-            authorName: author?.username || author?.public_id || 'Creator',
+            authorName: author?.first_name,
             authorUsername: author?.username,
             category: 'Practical',
             tags: [],
@@ -359,6 +406,20 @@ export const dataService = {
   /**
    * Recipe Bookmarks: row-per-user in recipe_bookmarks
    */
+  async getUserSavedRecipeIds(userId: string): Promise<string[]> {
+    if (this.isSupabaseActive() && supabase) {
+      const { data, error } = await supabase
+        .from('recipe_bookmarks')
+        .select('recipe_id')
+        .eq('user_id', userId);
+      if (!error && data) {
+        return data.map(b => b.recipe_id);
+      }
+    }
+    const bookmarks = getLocal<Array<{ userId: string; recipeId: string }>>(KEYS.BOOKMARKS, []);
+    return bookmarks.filter(b => !b.userId || b.userId === userId).map(b => b.recipeId);
+  },
+
   async toggleBookmarkRecipe(userId: string, recipeId: string): Promise<boolean> {
     if (this.isSupabaseActive() && supabase) {
       const { data: existing } = await supabase
@@ -394,10 +455,15 @@ export const dataService = {
   },
 
   // ================= PROJECTS (Recipe execution) =================
-  async getProjects(): Promise<Project[]> {
+  async getProjects(userId?: string): Promise<Project[]> {
     if (this.isSupabaseActive() && supabase) {
-      const { data: projectRows, error } = await supabase.from('projects').select('*');
-      if (!error && projectRows && projectRows.length > 0) {
+      let query = supabase.from('projects').select('*');
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      const { data: projectRows, error } = await query;
+      if (!error && projectRows) {
+        if (projectRows.length === 0) return [];
         const { data: phasesData } = await supabase.from('project_phases').select('*').order('position');
         const { data: tasksData } = await supabase.from('project_tasks').select('*').order('position');
 
@@ -422,6 +488,7 @@ export const dataService = {
 
           return {
             id: p.id,
+            userId: p.user_id,
             title: p.title,
             recipeId: p.recipe_id || '',
             recipeTitle: p.title,
@@ -432,7 +499,11 @@ export const dataService = {
         });
       }
     }
-    return getLocal<Project[]>(KEYS.PROJECTS, []);
+    const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+    if (userId) {
+      return all.filter(p => !p.userId || p.userId === userId);
+    }
+    return all;
   },
 
   async saveProjects(projects: Project[]): Promise<void> {
@@ -609,12 +680,12 @@ export const dataService = {
             id: p.id,
             type: 'update_logged',
             userId: p.user_id,
-            userName: author?.username || author?.public_id || 'Creator',
+            userName: author?.username,
             username: author?.username,
-            userAvatar: author?.avatar_url || getPublicMediaUrl('avatars', `${author?.public_id || p.user_id}/avatar.jpg`),
+            userAvatar: getPublicMediaUrl('Gonnng', author.avatar_storage_path),
             timeString: new Date(p.created_at).toLocaleDateString(),
-            title: p.description?.substring(0, 60) || 'Post Update',
-            content: p.description || '',
+            title: p.description?.substring(0, 60),
+            content: p.description,
             projectId: p.project_id,
             image: primaryImage,
             media,
@@ -652,15 +723,22 @@ export const dataService = {
 
       // Ensure user exists in Supabase 'users' table
       try {
-        const { data: userRow } = await supabase.from('users').select('id').eq('id', validUserId).maybeSingle();
+        const { data: userRow } = await supabase.from('users').select('id, email, about, profile_visibility').eq('id', validUserId).maybeSingle();
         if (!userRow) {
+          const rawSessName = (session?.name).trim();
+          const sSpaceIdx = rawSessName.indexOf(' ');
+          const sFirstName = sSpaceIdx === -1 ? rawSessName : rawSessName.substring(0, sSpaceIdx);
+          const sLastName = sSpaceIdx === -1 ? '' : rawSessName.substring(sSpaceIdx + 1).trim();
+
           await supabase.from('users').upsert({
             id: validUserId,
             public_id: session?.publicId || session?.username || validUserId,
-            username: session?.username || session?.name?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'creator',
-            email: session?.email || 'user@gonnng.com',
-            about: 'Process creator and workflow explorer.',
-            profile_visibility: 'public'
+            username: session?.username || rawSessName.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            first_name: sFirstName,
+            last_name: sLastName,
+            email: userRow?.email || session?.email,
+            about: userRow?.about,
+            profile_visibility: userRow?.profile_visibility
           });
         }
       } catch (uErr) {
@@ -689,7 +767,7 @@ export const dataService = {
         id: post.id,
         user_id: post.userId,
         project_id: validProjectId,
-        description: post.content || post.description || post.title || 'Logged update'
+        description: post.content || post.description || post.title
       });
 
       if (postErr) {
@@ -825,8 +903,8 @@ export const dataService = {
       return {
         id: commentRow.id,
         userId: commentRow.user_id,
-        userName: user?.username || 'User',
-        userAvatar: user?.avatar_url || getPublicMediaUrl('avatars', `${user?.public_id || userId}/avatar.jpg`),
+        userName: user?.username,
+        userAvatar: user?.avatar_storage_path ? getPublicMediaUrl('Gonnng', user.avatar_storage_path) : '',
         body: commentRow.body,
         content: commentRow.body,
         timeString: 'Just now',
@@ -863,13 +941,13 @@ export const dataService = {
     const map = new Map<string, PostComment>();
     const roots: PostComment[] = [];
 
-    commentsList.forEach(c => {
-      const author = usersMap.get(c.user_id);
-      const item: PostComment = {
-        id: c.id,
-        userId: c.user_id,
-        userName: author?.username || 'Creator',
-        userAvatar: author?.avatar_url || getPublicMediaUrl('avatars', `${author?.public_id || c.user_id}/avatar.jpg`),
+      commentsList.forEach(c => {
+        const author = usersMap.get(c.user_id);
+        const item: PostComment = {
+          id: c.id,
+          userId: c.user_id,
+          userName: author?.username,
+          userAvatar: author?.avatar_storage_path ? getPublicMediaUrl('Gonnng', author.avatar_storage_path) : '',
         body: c.body,
         content: c.body,
         timeString: new Date(c.created_at).toLocaleTimeString(),
@@ -898,5 +976,150 @@ export const dataService = {
 
   async saveCollections(collections: Collection[]): Promise<void> {
     setLocal(KEYS.COLLECTIONS, collections);
+  },
+
+  // ================= APP UPDATES & USER READ STATUSES =================
+  async getAppUpdates(): Promise<Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    details?: string;
+    category: 'Platform Release' | 'Feature Launch' | 'Account Notice' | 'System Update' | 'Gonnng Announcement';
+    timeString: string;
+    timestamp: number;
+  }>> {
+    if (this.isSupabaseActive() && supabase) {
+      const { data, error } = await supabase.from('app_updates').select('*').order('created_at', { ascending: false });
+      if (!error && data && data.length > 0) {
+        return data.map(u => ({
+          id: u.id,
+          title: u.title,
+          subtitle: u.subtitle,
+          details: u.details || undefined,
+          category: u.category as any,
+          timeString: new Date(u.created_at).toLocaleDateString(),
+          timestamp: new Date(u.created_at).getTime()
+        }));
+      }
+    }
+    return [
+      {
+        id: 'a0000001-0000-0000-0000-000000000001',
+        title: 'SandEngine v2.4 Engine Core Active',
+        subtitle: 'Multi-phase canvas timeline processing & sub-task tracking',
+        details: 'We have deployed the latest version of SandEngine v2.4 offering low-latency canvas timeline rendering, responsive phase sub-task tracking, and print layout support for creative recipes.',
+        category: 'Platform Release',
+        timeString: '2d ago',
+        timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000
+      },
+      {
+        id: 'a0000002-0000-0000-0000-000000000002',
+        title: 'Recipe Forking & Library Sync',
+        subtitle: 'Instantly fork community recipes directly into your custom library',
+        details: 'Creators can now fork any public recipe, adapt the sequence milestones to their project workflow, and bookmark recipes to their library.',
+        category: 'Feature Launch',
+        timeString: '5d ago',
+        timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000
+      }
+    ];
+  },
+
+  async getUserUpdateReads(userId: string): Promise<Record<string, boolean>> {
+    if (this.isSupabaseActive() && supabase) {
+      const { data, error } = await supabase
+        .from('user_update_reads')
+        .select('item_id')
+        .eq('user_id', userId);
+      if (!error && data) {
+        const readsMap: Record<string, boolean> = {};
+        data.forEach(row => { readsMap[row.item_id] = true; });
+        return readsMap;
+      }
+    }
+    const localReads = getLocal<Record<string, boolean>>('gonnng_user_update_reads_' + userId, {});
+    return localReads;
+  },
+
+  async markUpdateAsRead(userId: string, updateType: 'post_feedback' | 'follower' | 'app_info', itemId: string): Promise<void> {
+    if (this.isSupabaseActive() && supabase) {
+      await supabase.from('user_update_reads').upsert(
+        {
+          user_id: userId,
+          update_type: updateType,
+          item_id: itemId,
+          read_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id, item_id' }
+      );
+    }
+    const key = 'gonnng_user_update_reads_' + userId;
+    const localReads = getLocal<Record<string, boolean>>(key, {});
+    localReads[itemId] = true;
+    setLocal(key, localReads);
+  },
+
+  async getPostNotifications(userId: string): Promise<Array<{
+    id: string;
+    postId: string;
+    postTitle: string;
+    actorName: string;
+    actorAvatar: string;
+    actionType: 'comment' | 'gong_continue' | 'gong_refine' | 'gong_reconsider' | 'recipe_save' | 'recipe_fork';
+    commentSnippet?: string;
+    timeString: string;
+    timestamp: number;
+  }>> {
+    if (this.isSupabaseActive() && supabase) {
+      const { data, error } = await supabase
+        .from('user_post_notifications')
+        .select('*')
+        .eq('recipient_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data.map(row => ({
+          id: row.notification_id,
+          postId: row.post_id,
+          postTitle: row.post_title,
+          actorName: row.actor_name || 'Community Member',
+          actorAvatar: row.actor_avatar || '',
+          actionType: row.action_type as any,
+          commentSnippet: row.comment_snippet || undefined,
+          timeString: new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date(row.created_at).getTime()
+        }));
+      }
+    }
+    return [];
+  },
+
+  async getFollowerNotifications(userId: string): Promise<Array<{
+    id: string;
+    creatorId: string;
+    actorName: string;
+    actorAvatar: string;
+    timeString: string;
+    timestamp: number;
+  }>> {
+    if (this.isSupabaseActive() && supabase) {
+      const { data, error } = await supabase
+        .from('user_follower_notifications')
+        .select('*')
+        .eq('recipient_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data.map(row => ({
+          id: row.notification_id,
+          creatorId: row.creator_id,
+          actorName: row.actor_name || 'Creative Member',
+          actorAvatar: row.actor_avatar || '',
+          timeString: new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date(row.created_at).getTime()
+        }));
+      }
+    }
+    return [];
   }
 };
+

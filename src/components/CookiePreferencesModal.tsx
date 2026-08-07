@@ -59,13 +59,13 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md">
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 10 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 10 }}
           transition={{ duration: 0.2 }}
-          className="bg-gray-900 border border-gray-800 text-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] space-y-5"
+          className="bg-gray-900 border border-gray-800 text-white rounded-none sm:rounded-3xl p-6 w-full h-full sm:h-auto max-w-none sm:max-w-2xl shadow-2xl flex flex-col max-h-full sm:max-h-[90vh] space-y-5"
           id="cookie-preferences-modal"
         >
           {/* Header */}

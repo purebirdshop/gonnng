@@ -83,7 +83,7 @@ export default function PermissionsPromptModal({
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="w-full max-w-md rounded-3xl p-6 shadow-2xl border space-y-5 relative bg-white border-slate-200 text-slate-900"
+        className="w-full max-w-md rounded-3xl p-6 shadow-2xl border space-y-5 relative bg-white border-slate-200 text-slate-900 flex flex-col justify-between max-h-[90vh] overflow-y-auto"
       >
         {onClose && (
           <button

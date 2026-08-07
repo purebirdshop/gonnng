@@ -76,12 +76,12 @@ export default function PrintPreviewModal({
     <>
       {/* Modal Backdrop - Light frosted glass overlay */}
       <div 
-        className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fade-in no-print"
+        className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-0 sm:p-6 overflow-y-auto animate-fade-in no-print"
         onClick={onClose}
       >
         {/* Modal Container - 100% Light Mode */}
         <div 
-          className="relative w-full max-w-2xl rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+          className="relative w-full h-full sm:h-auto max-w-none sm:max-w-2xl rounded-none sm:rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl overflow-hidden flex flex-col max-h-full sm:max-h-[92vh]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Modal Header */}

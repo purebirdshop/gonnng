@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
+import { dataService } from '../services/dataService';
 import { 
   Bell, 
   UserPlus, 
@@ -26,7 +27,8 @@ import {
   Link,
   ArrowUpRight,
   Bookmark,
-  GitFork
+  GitFork,
+  User
 } from 'lucide-react';
 
 export interface PostNotification {
@@ -368,6 +370,157 @@ export default function UpdatesView({
   const [expandedAppInfoId, setExpandedAppInfoId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState('');
 
+  // Internal category state fallback to guarantee responsive UI click handling
+  const [localCategory, setLocalCategory] = useState<null | 'updates' | 'followers' | 'appinfo'>(activeCategory);
+
+  React.useEffect(() => {
+    setLocalCategory(activeCategory);
+  }, [activeCategory]);
+
+  const effectiveCategory = localCategory !== undefined && localCategory !== null ? localCategory : activeCategory;
+
+  // Derive notifications from post_feedback table / local storage for authenticated user
+  React.useEffect(() => {
+    try {
+      const storedFeedback = localStorage.getItem('gonnng_post_feedback');
+      if (storedFeedback) {
+        const feedbackList: Array<{ postId: string; userId: string; feedbackType: 'success' | 'promise' | 'potential'; createdAt?: string }> = JSON.parse(storedFeedback);
+        if (Array.isArray(feedbackList) && feedbackList.length > 0) {
+          const userPostIds = new Set(posts.filter(p => p.userId === currentUser.id || p.userName === currentUser.name).map(p => p.id));
+          
+          const derivedNotifs: PostNotification[] = feedbackList
+            .filter(f => userPostIds.size === 0 || userPostIds.has(f.postId))
+            .map((f, idx) => {
+              const actor = creators.find(c => c.id === f.userId);
+              const post = posts.find(p => p.id === f.postId);
+              const actionType = f.feedbackType === 'success' ? 'gong_continue' : f.feedbackType === 'promise' ? 'gong_refine' : 'gong_reconsider';
+              const createdTs = f.createdAt ? new Date(f.createdAt).getTime() : Date.now() - idx * 60000;
+              const postImg = post?.media?.[0]?.resolvedUrl || post?.image || (post?.images && post.images[0]);
+              return {
+                id: `post-fb-${f.postId}-${f.userId}-${idx}`,
+                actorName: actor?.name || 'Community Member',
+                actorAvatar: actor?.avatarUrl || '',
+                actionType: actionType as any,
+                postTitle: post?.title || post?.description || 'Project Post',
+                postImage: postImg,
+                postId: f.postId,
+                timeString: 'Recently',
+                timestamp: createdTs,
+                isRead: false
+              };
+            });
+
+          if (derivedNotifs.length > 0) {
+            setPostNotifications(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newItems = derivedNotifs.filter(d => !existingIds.has(d.id));
+              if (newItems.length > 0) {
+                return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+              }
+              return prev;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error deriving post_feedback notifications:', e);
+    }
+  }, [currentUser, posts, creators]);
+
+  // Derive follower notifications from creators / followerIds for authenticated user
+  React.useEffect(() => {
+    if (currentUser && Array.isArray(creators)) {
+      const myFollowers = creators.filter(c => 
+        (currentUser.followerIds && currentUser.followerIds.includes(c.id)) ||
+        (c.followingIds && c.followingIds.includes(currentUser.id))
+      );
+
+      if (myFollowers.length > 0) {
+        const derivedFollowers: FollowerNotification[] = myFollowers.map((c, i) => ({
+          id: `follower-derived-${c.id}`,
+          creator: c,
+          timeString: 'Recently',
+          timestamp: Date.now() - i * 120000,
+          isRead: false
+        }));
+
+        setFollowerNotifications(prev => {
+          const existingCreatorIds = new Set(prev.map(p => p.creator.id));
+          const newItems = derivedFollowers.filter(d => !existingCreatorIds.has(d.creator.id));
+          if (newItems.length > 0) {
+            return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+          }
+          return prev;
+        });
+      }
+    }
+  }, [currentUser, creators]);
+
+  // Fetch server-driven notifications and user read states from database
+  React.useEffect(() => {
+    const uid = currentUser?.id || 'user-current';
+
+    dataService.getUserUpdateReads(uid).then(readsMap => {
+      // 1. App Updates
+      dataService.getAppUpdates().then(updates => {
+        if (updates && updates.length > 0) {
+          setAppInfoNotifications(updates.map(u => ({
+            ...u,
+            isRead: Boolean(readsMap[u.id])
+          })));
+        }
+      });
+
+      // 2. Post Notifications from database view
+      dataService.getPostNotifications(uid).then(dbNotifs => {
+        if (dbNotifs && dbNotifs.length > 0) {
+          const mapped: PostNotification[] = dbNotifs.map(n => ({
+            ...n,
+            isRead: Boolean(readsMap[n.id])
+          }));
+          setPostNotifications(prev => {
+            const serverIds = new Set(mapped.map(m => m.id));
+            const localOnly = prev.filter(p => !serverIds.has(p.id));
+            return [...mapped, ...localOnly].sort((a, b) => b.timestamp - a.timestamp);
+          });
+        }
+      });
+
+      // 3. Follower Notifications from database view
+      dataService.getFollowerNotifications(uid).then(dbFollowers => {
+        if (dbFollowers && dbFollowers.length > 0) {
+          const mapped: FollowerNotification[] = dbFollowers.map(f => {
+            const creatorMatch = creators.find(c => c.id === f.creatorId || c.name === f.actorName) || {
+              id: f.creatorId,
+              name: f.actorName,
+              username: f.actorName.toLowerCase().replace(/\s+/g, ''),
+              email: `${f.actorName.toLowerCase().replace(/\s+/g, '')}@gonnng.app`,
+              avatarUrl: f.actorAvatar,
+              bio: 'Creative member',
+              goals: '',
+              privacyDefault: 'public',
+              followersCount: 1,
+              followingCount: 0,
+              isFollowing: true
+            };
+            return {
+              id: f.id,
+              creator: creatorMatch,
+              timeString: f.timeString,
+              timestamp: f.timestamp,
+              isRead: Boolean(readsMap[f.id])
+            };
+          });
+          setFollowerNotifications(prev => {
+            const serverIds = new Set(mapped.map(m => m.id));
+            const localOnly = prev.filter(p => !serverIds.has(p.id));
+            return [...mapped, ...localOnly].sort((a, b) => b.timestamp - a.timestamp);
+          });
+        }
+      });
+    });
+  }, [currentUser?.id, creators]);
+
   // Auto mark chat thread as read when activeChatUser is opened
   const onMarkThreadAsReadRef = React.useRef(onMarkThreadAsRead);
   React.useEffect(() => {
@@ -412,12 +565,23 @@ export default function UpdatesView({
 
   // Open Category Handler
   const handleOpenCategory = (cat: 'updates' | 'followers' | 'appinfo') => {
+    setLocalCategory(cat);
     setActiveCategory(cat);
+    setActiveChatUser(null);
+  };
+
+  const handleBackToMain = () => {
+    setLocalCategory(null);
+    setActiveCategory(null);
     setActiveChatUser(null);
   };
 
   // Helper to mark an individual item as read when clicked
   const handleMarkItemRead = (type: 'post' | 'follower' | 'appinfo', id: string) => {
+    const uid = currentUser?.id || 'user-current';
+    const updateTypeMap = { post: 'post_feedback', follower: 'follower', appinfo: 'app_info' } as const;
+    dataService.markUpdateAsRead(uid, updateTypeMap[type], id);
+
     if (type === 'post') {
       setPostNotifications(prev => prev.map(item => item.id === id ? { ...item, isRead: true } : item));
     } else if (type === 'follower') {
@@ -458,11 +622,11 @@ export default function UpdatesView({
     <div className="max-w-4xl mx-auto space-y-6 pb-28 sm:pb-8 text-gray-900" id="updates-view-root">
       
       {/* Main Outer Container */}
-      <div className="p-4 sm:p-6 w-full min-w-0 rounded-2xl bg-white border-2 border-gray-200 shadow-sm">
+      <div className="p-[18px] w-full min-w-0 rounded-none bg-white border-0 shadow-sm">
         
         <AnimatePresence mode="wait">
           {/* LEVEL 0: Main Updates Root View */}
-          {activeCategory === null && activeChatUser === null && (
+          {effectiveCategory === null && activeChatUser === null && (
             <motion.div
               key="updates-level-0"
               initial={{ opacity: 0, x: -10 }}
@@ -618,12 +782,18 @@ export default function UpdatesView({
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <img
-                              src={thread.creator.avatarUrl && thread.creator.avatarUrl.trim() !== '' ? thread.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                              alt={thread.creator.name}
-                              className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
+                            {thread.creator.avatarUrl && thread.creator.avatarUrl.trim() !== '' ? (
+                              <img
+                                src={thread.creator.avatarUrl.trim()}
+                                alt={thread.creator.name}
+                                className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300 shrink-0">
+                                <User className="w-5 h-5 text-gray-600" />
+                              </div>
+                            )}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
                                 <h4 className="text-xs font-bold truncate text-gray-900">{thread.creator.name}</h4>
@@ -672,9 +842,9 @@ export default function UpdatesView({
           )}
 
           {/* LEVEL 1: DRILL-DOWN CATEGORY VIEWS & DIRECT CHAT */}
-          {(activeCategory !== null || activeChatUser !== null) && (
+          {(effectiveCategory !== null || activeChatUser !== null) && (
             <motion.div
-              key={`updates-drilldown-${activeCategory || 'chat'}-${activeChatUser?.id || 'none'}`}
+              key={`updates-drilldown-${effectiveCategory || 'chat'}-${activeChatUser?.id || 'none'}`}
               initial={{ opacity: 0, x: 15 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 15 }}
@@ -687,16 +857,16 @@ export default function UpdatesView({
                   <button
                     type="button"
                     id="updates-back-button"
-                    onClick={() => setActiveCategory(null)}
+                    onClick={handleBackToMain}
                     className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300 shadow-sm"
                   >
                     <ArrowLeft className="w-4 h-4 text-[#FF5C00]" /> Back
                   </button>
 
                   <h3 className="text-sm font-display font-black tracking-wider uppercase truncate max-w-[200px] sm:max-w-xs text-gray-900 text-center">
-                    {activeCategory === 'updates'
+                    {effectiveCategory === 'updates'
                       ? 'Notifications'
-                      : activeCategory === 'followers'
+                      : effectiveCategory === 'followers'
                       ? 'New Followers'
                       : 'App Info'}
                   </h3>
@@ -706,7 +876,7 @@ export default function UpdatesView({
               )}
 
               {/* 1. DRILL DOWN: NOTIFICATIONS (SORTED NEWEST FIRST) */}
-              {activeCategory === 'updates' && !activeChatUser && (
+              {effectiveCategory === 'updates' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-updates-list">
                   {sortedPostNotifications.length > 0 ? (
                     sortedPostNotifications.map(n => {
@@ -731,12 +901,18 @@ export default function UpdatesView({
                           {isUnread && (
                             <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
                           )}
-                          <img
-                            src={n.actorAvatar && n.actorAvatar.trim() !== '' ? n.actorAvatar.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                            alt={n.actorName}
-                            className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
+                          {n.actorAvatar && n.actorAvatar.trim() !== '' ? (
+                            <img
+                              src={n.actorAvatar.trim()}
+                              alt={n.actorName}
+                              className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300 shrink-0">
+                              <User className="w-5 h-5 text-gray-600" />
+                            </div>
+                          )}
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex items-center justify-between gap-2 pr-4">
                               <span className="text-xs font-bold truncate text-gray-900">{n.actorName}</span>
@@ -817,7 +993,7 @@ export default function UpdatesView({
               )}
 
               {/* 2. DRILL DOWN: NEW FOLLOWERS (SORTED NEWEST FIRST) */}
-              {activeCategory === 'followers' && !activeChatUser && (
+              {effectiveCategory === 'followers' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-followers-list">
                   {sortedFollowerNotifications.length > 0 ? (
                     sortedFollowerNotifications.map(f => {
@@ -840,12 +1016,18 @@ export default function UpdatesView({
                             <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
                           )}
                           <div className="flex items-center gap-3.5 min-w-0 pr-2">
-                            <img
-                              src={f.creator.avatarUrl && f.creator.avatarUrl.trim() !== '' ? f.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                              alt={f.creator.name}
-                              className="w-11 h-11 rounded-full object-cover border border-gray-300 shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
+                            {f.creator.avatarUrl && f.creator.avatarUrl.trim() !== '' ? (
+                              <img
+                                src={f.creator.avatarUrl.trim()}
+                                alt={f.creator.name}
+                                className="w-11 h-11 rounded-full object-cover border border-gray-300 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300 shrink-0">
+                                <User className="w-6 h-6 text-gray-600" />
+                              </div>
+                            )}
                             <div className="min-w-0 space-y-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="text-xs font-bold truncate text-gray-900">{f.creator.name}</h4>
@@ -894,63 +1076,77 @@ export default function UpdatesView({
               )}
 
               {/* 3. DRILL DOWN: APP INFO (SORTED NEWEST FIRST) */}
-              {activeCategory === 'appinfo' && !activeChatUser && (
+              {effectiveCategory === 'appinfo' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-appinfo-list">
-                  {sortedAppInfoNotifications.map(a => {
-                    const isExpanded = expandedAppInfoId === a.id;
-                    const isUnread = !a.isRead;
-                    return (
-                      <div
-                        key={a.id}
-                        onClick={() => {
-                          setExpandedAppInfoId(prev => prev === a.id ? null : a.id);
-                          handleMarkItemRead('appinfo', a.id);
-                        }}
-                        className={`p-4 rounded-2xl border space-y-2 cursor-pointer transition-all ${
-                          isUnread
-                            ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
-                            : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/40 hover:bg-gray-100/80'
-                        } text-gray-900 relative`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#FF5C00]/15 text-[#FF5C00] border border-[#FF5C00]/30">
-                              {a.category}
-                            </span>
-                            {isUnread && (
-                              <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-[#FF5C00] text-black">
-                                NEW
+                  {sortedAppInfoNotifications.length > 0 ? (
+                    sortedAppInfoNotifications.map(a => {
+                      const isExpanded = expandedAppInfoId === a.id;
+                      const isUnread = !a.isRead;
+                      return (
+                        <div
+                          key={a.id}
+                          onClick={() => {
+                            setExpandedAppInfoId(prev => prev === a.id ? null : a.id);
+                            handleMarkItemRead('appinfo', a.id);
+                          }}
+                          className={`p-4 rounded-2xl border space-y-2 cursor-pointer transition-all ${
+                            isUnread
+                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/40 hover:bg-gray-100/80'
+                          } text-gray-900 relative`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#FF5C00]/15 text-[#FF5C00] border border-[#FF5C00]/30">
+                                {a.category}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-mono text-gray-500">{a.timeString}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-gray-500" />
-                            )}
-                          </div>
-                        </div>
-
-                        <h4 className="text-sm font-bold text-gray-900">{a.title}</h4>
-                        <p className="text-xs leading-relaxed text-gray-600">{a.subtitle}</p>
-
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="pt-3 mt-2 border-t border-gray-200 text-xs text-gray-800 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-gray-200 space-y-1.5"
-                          >
-                            <div className="whitespace-pre-line">
-                              {a.details || "Full release notes: Process Blueprint library integrated, live messaging enabled, and circle updates synchronized across all workspaces."}
+                              {isUnread && (
+                                <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-[#FF5C00] text-black">
+                                  NEW
+                                </span>
+                              )}
                             </div>
-                          </motion.div>
-                        )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono text-gray-500">{a.timeString}</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              )}
+                            </div>
+                          </div>
+
+                          <h4 className="text-sm font-bold text-gray-900">{a.title}</h4>
+                          <p className="text-xs leading-relaxed text-gray-600">{a.subtitle}</p>
+
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="pt-3 mt-2 border-t border-gray-200 text-xs text-gray-800 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-gray-200 space-y-1.5"
+                            >
+                              <div className="whitespace-pre-line">
+                                {a.details || "Full release notes: Process Blueprint library integrated, live messaging enabled, and circle updates synchronized across all workspaces."}
+                              </div>
+                            </motion.div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-12 px-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-[#FF5C00]/10 text-[#FF5C00] flex items-center justify-center mx-auto">
+                        <Info className="w-6 h-6" />
                       </div>
-                    );
-                  })}
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-gray-900">No App Updates Yet</h4>
+                        <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
+                          This view will display system notifications from Gonnng about platform releases, feature launches, and account notices.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -975,12 +1171,18 @@ export default function UpdatesView({
                       }}
                       className="flex items-center gap-3 cursor-pointer group hover:opacity-90 transition-opacity mx-auto"
                     >
-                      <img
-                        src={activeChatUser.avatarUrl && activeChatUser.avatarUrl.trim() !== '' ? activeChatUser.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                        alt={activeChatUser.name}
-                        className="w-10 h-10 rounded-full object-cover border-2 border-[#FF5C00]/40 group-hover:border-[#FF5C00] transition-colors shrink-0 shadow-sm"
-                        referrerPolicy="no-referrer"
-                      />
+                      {activeChatUser.avatarUrl && activeChatUser.avatarUrl.trim() !== '' ? (
+                        <img
+                          src={activeChatUser.avatarUrl.trim()}
+                          alt={activeChatUser.name}
+                          className="w-10 h-10 rounded-full object-cover border-2 border-[#FF5C00]/40 group-hover:border-[#FF5C00] transition-colors shrink-0 shadow-sm"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center border-2 border-[#FF5C00]/40 group-hover:border-[#FF5C00] transition-colors shrink-0 shadow-sm">
+                          <User className="w-5 h-5 text-gray-600" />
+                        </div>
+                      )}
                       <div className="text-center sm:text-left">
                         <h4 className="text-xs sm:text-sm font-bold text-gray-900 group-hover:text-[#FF5C00] transition-colors leading-tight">
                           {activeChatUser.name}

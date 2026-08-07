@@ -162,12 +162,18 @@ export default function ShareDrawer({
                           className="flex justify-between items-center p-2.5 border rounded-xl transition-all bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-900"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <img
-                              src={user.avatarUrl && user.avatarUrl.trim() !== '' ? user.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                              alt={user.name}
-                              className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
+                            {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
+                              <img
+                                src={user.avatarUrl.trim()}
+                                alt={user.name}
+                                className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-200 shrink-0">
+                                <User className="w-4 h-4 text-gray-600" />
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <h5 className="text-xs font-bold truncate text-gray-900">{user.name}</h5>
                               <p className="text-[10px] font-mono truncate text-gray-500">@{user.name.toLowerCase().replace(/\s+/g, '')}</p>

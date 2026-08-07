@@ -16,7 +16,9 @@ create table users (
   username text unique not null,
   email text unique not null,
   about text,
+  goal text,
   profile_visibility profile_visibility not null default 'public',
+  allowed_environments text[] not null default ARRAY['Live', 'Dev', 'Test', 'Demo'], -- Trunk/Canary Multi-Environment Access
   created_at timestamptz not null default now()
 );
 
@@ -168,4 +170,95 @@ create policy "user_device_permissions_update_own"
   on user_device_permissions for update
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
+
+-- APP UPDATES / ANNOUNCEMENTS
+create table app_updates (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  subtitle text not null,
+  details text,
+  category text not null default 'Platform Release',
+  min_app_version text,
+  created_at timestamptz not null default now()
+);
+
+-- USER UPDATE READS (Read/Unread Tracking)
+create type update_category_enum as enum ('post_feedback', 'follower', 'app_info');
+
+create table user_update_reads (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  update_type update_category_enum not null,
+  item_id text not null,
+  read_at timestamptz not null default now(),
+  unique (user_id, item_id)
+);
+
+create index idx_user_update_reads_user_item on user_update_reads(user_id, item_id);
+
+-- USER POST NOTIFICATIONS VIEW
+create or replace view user_post_notifications as
+select 
+  pf.id::text as notification_id,
+  p.user_id as recipient_id,
+  pf.user_id as actor_id,
+  u.username as actor_name,
+  u.about as actor_avatar,
+  p.id::text as post_id,
+  coalesce(p.description, 'Post update') as post_title,
+  case pf.feedback_type
+    when 'success' then 'gong_continue'
+    when 'promise' then 'gong_refine'
+    when 'potential' then 'gong_reconsider'
+    else 'gong_continue'
+  end as action_type,
+  null as comment_snippet,
+  pf.created_at
+from post_feedback pf
+join posts p on pf.post_id = p.id
+join users u on pf.user_id = u.id
+
+union all
+
+select 
+  c.id::text as notification_id,
+  p.user_id as recipient_id,
+  c.user_id as actor_id,
+  u.username as actor_name,
+  u.about as actor_avatar,
+  p.id::text as post_id,
+  coalesce(p.description, 'Post update') as post_title,
+  'comment' as action_type,
+  c.body as comment_snippet,
+  c.created_at
+from comments c
+join posts p on c.post_id = p.id
+join users u on c.user_id = u.id;
+
+-- USER FOLLOWER NOTIFICATIONS VIEW
+create or replace view user_follower_notifications as
+select 
+  f.id::text as notification_id,
+  f.followee_id as recipient_id,
+  f.follower_id as actor_id,
+  u.id::text as creator_id,
+  u.username as actor_name,
+  u.about as actor_avatar,
+  f.created_at
+from follows f
+join users u on f.follower_id = u.id;
+
+-- MULTI-ENVIRONMENT DEVELOPMENT (TRUNK / CANARY MODEL)
+-- Add allowed_environments column to users table if it does not already exist
+alter table users 
+add column if not exists allowed_environments text[] not null default ARRAY['Live', 'Dev', 'Test', 'Demo'];
+
+-- Ensure existing users have access to all environments by default
+update users 
+set allowed_environments = ARRAY['Live', 'Dev', 'Test', 'Demo'] 
+where allowed_environments is null or cardinality(allowed_environments) = 0;
+
+-- USER PROFILE GOAL COLUMN MIGRATION
+-- Add goal column to users table if it does not exist
+alter table users add column if not exists goal text;
 

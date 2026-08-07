@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
 import { getPublicMediaUrl } from '../services/uploadService';
-import { X, UserPlus, UserCheck, Users, Goal, BookOpen, Layers } from 'lucide-react';
+import { X, UserPlus, UserCheck, Users, Goal, BookOpen, Layers, User } from 'lucide-react';
 
 interface CreatorProfileModalProps {
   creator: Creator | null;
@@ -26,7 +26,7 @@ export default function CreatorProfileModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-gray-900/40 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 md:p-6 bg-gray-900/40 backdrop-blur-sm">
         {/* Backdrop overlay click */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -41,7 +41,7 @@ export default function CreatorProfileModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative border rounded-3xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between bg-white border-gray-200 text-gray-900"
+          className="relative border rounded-none sm:rounded-3xl w-full h-full sm:h-auto max-w-none sm:max-w-xl max-h-full sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-6 shadow-2xl z-10 flex flex-col justify-between bg-white border-gray-200 text-gray-900"
         >
           {/* Header Bar */}
           <div className="flex items-center justify-between pb-3 border-b border-gray-200">
@@ -62,14 +62,22 @@ export default function CreatorProfileModal({
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 space-y-4">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
               <div className="relative shrink-0">
-                <img
-                  src={creator.avatarUrl && creator.avatarUrl.trim() !== '' ? getPublicMediaUrl('Gonnng', creator.avatarUrl.trim()) : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                  alt={creator.name}
-                  className={`w-20 h-20 rounded-full object-cover border border-white/20 ${
+                {creator.avatarUrl && creator.avatarUrl.trim() !== '' ? (
+                  <img
+                    src={getPublicMediaUrl('Gonnng', creator.avatarUrl.trim())}
+                    alt={creator.name}
+                    className={`w-20 h-20 rounded-full object-cover border border-white/20 ${
+                      creator.isFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-2 ring-offset-[#141414]' : ''
+                    }`}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`w-20 h-20 rounded-full bg-white/10 flex items-center justify-center border border-white/20 ${
                     creator.isFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-2 ring-offset-[#141414]' : ''
-                  }`}
-                  referrerPolicy="no-referrer"
-                />
+                  }`}>
+                    <User className="w-10 h-10 text-white/70" />
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 text-center sm:text-left space-y-1 min-w-0">
@@ -89,7 +97,7 @@ export default function CreatorProfileModal({
                 <p className="text-xs font-mono text-[#FF5C00] truncate">
                   @{creator.username || creator.name.toLowerCase().replace(/\s+/g, '')}
                 </p>
-                <p className="text-xs text-white/60 leading-relaxed font-sans">{creator.bio || 'Gonnng Community Creator'}</p>
+                <p className="text-xs text-white/60 leading-relaxed font-sans">{creator.bio && creator.bio.trim() !== '' ? creator.bio : ""}</p>
 
                 {/* Follower Stats & Action */}
                 <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-3">
@@ -125,14 +133,12 @@ export default function CreatorProfileModal({
               </div>
             </div>
 
-            {creator.goals && (
-              <div className="pt-3 border-t border-white/10 text-xs">
-                <span className="text-white/40 font-mono uppercase tracking-wider block text-[10px] mb-1">Creative Goal</span>
-                <p className="text-white/90 italic font-sans flex items-start gap-1.5">
-                  <Goal className="w-3.5 h-3.5 text-[#FF5C00] shrink-0 mt-0.5" /> "{creator.goals}"
-                </p>
-              </div>
-            )}
+            <div className="pt-3 border-t border-white/10 text-xs">
+              <span className="text-white/40 font-mono uppercase tracking-wider block text-[10px] mb-1">Creative Goal</span>
+              <p className="text-white/90 italic font-sans flex items-start gap-1.5">
+                <Goal className="w-3.5 h-3.5 text-[#FF5C00] shrink-0 mt-0.5" /> "{creator.goals && creator.goals.trim() !== '' ? creator.goals : ""}"
+              </p>
+            </div>
           </div>
 
           {/* Posts Activity Stream */}
