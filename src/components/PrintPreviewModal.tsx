@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PrinterCheck, Share2, X, ChevronLeft, ChevronRight, Check, Calendar, User, Tag } from 'lucide-react';
+import { getCategoryColor } from '../data/categoriesData';
 
 export interface PrintableItem {
   id: string;
@@ -37,6 +38,16 @@ export default function PrintPreviewModal({
 }: PrintPreviewModalProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen && item) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isOpen, Boolean(item)]);
 
   if (!isOpen || !item) return null;
 
@@ -87,7 +98,7 @@ export default function PrintPreviewModal({
           {/* Modal Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/90 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-[#FF5C00]/10 text-[#FF5C00] border border-[#FF5C00]/20">
+              <div className="p-2 rounded-xl bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/20">
                 <PrinterCheck className="w-5 h-5 stroke-[2.5]" />
               </div>
               <div>
@@ -161,7 +172,7 @@ export default function PrintPreviewModal({
                     {item.title}
                   </h2>
                   {item.recipeTitle && (
-                    <p className="text-[10px] font-mono text-[#FF5C00] font-bold uppercase mt-0.5">
+                    <p className="text-[10px] font-mono text-[#F59E0B] font-bold uppercase mt-0.5">
                       Based on: {item.recipeTitle}
                     </p>
                   )}
@@ -174,7 +185,14 @@ export default function PrintPreviewModal({
                       </span>
                     )}
                     {item.category && (
-                      <span className="flex items-center gap-1 font-mono text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+                      <span 
+                        className="flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded border font-semibold"
+                        style={{
+                          backgroundColor: `${getCategoryColor(item.category)}15`,
+                          color: getCategoryColor(item.category),
+                          borderColor: `${getCategoryColor(item.category)}35`
+                        }}
+                      >
                         <Tag className="w-2.5 h-2.5" /> {item.category}
                       </span>
                     )}
@@ -338,7 +356,7 @@ export default function PrintPreviewModal({
                       onClick={() => setCurrentPage(idx)}
                       className={`transition-all duration-300 cursor-pointer ${
                         isActive
-                          ? 'w-6 h-2 bg-[#FF5C00] rounded-full shadow-sm'
+                          ? 'w-6 h-2 bg-[#F59E0B] rounded-full shadow-sm'
                           : 'w-2 h-2 bg-gray-300 hover:bg-gray-400 rounded-full'
                       }`}
                       title={`Go to page ${idx + 1}`}
@@ -361,7 +379,7 @@ export default function PrintPreviewModal({
             <button
               type="button"
               onClick={handleConfirmPrint}
-              className="px-6 py-2.5 rounded-xl bg-[#FF5C00] hover:bg-[#FF751A] text-black text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+              className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#FF751A] text-black text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-2 active:scale-95"
             >
               <PrinterCheck className="w-4 h-4 stroke-[2.5]" />
               <span>Confirm & Print</span>
@@ -382,7 +400,7 @@ export default function PrintPreviewModal({
             {item.title}
           </h1>
           {item.recipeTitle && (
-            <p className="text-xs font-mono text-[#FF5C00] font-bold uppercase mt-1">
+            <p className="text-xs font-mono text-[#F59E0B] font-bold uppercase mt-1">
               Based on Blueprint: {item.recipeTitle}
             </p>
           )}

@@ -1,111 +1,908 @@
+export interface ParentCategoryGroup {
+  name: string;
+  colorName: string;
+  colorHex: string;
+  why: string;
+}
+
 export interface CategoryItem {
   id: string;
   name: string;
+  parentCategory: string;
+  colorName: string;
+  colorHex: string;
   synonyms: string[];
+  commonProjects?: string[];
 }
 
 export interface CategoryMatch {
   category: CategoryItem;
-  matchedBy: 'name' | 'synonym';
+  matchedBy: 'name' | 'synonym' | 'commonProject' | 'parentCategory';
   matchedTerm?: string;
   score: number;
 }
 
-export const CATEGORIES_DATA: CategoryItem[] = [
-  { id: 'cat-1', name: '3D Art', synonyms: ['3D rendering', 'CGI art', 'digital sculpture', '3D visuals'] },
-  { id: 'cat-2', name: '3D Modeling', synonyms: ['CAD modeling', 'mesh modeling', 'Blender modeling', '3D asset creation'] },
-  { id: 'cat-3', name: 'Animation', synonyms: ['motion design', '2D animation', 'cartooning', 'animator'] },
-  { id: 'cat-4', name: 'App Design', synonyms: ['mobile app design', 'app UI design', 'application design'] },
-  { id: 'cat-5', name: 'Architecture', synonyms: ['architectural design', 'building design', 'architect'] },
-  { id: 'cat-6', name: 'Art Direction', synonyms: ['creative lead', 'visual direction', 'art director'] },
-  { id: 'cat-7', name: 'Branding', synonyms: ['brand identity', 'logo design', 'brand strategy'] },
-  { id: 'cat-8', name: 'Calligraphy', synonyms: ['hand lettering', 'script writing', 'lettering art'] },
-  { id: 'cat-9', name: 'Cinematography', synonyms: ['camera work', 'director of photography', 'film photography'] },
-  { id: 'cat-10', name: 'Code Development', synonyms: ['coding', 'software development', 'app building'] },
-  { id: 'cat-11', name: 'Coloring', synonyms: ['digital coloring', 'comic coloring', 'colorist work'] },
-  { id: 'cat-12', name: 'Concept Art', synonyms: ['visual development', 'concept design', 'idea sketches'] },
-  { id: 'cat-13', name: 'Copywriting', synonyms: ['ad copy', 'content writing', 'marketing copy'] },
-  { id: 'cat-14', name: 'Costume Design', synonyms: ['wardrobe design', 'costume making', 'costuming'] },
-  { id: 'cat-15', name: 'Crafts', synonyms: ['handmade crafts', 'craft projects', 'DIY crafts'] },
-  { id: 'cat-16', name: 'Creative Direction', synonyms: ['creative lead', 'brand vision', 'creative strategy'] },
-  { id: 'cat-17', name: 'Culinary Arts', synonyms: ['cooking', 'chef work', 'gastronomy'] },
-  { id: 'cat-18', name: 'Development', synonyms: ['software dev', 'app development', 'product build'] },
-  { id: 'cat-19', name: 'Digital Art', synonyms: ['digital painting', 'digital illustration', 'computer art'] },
-  { id: 'cat-20', name: 'Directing', synonyms: ['film directing', 'director', 'directorial work'] },
-  { id: 'cat-21', name: 'Drawing', synonyms: ['sketching', 'pencil art', 'freehand drawing'] },
-  { id: 'cat-22', name: 'Editing', synonyms: ['video editing', 'photo editing', 'post-production'] },
-  { id: 'cat-23', name: 'Editorial', synonyms: ['magazine layout', 'editorial design', 'publication design'] },
-  { id: 'cat-24', name: 'Education', synonyms: ['teaching', 'tutoring', 'learning content'] },
-  { id: 'cat-25', name: 'Engineering', synonyms: ['technical design', 'mechanical engineering', 'systems design'] },
-  { id: 'cat-26', name: 'Exhibition Design', synonyms: ['gallery design', 'museum design', 'installation design'] },
-  { id: 'cat-27', name: 'Fashion', synonyms: ['apparel design', 'clothing design', 'style design'] },
-  { id: 'cat-28', name: 'Film', synonyms: ['filmmaking', 'movies', 'cinema'] },
-  { id: 'cat-29', name: 'Fine Art', synonyms: ['gallery art', 'painting', 'traditional art'] },
-  { id: 'cat-30', name: 'Floral', synonyms: ['flower arranging', 'florist work', 'floral design'] },
-  { id: 'cat-31', name: 'Furniture', synonyms: ['furniture design', 'furniture making', 'woodwork furniture'] },
-  { id: 'cat-32', name: 'Game Design', synonyms: ['video game design', 'level design', 'game mechanics'] },
-  { id: 'cat-33', name: 'Graffiti', synonyms: ['street art', 'spray paint art', 'mural art'] },
-  { id: 'cat-34', name: 'Graphic Design', synonyms: ['visual design', 'layout design', 'print design'] },
-  { id: 'cat-35', name: 'Illustration', synonyms: ['drawing', 'digital illustration', 'book illustration'] },
-  { id: 'cat-36', name: 'Industrial Design', synonyms: ['product design', 'manufacturing design'] },
-  { id: 'cat-37', name: 'Interior Design', synonyms: ['home design', 'space planning', 'decor design'] },
-  { id: 'cat-38', name: 'Motion Graphics', synonyms: ['animated graphics', 'kinetic typography', 'motion design'] },
-  { id: 'cat-39', name: 'Music', synonyms: ['songwriting', 'composing', 'audio production'] },
-  { id: 'cat-40', name: 'Packaging', synonyms: ['package design', 'product packaging'] },
-  { id: 'cat-41', name: 'Painting', synonyms: ['fine art', 'brushwork', 'canvas art'] },
-  { id: 'cat-42', name: 'Performing Arts', synonyms: ['theater', 'stage performance', 'dance'] },
-  { id: 'cat-43', name: 'Photography', synonyms: ['photo shoot', 'camera work', 'photographer'] },
-  { id: 'cat-44', name: 'Photojournalism', synonyms: ['documentary photography', 'news photography'] },
-  { id: 'cat-45', name: 'Product Develoment', synonyms: ['product design', 'product build', 'new product creation'] },
-  { id: 'cat-46', name: 'Programming', synonyms: ['coding', 'software engineering', 'dev work'] },
-  { id: 'cat-47', name: 'Retouching', synonyms: ['photo editing', 'image retouching', 'post processing'] },
-  { id: 'cat-48', name: 'Sculpting', synonyms: ['3D sculpture', 'clay modeling', 'carving'] },
-  { id: 'cat-49', name: 'Set Design', synonyms: ['stage design', 'production design', 'scenic design'] },
-  { id: 'cat-50', name: 'Sketching', synonyms: ['rough drawing', 'thumbnail sketch', 'doodling'] },
-  { id: 'cat-51', name: 'Sound Design', synonyms: ['audio design', 'sound engineering', 'foley'] },
-  { id: 'cat-52', name: 'Storyboarding', synonyms: ['visual scripting', 'shot planning', 'storyboard art'] },
-  { id: 'cat-53', name: 'Typography', synonyms: ['font design', 'lettering', 'type design'] },
-  { id: 'cat-54', name: 'UI/UX', synonyms: ['user interface design', 'user experience design', 'product design'] },
-  { id: 'cat-[#FF5C00]', name: 'Web Design', synonyms: ['website design', 'site layout', 'web UI'] },
-  { id: 'cat-56', name: 'Woodworking', synonyms: ['carpentry', 'wood crafting', 'joinery'] },
-  { id: 'cat-57', name: 'Writing', synonyms: ['authoring', 'prose', 'content creation'] },
-  { id: 'cat-58', name: 'Art', synonyms: ['artwork', 'creative work', 'visual art'] },
-  { id: 'cat-59', name: 'Big Idea', synonyms: ['concept', 'innovation', 'breakthrough idea'] },
-  { id: 'cat-60', name: 'Building', synonyms: ['construction', 'making', 'creating'] },
-  { id: 'cat-61', name: 'Business', synonyms: ['entrepreneurship', 'startup', 'commerce'] },
-  { id: 'cat-62', name: 'Challenges', synonyms: ['competitions', 'contests', 'prompts'] },
-  { id: 'cat-63', name: 'Collaboration', synonyms: ['teamwork', 'partnership', 'co-creation'] },
-  { id: 'cat-64', name: 'Community', synonyms: ['group', 'network', 'collective'] },
-  { id: 'cat-65', name: 'Crafting', synonyms: ['handmade', 'making things', 'hands-on creation'] },
-  { id: 'cat-66', name: 'Design', synonyms: ['visual design', 'layout', 'aesthetics'] },
-  { id: 'cat-67', name: 'DIY', synonyms: ['do it yourself', 'homemade', 'self-made'] },
-  { id: 'cat-68', name: 'Entrepreneurship', synonyms: ['startup', 'business building', 'founder'] },
-  { id: 'cat-69', name: 'Experimental', synonyms: ['avant-garde', 'exploratory', 'unconventional work'] },
-  { id: 'cat-70', name: 'Food', synonyms: ['cuisine', 'cooking', 'culinary'] },
-  { id: 'cat-71', name: 'Game Development', synonyms: ['video game dev', 'game programming'] },
-  { id: 'cat-72', name: 'Inventions', synonyms: ['innovations', 'prototypes', 'new ideas'] },
-  { id: 'cat-73', name: 'Learning', synonyms: ['education', 'skill building', 'self-study'] },
-  { id: 'cat-74', name: 'Marketing', synonyms: ['promotion', 'advertising', 'brand marketing'] },
-  { id: 'cat-75', name: 'Passion', synonyms: ['hobby', 'personal interest', 'side project'] },
-  { id: 'cat-76', name: 'Performance', synonyms: ['live performance', 'acting', 'stage work'] },
-  { id: 'cat-77', name: 'Personal Growth', synonyms: ['self-improvement', 'self-development'] },
-  { id: 'cat-78', name: 'Podcasting', synonyms: ['audio show', 'podcast production'] },
-  { id: 'cat-79', name: 'Research & Ideas', synonyms: ['brainstorming', 'exploration', 'concepting'] },
-  { id: 'cat-80', name: 'Side Hustle', synonyms: ['freelance work', 'side project', 'side business'] },
-  { id: 'cat-81', name: 'Social Media', synonyms: ['content creation', 'social posts', 'digital marketing'] },
-  { id: 'cat-82', name: 'Stories', synonyms: ['narratives', 'storytelling', 'tales'] },
-  { id: 'cat-83', name: 'Storytelling', synonyms: ['narrative craft', 'story crafting', 'narration'] },
-  { id: 'cat-84', name: 'Technology', synonyms: ['tech', 'innovation', 'digital tools'] },
-  { id: 'cat-85', name: 'Video', synonyms: ['videography', 'film', 'video content'] },
-  { id: 'cat-86', name: 'Vlog', synonyms: ['video blog', 'video diary', 'vlogging'] },
-  { id: 'cat-87', name: 'Hobby', synonyms: ['pastime', 'personal interest', 'leisure activity'] }
+export const PARENT_CATEGORY_GROUPS: ParentCategoryGroup[] = [
+  {
+    name: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    why: 'Purple = classic art/creativity/royalty, stage lighting'
+  },
+  {
+    name: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    why: 'Earthy, tactile — wood, kitchen, handmade materials'
+  },
+  {
+    name: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    why: 'Green = growth/systems, plus old-school terminal-green "crunching" data'
+  },
+  {
+    name: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    why: 'Yellow/gold = optimism, attention-grabbing, "the bread and butter" of a business'
+  },
+  {
+    name: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    why: 'Classic digital/screen blue — Figma, Adobe, pixels'
+  },
+  {
+    name: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    why: 'Red = spotlight, drama, "action," film reels'
+  },
+  {
+    name: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    why: 'Deep, intuitive, late-night-ideation indigo'
+  }
 ];
 
-// Fix cat-55 id string fix
-CATEGORIES_DATA[54].id = 'cat-55';
+export const CATEGORIES_DATA: CategoryItem[] = [
+  // --- Music & Fine Art (Juicy Purple: #c99bff) ---
+  {
+    id: 'cat-art',
+    name: 'Art',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['artwork', 'creative work', 'visual art'],
+    commonProjects: ['personal art series', 'mixed media piece', 'sketchbook project', 'gallery submission', 'art commission', 'portfolio piece']
+  },
+  {
+    id: 'cat-calligraphy',
+    name: 'Calligraphy',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['hand lettering', 'script writing', 'lettering art'],
+    commonProjects: ['wedding invitation', 'quote print', 'custom envelope', 'logo lettering', 'alphabet practice sheet', 'brush lettering piece']
+  },
+  {
+    id: 'cat-coloring',
+    name: 'Coloring',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['digital coloring', 'comic coloring', 'colorist work'],
+    commonProjects: ['comic page coloring', 'coloring book page', 'line art fill', 'illustration color pass', 'manga coloring', 'flat color study']
+  },
+  {
+    id: 'cat-drawing',
+    name: 'Drawing',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['sketching', 'pencil art', 'freehand drawing'],
+    commonProjects: ['portrait study', 'still life drawing', 'figure drawing', 'ink sketch', 'sketchbook page', 'charcoal piece']
+  },
+  {
+    id: 'cat-fine-art',
+    name: 'Fine Art',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['gallery art', 'painting', 'traditional art'],
+    commonProjects: ['gallery painting', 'mixed media piece', 'art series', 'studio portfolio', 'exhibition artwork', 'art commission']
+  },
+  {
+    id: 'cat-graffiti',
+    name: 'Graffiti',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['street art', 'spray paint art', 'mural art'],
+    commonProjects: ['wall mural', 'spray can piece', 'street art commission', 'tag design', 'community mural', 'stencil art']
+  },
+  {
+    id: 'cat-music',
+    name: 'Music',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['songwriting', 'composing', 'audio production'],
+    commonProjects: ['original song', 'album production', 'film score', 'remix', 'jingle', 'live performance recording']
+  },
+  {
+    id: 'cat-painting',
+    name: 'Painting',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['fine art', 'brushwork', 'canvas art'],
+    commonProjects: ['canvas painting', 'mural', 'watercolor series', 'abstract piece', 'portrait commission', 'plein air painting']
+  },
+  {
+    id: 'cat-performance',
+    name: 'Performance',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['live performance', 'acting', 'stage work'],
+    commonProjects: ['live show', 'theater performance', 'dance recital', 'spoken word set', 'busking performance', 'open mic act']
+  },
+  {
+    id: 'cat-performing-arts',
+    name: 'Performing Arts',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['theater', 'stage performance', 'dance'],
+    commonProjects: ['stage play', 'dance performance', 'theater production', 'improv show', 'choreography piece', 'spoken word performance']
+  },
+  {
+    id: 'cat-photography',
+    name: 'Photography',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['photo shoot', 'camera work', 'photographer'],
+    commonProjects: ['portrait session', 'product photography', 'landscape shoot', 'event photography', 'editorial shoot', 'personal photo project']
+  },
+  {
+    id: 'cat-sculpting',
+    name: 'Sculpting',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['3D sculpture', 'clay modeling', 'carving'],
+    commonProjects: ['clay figure', 'wood carving', 'stone sculpture', 'character maquette', 'relief carving', 'mixed media sculpture']
+  },
+  {
+    id: 'cat-sketching',
+    name: 'Sketching',
+    parentCategory: 'Music & Fine Art',
+    colorName: 'Juicy Purple',
+    colorHex: '#c99bff',
+    synonyms: ['rough drawing', 'thumbnail sketch', 'doodling'],
+    commonProjects: ['travel sketchbook', 'concept thumbnail', 'quick figure sketch', 'urban sketching', 'idea doodle', 'storyboard thumbnail']
+  },
+
+  // --- Home & Hobby (Bacon Brown: #c06a3f) ---
+  {
+    id: 'cat-building',
+    name: 'Building',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['construction', 'making', 'creating'],
+    commonProjects: ['DIY build', 'prototype construction', 'home project', 'structure build', 'maker project', 'assembly project']
+  },
+  {
+    id: 'cat-crafting',
+    name: 'Crafting',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['handmade', 'making things', 'hands-on creation'],
+    commonProjects: ['handmade gift', 'DIY decor', 'craft kit project', 'upcycled piece', 'seasonal craft', 'maker fair project']
+  },
+  {
+    id: 'cat-crafts',
+    name: 'Crafts',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['handmade crafts', 'craft projects', 'DIY crafts'],
+    commonProjects: ['handmade card', 'holiday ornament', 'macrame piece', 'paper craft', 'upcycled decor', 'seasonal craft kit']
+  },
+  {
+    id: 'cat-culinary-arts',
+    name: 'Culinary Arts',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['cooking', 'chef work', 'gastronomy'],
+    commonProjects: ['recipe development', 'plated dish', 'dessert creation', 'menu design', 'food styling', 'tasting event']
+  },
+  {
+    id: 'cat-diy',
+    name: 'DIY',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['do it yourself', 'homemade', 'self-made'],
+    commonProjects: ['home improvement project', 'handmade gift', 'upcycled furniture', 'DIY decor', 'repair project', 'craft tutorial']
+  },
+  {
+    id: 'cat-fashion',
+    name: 'Fashion',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['apparel design', 'clothing design', 'style design'],
+    commonProjects: ['clothing line', 'fashion sketch', 'garment prototype', 'lookbook', 'accessory design', 'runway collection']
+  },
+  {
+    id: 'cat-floral',
+    name: 'Floral',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['flower arranging', 'florist work', 'floral design'],
+    commonProjects: ['wedding bouquet', 'floral centerpiece', 'seasonal arrangement', 'event installation', 'dried flower art', 'floral crown']
+  },
+  {
+    id: 'cat-food',
+    name: 'Food',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['cuisine', 'cooking', 'culinary'],
+    commonProjects: ['recipe creation', 'food styling shoot', 'pop-up menu', 'baking project', 'food blog post', 'cooking video']
+  },
+  {
+    id: 'cat-furniture',
+    name: 'Furniture',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['furniture design', 'furniture making', 'woodwork furniture'],
+    commonProjects: ['chair build', 'custom table', 'storage piece', 'furniture prototype', 'restoration project', 'modular shelving']
+  },
+  {
+    id: 'cat-hobby',
+    name: 'Hobby',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['pastime', 'personal interest', 'leisure activity'],
+    commonProjects: ['weekend craft', 'personal collection project', 'casual art practice', 'DIY hobby build', 'hobby blog', 'leisure skill project']
+  },
+  {
+    id: 'cat-interior-design',
+    name: 'Interior Design',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['home design', 'space planning', 'decor design'],
+    commonProjects: ['home renovation', 'office layout', 'room mood board', 'furniture layout plan', 'staging design', 'retail interior']
+  },
+  {
+    id: 'cat-passion',
+    name: 'Passion',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['hobby', 'personal interest', 'side project'],
+    commonProjects: ['personal art project', 'hobby build', 'side creative venture', 'weekend project', 'passion blog', 'personal music project']
+  },
+  {
+    id: 'cat-woodworking',
+    name: 'Woodworking',
+    parentCategory: 'Home & Hobby',
+    colorName: 'Bacon Brown',
+    colorHex: '#c06a3f',
+    synonyms: ['carpentry', 'wood crafting', 'joinery'],
+    commonProjects: ['handmade furniture', 'cutting board', 'wooden box', 'deck build', 'wood carving project', 'custom shelving']
+  },
+
+  // --- Industrial & Tech (Crunchy Green: #a9d86a) ---
+  {
+    id: 'cat-3d-modeling',
+    name: '3D Modeling',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['CAD modeling', 'mesh modeling', 'Blender modeling', '3D asset creation'],
+    commonProjects: ['game asset', 'architectural model', 'character rig', 'product prototype', '3D print file', 'environment mesh']
+  },
+  {
+    id: 'cat-architecture',
+    name: 'Architecture',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['architectural design', 'building design', 'architect'],
+    commonProjects: ['house design', 'floor plan', 'building facade', 'renovation concept', 'urban master plan', 'pavilion design']
+  },
+  {
+    id: 'cat-code-development',
+    name: 'Code Development',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['coding', 'software development', 'app building'],
+    commonProjects: ['personal website', 'CLI tool', 'automation script', 'portfolio site', 'small web app', 'browser extension']
+  },
+  {
+    id: 'cat-development',
+    name: 'Development',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['software dev', 'app development', 'product build'],
+    commonProjects: ['web app', 'internal tool', 'feature build', 'MVP prototype', 'API integration', 'product beta']
+  },
+  {
+    id: 'cat-engineering',
+    name: 'Engineering',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['technical design', 'mechanical engineering', 'systems design'],
+    commonProjects: ['product prototype', 'mechanical assembly', 'circuit design', 'structural test', 'machine part', 'system schematic']
+  },
+  {
+    id: 'cat-game-design',
+    name: 'Game Design',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['video game design', 'level design', 'game mechanics'],
+    commonProjects: ['game level', 'mechanics prototype', 'board game design', 'puzzle design', 'game balance doc', 'indie game concept']
+  },
+  {
+    id: 'cat-game-development',
+    name: 'Game Development',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['video game dev', 'game programming'],
+    commonProjects: ['indie game build', 'mobile game prototype', 'game jam entry', 'level design project', 'game mod', 'mechanics demo']
+  },
+  {
+    id: 'cat-industrial-design',
+    name: 'Industrial Design',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['product design', 'manufacturing design'],
+    commonProjects: ['consumer product', 'appliance design', 'packaging prototype', 'furniture concept', 'tool design', 'product mockup']
+  },
+  {
+    id: 'cat-inventions',
+    name: 'Inventions',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['innovations', 'prototypes', 'new ideas'],
+    commonProjects: ['product prototype', 'patent concept', 'gadget design', 'invention pitch', 'DIY solution', 'tech prototype']
+  },
+  {
+    id: 'cat-product-development',
+    name: 'Product Develoment',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['product design', 'product build', 'new product creation'],
+    commonProjects: ['product prototype', 'MVP launch', 'feature roadmap', 'product redesign', 'market test product', 'packaging development']
+  },
+  {
+    id: 'cat-programming',
+    name: 'Programming',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['coding', 'software engineering', 'dev work'],
+    commonProjects: ['personal app', 'coding challenge', 'open source contribution', 'automation tool', 'game script', 'portfolio project']
+  },
+  {
+    id: 'cat-technology',
+    name: 'Technology',
+    parentCategory: 'Industrial & Tech',
+    colorName: 'Crunchy Green',
+    colorHex: '#a9d86a',
+    synonyms: ['tech', 'innovation', 'digital tools'],
+    commonProjects: ['app prototype', 'tech demo', 'hardware project', 'digital tool build', 'AI experiment', 'tech showcase']
+  },
+
+  // --- Marketing & Business (Bready Beige: #f2d28a) ---
+  {
+    id: 'cat-art-direction',
+    name: 'Art Direction',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['creative lead', 'visual direction', 'art director'],
+    commonProjects: ['campaign mood board', 'brand visual system', 'photo shoot direction', 'album art direction', 'ad concept', 'style guide']
+  },
+  {
+    id: 'cat-branding',
+    name: 'Branding',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['brand identity', 'logo design', 'brand strategy'],
+    commonProjects: ['logo design', 'brand guidelines', 'business card suite', 'brand voice deck', 'rebrand concept', 'packaging identity']
+  },
+  {
+    id: 'cat-business',
+    name: 'Business',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['entrepreneurship', 'startup', 'commerce'],
+    commonProjects: ['business plan', 'startup launch', 'small business brand', 'pitch deck', 'product line launch', 'service business concept']
+  },
+  {
+    id: 'cat-copywriting',
+    name: 'Copywriting',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['ad copy', 'content writing', 'marketing copy'],
+    commonProjects: ['tagline set', 'product description', 'email campaign', 'landing page copy', 'ad script', 'brand tone-of-voice piece']
+  },
+  {
+    id: 'cat-creative-direction',
+    name: 'Creative Direction',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['creative lead', 'brand vision', 'creative strategy'],
+    commonProjects: ['campaign concept', 'brand vision deck', 'creative pitch', 'visual identity roadmap', 'product launch concept', 'content series direction']
+  },
+  {
+    id: 'cat-entrepreneurship',
+    name: 'Entrepreneurship',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['startup', 'business building', 'founder'],
+    commonProjects: ['startup launch', 'side business', 'product pitch', 'business plan', 'brand launch', 'crowdfunding campaign']
+  },
+  {
+    id: 'cat-marketing',
+    name: 'Marketing',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['promotion', 'advertising', 'brand marketing'],
+    commonProjects: ['ad campaign', 'social media campaign', 'email marketing series', 'promo video', 'influencer campaign', 'brand launch marketing']
+  },
+  {
+    id: 'cat-packaging',
+    name: 'Packaging',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['package design', 'product packaging'],
+    commonProjects: ['product box design', 'label design', 'packaging mockup', 'sustainable packaging concept', 'gift box', 'retail packaging line']
+  },
+  {
+    id: 'cat-side-hustle',
+    name: 'Side Hustle',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['freelance work', 'side project', 'side business'],
+    commonProjects: ['freelance client project', 'Etsy shop', 'side brand launch', 'weekend business', 'print-on-demand line', 'consulting gig']
+  },
+  {
+    id: 'cat-social-media',
+    name: 'Social Media',
+    parentCategory: 'Marketing & Business',
+    colorName: 'Bready Beige',
+    colorHex: '#f2d28a',
+    synonyms: ['content creation', 'social posts', 'digital marketing'],
+    commonProjects: ['Instagram content series', 'TikTok video', 'content calendar', 'brand social campaign', 'reel series', 'influencer post set']
+  },
+
+  // --- Design & Digital Media (Jammy Blue: #82c9ff) ---
+  {
+    id: 'cat-3d-art',
+    name: '3D Art',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['3D rendering', 'CGI art', 'digital sculpture', '3D visuals'],
+    commonProjects: ['character render', 'product visualization', '3D environment', 'abstract 3D piece', 'NFT art', '3D portrait']
+  },
+  {
+    id: 'cat-app-design',
+    name: 'App Design',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['mobile app design', 'app UI design', 'application design'],
+    commonProjects: ['mobile app mockup', 'onboarding flow', 'app icon set', 'dashboard UI', 'wireframe kit', 'design system']
+  },
+  {
+    id: 'cat-concept-art',
+    name: 'Concept Art',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['visual development', 'concept design', 'idea sketches'],
+    commonProjects: ['character concept', 'environment concept', 'creature design', 'vehicle concept', 'game concept sheet', 'film concept art']
+  },
+  {
+    id: 'cat-design',
+    name: 'Design',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['visual design', 'layout', 'aesthetics'],
+    commonProjects: ['brand refresh', 'layout design', 'visual identity', 'design system', 'product mockup', 'style exploration']
+  },
+  {
+    id: 'cat-digital-art',
+    name: 'Digital Art',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['digital painting', 'digital illustration', 'computer art'],
+    commonProjects: ['digital portrait', 'fantasy scene', 'character illustration', 'digital landscape', 'poster art', 'concept piece']
+  },
+  {
+    id: 'cat-graphic-design',
+    name: 'Graphic Design',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['visual design', 'layout design', 'print design'],
+    commonProjects: ['poster design', 'brand collateral', 'social media graphic', 'flyer', 'book cover', 'packaging layout']
+  },
+  {
+    id: 'cat-illustration',
+    name: 'Illustration',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['drawing', 'digital illustration', 'book illustration'],
+    commonProjects: ["book illustration", "editorial illustration", "character art", "greeting card art", "poster illustration", "children's book art"]
+  },
+  {
+    id: 'cat-retouching',
+    name: 'Retouching',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['photo editing', 'image retouching', 'post processing'],
+    commonProjects: ['portrait retouch', 'product photo cleanup', 'beauty retouch', 'composite edit', 'color grade', 'restoration retouch']
+  },
+  {
+    id: 'cat-typography',
+    name: 'Typography',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['font design', 'lettering', 'type design'],
+    commonProjects: ['custom typeface', 'lettering poster', 'type specimen', 'logotype', 'editorial type treatment', 'font pairing study']
+  },
+  {
+    id: 'cat-ui-ux',
+    name: 'UI/UX',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['user interface design', 'user experience design', 'product design'],
+    commonProjects: ['app wireframe', 'website UX flow', 'design system', 'usability test', 'prototype interaction', 'dashboard interface']
+  },
+  {
+    id: 'cat-web-design',
+    name: 'Web Design',
+    parentCategory: 'Design & Digital Media',
+    colorName: 'Jammy Blue',
+    colorHex: '#82c9ff',
+    synonyms: ['website design', 'site layout', 'web UI'],
+    commonProjects: ['website mockup', 'landing page', 'portfolio site', 'e-commerce layout', 'responsive redesign', 'web style guide']
+  },
+
+  // --- Film & Media (Tomato Pink: #ff9a84) ---
+  {
+    id: 'cat-animation',
+    name: 'Animation',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['motion design', '2D animation', 'cartooning', 'animator'],
+    commonProjects: ['animated short', 'explainer video', 'character walk cycle', 'animated logo', 'GIF series', 'title sequence']
+  },
+  {
+    id: 'cat-cinematography',
+    name: 'Cinematography',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['camera work', 'director of photography', 'film photography'],
+    commonProjects: ['short film shoot', 'music video', 'lighting test reel', 'documentary footage', 'commercial spot', 'lookbook film']
+  },
+  {
+    id: 'cat-costume-design',
+    name: 'Costume Design',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['wardrobe design', 'costume making', 'costuming'],
+    commonProjects: ['stage costume', 'cosplay build', 'film wardrobe', 'fashion show look', 'character sketch', 'historical reproduction']
+  },
+  {
+    id: 'cat-directing',
+    name: 'Directing',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['film directing', 'director', 'directorial work'],
+    commonProjects: ['short film', 'music video', 'commercial', 'theater production', 'web series', 'documentary']
+  },
+  {
+    id: 'cat-editing',
+    name: 'Editing',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['video editing', 'photo editing', 'post-production'],
+    commonProjects: ['short film edit', 'YouTube video cut', 'wedding video', 'trailer edit', 'podcast episode edit', 'social media reel']
+  },
+  {
+    id: 'cat-editorial',
+    name: 'Editorial',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['magazine layout', 'editorial design', 'publication design'],
+    commonProjects: ['magazine spread', 'zine layout', 'newsletter design', 'article illustration', 'book layout', 'editorial photo essay']
+  },
+  {
+    id: 'cat-film',
+    name: 'Film',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['filmmaking', 'movies', 'cinema'],
+    commonProjects: ['short film', 'feature script', 'documentary', 'film trailer', 'indie production', 'film festival submission']
+  },
+  {
+    id: 'cat-motion-graphics',
+    name: 'Motion Graphics',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['animated graphics', 'kinetic typography', 'motion design'],
+    commonProjects: ['title sequence', 'animated infographic', 'logo animation', 'lower thirds', 'explainer animation', 'social media motion piece']
+  },
+  {
+    id: 'cat-photojournalism',
+    name: 'Photojournalism',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['documentary photography', 'news photography'],
+    commonProjects: ['photo essay', 'news assignment', 'documentary series', 'street photography project', 'event coverage', 'human interest story']
+  },
+  {
+    id: 'cat-podcasting',
+    name: 'Podcasting',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['audio show', 'podcast production'],
+    commonProjects: ['podcast episode series', 'interview show', 'narrative podcast', 'podcast branding', 'audio storytelling series', 'launch episode']
+  },
+  {
+    id: 'cat-set-design',
+    name: 'Set Design',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['stage design', 'production design', 'scenic design'],
+    commonProjects: ['theater set', 'film set build', 'photo shoot set', 'event stage design', 'TV studio set', 'exhibition backdrop']
+  },
+  {
+    id: 'cat-sound-design',
+    name: 'Sound Design',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['audio design', 'sound engineering', 'foley'],
+    commonProjects: ['film soundscape', 'game sound effects', 'podcast audio design', 'foley recording', 'ambient soundtrack', 'UI sound kit']
+  },
+  {
+    id: 'cat-storyboarding',
+    name: 'Storyboarding',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['visual scripting', 'shot planning', 'storyboard art'],
+    commonProjects: ['film storyboard', 'commercial storyboard', 'animation storyboard', 'game cinematic boards', 'music video boards', 'pitch storyboard']
+  },
+  {
+    id: 'cat-video',
+    name: 'Video',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['videography', 'film', 'video content'],
+    commonProjects: ['short video', 'promo video', 'event video', 'YouTube content', 'video essay', 'brand video']
+  },
+  {
+    id: 'cat-vlog',
+    name: 'Vlog',
+    parentCategory: 'Film & Media',
+    colorName: 'Tomato Pink',
+    colorHex: '#ff9a84',
+    synonyms: ['video blog', 'video diary', 'vlogging'],
+    commonProjects: ['daily vlog', 'travel vlog', 'lifestyle vlog series', 'behind-the-scenes vlog', 'vlog channel launch', 'weekly video diary']
+  },
+
+  // --- Ideas & Storytelling (Figgish Indigo: #A99BFF) ---
+  {
+    id: 'cat-big-idea',
+    name: 'Big Idea',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['concept', 'innovation', 'breakthrough idea'],
+    commonProjects: ['startup concept', 'invention pitch', 'campaign big idea', 'product innovation', 'creative concept deck', 'hackathon idea']
+  },
+  {
+    id: 'cat-challenges',
+    name: 'Challenges',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['competitions', 'contests', 'prompts'],
+    commonProjects: ['design challenge entry', 'hackathon project', 'art prompt piece', '30-day challenge', 'contest submission', 'skill challenge']
+  },
+  {
+    id: 'cat-collaboration',
+    name: 'Collaboration',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['teamwork', 'partnership', 'co-creation'],
+    commonProjects: ['joint art project', 'band collaboration', 'brand partnership', 'co-authored piece', 'cross-discipline project', 'community mural']
+  },
+  {
+    id: 'cat-community',
+    name: 'Community',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['group', 'network', 'collective'],
+    commonProjects: ['local event project', 'community mural', 'group art show', 'meetup initiative', 'volunteer campaign', 'neighborhood project']
+  },
+  {
+    id: 'cat-education',
+    name: 'Education',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['teaching', 'tutoring', 'learning content'],
+    commonProjects: ['online course', 'lesson plan', 'tutorial video', 'workshop curriculum', 'educational worksheet', 'study guide']
+  },
+  {
+    id: 'cat-exhibition-design',
+    name: 'Exhibition Design',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['gallery design', 'museum design', 'installation design'],
+    commonProjects: ['gallery layout', 'museum exhibit', 'pop-up installation', 'trade show booth', 'art show display', 'interactive exhibit']
+  },
+  {
+    id: 'cat-experimental',
+    name: 'Experimental',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['avant-garde', 'exploratory', 'unconventional work'],
+    commonProjects: ['mixed media experiment', 'generative art piece', 'abstract series', 'prototype concept', 'sound experiment', 'unconventional material study']
+  },
+  {
+    id: 'cat-learning',
+    name: 'Learning',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['education', 'skill building', 'self-study'],
+    commonProjects: ['online course project', 'tutorial series', 'study notes', 'skill practice log', 'workshop project', 'self-taught portfolio piece']
+  },
+  {
+    id: 'cat-personal-growth',
+    name: 'Personal Growth',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['self-improvement', 'self-development'],
+    commonProjects: ['journaling project', 'skill-building challenge', 'habit tracker', 'personal development plan', 'reflection series', 'growth vlog']
+  },
+  {
+    id: 'cat-research-ideas',
+    name: 'Research & Ideas',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['brainstorming', 'exploration', 'concepting'],
+    commonProjects: ['concept research deck', 'mood board exploration', 'market research project', 'ideation session', 'trend report', 'prototype concepting']
+  },
+  {
+    id: 'cat-stories',
+    name: 'Stories',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['narratives', 'storytelling', 'tales'],
+    commonProjects: ['short story collection', 'personal essay', 'illustrated story', 'oral history project', 'serialized fiction', 'memoir piece']
+  },
+  {
+    id: 'cat-storytelling',
+    name: 'Storytelling',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['narrative craft', 'story crafting', 'narration'],
+    commonProjects: ['narrative video', 'brand story', 'interactive story project', 'storytelling workshop piece', 'documentary narrative', 'campfire story series']
+  },
+  {
+    id: 'cat-writing',
+    name: 'Writing',
+    parentCategory: 'Ideas & Storytelling',
+    colorName: 'Figgish Indigo',
+    colorHex: '#A99BFF',
+    synonyms: ['authoring', 'prose', 'content creation'],
+    commonProjects: ['short story', 'novel draft', 'blog post', 'screenplay', 'essay collection', 'poetry chapbook']
+  }
+];
 
 /**
- * Perform category autocomplete search with synonym matching.
+ * Fast map for category lookups by name (case-insensitive)
+ */
+const CATEGORY_MAP = new Map<string, CategoryItem>(
+  CATEGORIES_DATA.map(cat => [cat.name.toLowerCase(), cat])
+);
+
+/**
+ * Get category item by name
+ */
+export function getCategoryByName(name?: string): CategoryItem | undefined {
+  if (!name) return undefined;
+  return CATEGORY_MAP.get(name.toLowerCase().trim());
+}
+
+/**
+ * Get hex color for a category. Defaults to fallback if category is unknown.
+ */
+export function getCategoryColor(categoryName?: string, defaultColor: string = '#fff6e4'): string {
+  if (!categoryName || categoryName.toLowerCase().trim() === 'general') {
+    return '#fff6e4';
+  }
+  const cat = getCategoryByName(categoryName);
+  return cat ? cat.colorHex : defaultColor;
+}
+
+/**
+ * Get parent category group metadata by category name
+ */
+export function getCategoryGroup(categoryName?: string): ParentCategoryGroup | undefined {
+  const cat = getCategoryByName(categoryName);
+  if (!cat) return undefined;
+  return PARENT_CATEGORY_GROUPS.find(g => g.name === cat.parentCategory);
+}
+
+/**
+ * Perform category autocomplete search with synonym, parent group, and common project matching.
  */
 export function searchCategories(query: string, categories: CategoryItem[] = CATEGORIES_DATA): CategoryMatch[] {
   const normalizedQuery = query.toLowerCase().trim();
@@ -122,48 +919,41 @@ export function searchCategories(query: string, categories: CategoryItem[] = CAT
 
   for (const cat of categories) {
     const nameLower = cat.name.toLowerCase();
-    
-    // Check direct name match
+    const parentLower = cat.parentCategory.toLowerCase();
+
+    // 1. Direct name match
     if (nameLower === normalizedQuery) {
-      results.push({
-        category: cat,
-        matchedBy: 'name',
-        score: 100
-      });
+      results.push({ category: cat, matchedBy: 'name', score: 100 });
       continue;
     }
 
     if (nameLower.startsWith(normalizedQuery)) {
-      results.push({
-        category: cat,
-        matchedBy: 'name',
-        score: 80
-      });
+      results.push({ category: cat, matchedBy: 'name', score: 85 });
       continue;
     }
 
     if (nameLower.includes(normalizedQuery)) {
-      results.push({
-        category: cat,
-        matchedBy: 'name',
-        score: 60
-      });
+      results.push({ category: cat, matchedBy: 'name', score: 65 });
       continue;
     }
 
-    // Check synonym matches
+    // 2. Parent Category Group match
+    if (parentLower === normalizedQuery || parentLower.includes(normalizedQuery)) {
+      results.push({ category: cat, matchedBy: 'parentCategory', matchedTerm: cat.parentCategory, score: 75 });
+      continue;
+    }
+
+    // 3. Synonym match
     let synonymMatch: string | undefined;
     let maxSynonymScore = 0;
 
     for (const syn of cat.synonyms) {
       const synLower = syn.toLowerCase();
-
       if (synLower === normalizedQuery) {
         maxSynonymScore = 90;
         synonymMatch = syn;
         break;
       }
-
       if (synLower.startsWith(normalizedQuery)) {
         if (70 > maxSynonymScore) {
           maxSynonymScore = 70;
@@ -184,6 +974,26 @@ export function searchCategories(query: string, categories: CategoryItem[] = CAT
         matchedTerm: synonymMatch,
         score: maxSynonymScore
       });
+      continue;
+    }
+
+    // 4. Common Project match
+    if (cat.commonProjects) {
+      let projectMatch: string | undefined;
+      for (const proj of cat.commonProjects) {
+        if (proj.toLowerCase().includes(normalizedQuery)) {
+          projectMatch = proj;
+          break;
+        }
+      }
+      if (projectMatch) {
+        results.push({
+          category: cat,
+          matchedBy: 'commonProject',
+          matchedTerm: projectMatch,
+          score: 45
+        });
+      }
     }
   }
 

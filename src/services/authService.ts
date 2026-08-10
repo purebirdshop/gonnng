@@ -73,6 +73,9 @@ export const authService = {
       try {
         data = await parseJsonResponse(res);
       } catch {
+        if (res.status === 403) {
+          return { success: false, error: 'Access denied: You are not authorized to access this environment.' };
+        }
         return { success: false, error: 'Invalid email address or password.' };
       }
 
@@ -80,10 +83,10 @@ export const authService = {
         localStorage.setItem(AUTH_KEY, JSON.stringify(data.user));
         return { success: true, user: data.user };
       } else {
-        const fallbackMsg = (res.status === 403 || res.status === 401)
-          ? 'Invalid email address or password.'
-          : (data.error || 'Invalid email address or password.');
-        return { success: false, error: data.error || fallbackMsg };
+        const defaultMsg = res.status === 403
+          ? 'Access denied: You are not authorized to access this environment.'
+          : 'Invalid email address or password.';
+        return { success: false, error: data.error || defaultMsg };
       }
     } catch (err: any) {
       console.error('Login error:', err);
@@ -91,19 +94,68 @@ export const authService = {
     }
   },
 
+  // Check username availability
+  async checkUsernameAvailability(username: string): Promise<boolean> {
+    if (!username || !username.trim()) return false;
+    try {
+      const res = await fetch('/api/auth/check-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ username: username.trim() })
+      });
+      if (res.ok) {
+        const data = await parseJsonResponse(res);
+        return Boolean(data.available);
+      }
+    } catch (e) {
+      console.warn('Check username network warning:', e);
+    }
+    return true;
+  },
+
+  // Check email availability
+  async checkEmailAvailability(email: string): Promise<boolean> {
+    if (!email || !email.trim()) return false;
+    try {
+      const res = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      if (res.ok) {
+        const data = await parseJsonResponse(res);
+        return Boolean(data.available);
+      }
+    } catch (e) {
+      console.warn('Check email network warning:', e);
+    }
+    return true;
+  },
+
   // Register user via backend database API
-  async register(name: string, email: string, pass: string, rememberMe = true): Promise<{ success: boolean; user?: UserSession; error?: string }> {
+  async register(
+    name: string,
+    email: string,
+    pass: string,
+    username?: string,
+    about?: string,
+    interests?: string[],
+    rememberMe = true
+  ): Promise<{ success: boolean; user?: UserSession; error?: string }> {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ name, email, password: pass, rememberMe })
+        body: JSON.stringify({ name, email, password: pass, username, about, interests, rememberMe })
       });
 
       let data: any = {};
       try {
         data = await parseJsonResponse(res);
       } catch {
+        if (res.status === 403) {
+          return { success: false, error: 'Access denied: You are not authorized to access this environment.' };
+        }
         return { success: false, error: 'Registration failed. Please check your details.' };
       }
 

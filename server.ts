@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { emailService } from './server/emailService';
+import { setupSwagger } from './server/swagger';
 
 const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -36,24 +37,29 @@ function checkEnvironmentAccess(email: string, userAllowedEnvs?: string[] | stri
   const normalizedCurrentEnv = currentEnv.toLowerCase();
 
   // 1. Whitelisted email domain verification for non-live environments
-  if (normalizedCurrentEnv !== 'live') {
-    const emailDomain = email.includes('@') ? email.split('@')[1].toLowerCase().trim() : '';
-    const rawWhitelistedDomains = `${process.env.ALLOWED_EMAIL_DOMAINS || ''},gonnng.app,gmail.com,example.com,test.com`;
-    const allowedDomains = rawWhitelistedDomains
+  // ONLY enforced when ALLOWED_EMAIL_DOMAINS is explicitly set and non-empty, AND environment is not Live/Production
+  const isLiveOrProd = ['live', 'production', 'prod'].includes(normalizedCurrentEnv);
+  const rawAllowedDomainsSetting = process.env.ALLOWED_EMAIL_DOMAINS ? process.env.ALLOWED_EMAIL_DOMAINS.trim() : '';
+
+  if (!isLiveOrProd && rawAllowedDomainsSetting) {
+    const allowedDomains = rawAllowedDomainsSetting
       .split(',')
       .map(d => d.trim().toLowerCase())
       .filter(Boolean);
 
-    const isWhitelisted = allowedDomains.some(domain =>
-      emailDomain === domain || emailDomain.endsWith('.' + domain)
-    );
+    if (allowedDomains.length > 0) {
+      const emailDomain = email.includes('@') ? email.split('@')[1].toLowerCase().trim() : '';
+      const isWhitelisted = allowedDomains.some(domain =>
+        emailDomain === domain || emailDomain.endsWith('.' + domain)
+      );
 
-    if (!isWhitelisted) {
-      return {
-        allowed: false,
-        reason: `Access denied: Email domain '@${emailDomain}' is not whitelisted for access to non-live environments (${currentEnv}). Allowed domains: ${allowedDomains.map(d => '@' + d).join(', ')}.`,
-        currentEnv
-      };
+      if (!isWhitelisted) {
+        return {
+          allowed: false,
+          reason: `Access denied: Email domain '@${emailDomain}' is not whitelisted for access to non-live environments (${currentEnv}). Allowed domains: ${allowedDomains.map(d => '@' + d).join(', ')}.`,
+          currentEnv
+        };
+      }
     }
   }
 
@@ -113,6 +119,16 @@ function normalizeStorageUrl(url?: string): string {
   let cleaned = url.trim().replace(/\/+$/, '');
   cleaned = cleaned.replace(/\/storage\/v1.*$/, '');
   return cleaned;
+}
+
+function formatMediaUrl(storagePath: string | null | undefined): string | null {
+  if (!storagePath) return null;
+  let clean = storagePath.trim();
+  clean = clean.replace(/^\/+/, '');
+  while (clean.startsWith('media/')) {
+    clean = clean.substring(6).replace(/^\/+/, '');
+  }
+  return `/media/${clean}`;
 }
 
 const rawDataUrl = process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || '';
@@ -204,7 +220,7 @@ async function getOrRestoreSession(token: string): Promise<ServerSession | null>
       username: dbUser.username || dbUser.email.split('@')[0],
       email: dbUser.email,
       name: resolvedName,
-      avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : null,
+      avatarUrl: formatMediaUrl(dbUser.avatar_storage_path),
       bio: dbUser.about || null,
       goals: dbUser.goal || '',
       privacyDefault: dbUser.profile_visibility || 'public',
@@ -274,6 +290,9 @@ async function startServer() {
     next();
   };
 
+  // Mount Swagger UI Documentation
+  setupSwagger(app);
+
   // --- API ROUTES ---
 
   // GET /api/health - Public API health status endpoint
@@ -322,7 +341,7 @@ async function startServer() {
             username: dbUser.username || dbUser.email.split('@')[0],
             email: dbUser.email,
             name: resolvedName,
-            avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : null,
+            avatarUrl: formatMediaUrl(dbUser.avatar_storage_path),
             bio: dbUser.about || null,
             goals: dbUser.goal || '',
             privacyDefault: dbUser.profile_visibility || 'public',
@@ -452,7 +471,7 @@ async function startServer() {
         username: dbUser.username || cleanEmail.split('@')[0],
         email: dbUser.email,
         name: resolvedName,
-        avatarUrl: dbUser.avatar_storage_path ? `/media/${dbUser.avatar_storage_path.replace(/^\/+/, '')}` : undefined,
+        avatarUrl: formatMediaUrl(dbUser.avatar_storage_path) || undefined,
         bio: dbUser.about || undefined,
         goals: dbUser.goal || '',
         privacyDefault: dbUser.profile_visibility || 'public',
@@ -503,18 +522,69 @@ async function startServer() {
     }
   });
 
+  // POST /api/auth/check-username - Validate username availability
+  app.post('/api/auth/check-username', async (req: Request, res: Response) => {
+    try {
+      const { username } = req.body;
+      if (!username || !String(username).trim()) {
+        return res.json({ available: false, error: 'Username is required' });
+      }
+      const cleanUsername = String(username).trim().toLowerCase();
+      if (!supabase) {
+        return res.json({ available: true });
+      }
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('username', cleanUsername)
+        .maybeSingle();
+
+      return res.json({ available: !existingUser });
+    } catch (err: any) {
+      console.warn('Check username error:', err);
+      return res.json({ available: true });
+    }
+  });
+
+  // POST /api/auth/check-email - Validate email availability
+  app.post('/api/auth/check-email', async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      if (!email || !String(email).trim()) {
+        return res.json({ available: false, error: 'Email is required' });
+      }
+      const cleanEmail = String(email).trim().toLowerCase();
+      if (!supabase) {
+        return res.json({ available: true });
+      }
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('email', cleanEmail)
+        .maybeSingle();
+
+      return res.json({ available: !existingUser });
+    } catch (err: any) {
+      console.warn('Check email error:', err);
+      return res.json({ available: true });
+    }
+  });
+
   // POST /api/auth/register - Create account in database & send welcome email
   app.post('/api/auth/register', async (req: Request, res: Response) => {
-    const { name, fullName, email, password, username, rememberMe = true } = req.body;
-    const rawFullName = String(name || fullName || '').trim();
+    const { name, fullName, email, password, username, about, interests, rememberMe = true } = req.body;
+    const cleanEmail = String(email || '').trim().toLowerCase();
 
-    if (!rawFullName || !email || !password) {
-      return res.status(400).json({ success: false, error: 'Full name, email, and password are required.' });
+    if (!cleanEmail || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
     }
 
     if (String(password).length < 6) {
       return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
     }
+
+    const derivedUsername = (username || cleanEmail.split('@')[0] || `user_${Date.now()}`).trim();
+    const rawFullName = String(name || fullName || derivedUsername || '').trim();
 
     // Parse Full Name on first space character into first_name and last_name
     let firstName = String(req.body.first_name || '').trim();
@@ -531,9 +601,7 @@ async function startServer() {
       }
     }
 
-    const cleanEmail = String(email).trim().toLowerCase();
-    const resolvedDisplayName = [firstName, lastName].filter(Boolean).join(' ') || rawFullName;
-    const derivedUsername = (username || resolvedDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || `user_${Date.now()}`).trim();
+    const resolvedDisplayName = [firstName, lastName].filter(Boolean).join(' ') || rawFullName || derivedUsername;
 
     // Check multi-environment permissions & domain whitelist for registration
     const envCheck = checkEnvironmentAccess(cleanEmail, ['Live', 'Dev', 'Test', 'Demo']);
@@ -557,6 +625,19 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'An account with this email address already exists.' });
       }
 
+      // Check existing username if provided
+      if (derivedUsername) {
+        const { data: existingUsernameUser } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('username', derivedUsername)
+          .maybeSingle();
+
+        if (existingUsernameUser) {
+          return res.status(400).json({ success: false, error: 'Username is already taken. Please choose another.' });
+        }
+      }
+
       const passwordHash = bcrypt.hashSync(String(password), 10);
       const userId = crypto.randomUUID();
       const publicId = Math.random().toString(36).substring(2, 11).toUpperCase();
@@ -573,7 +654,7 @@ async function startServer() {
           password_hash: passwordHash,
           is_onboarded: true,
           email_verified: true,
-          about: null,
+          about: about || null,
           avatar_storage_path: null,
           profile_visibility: 'public',
           allowed_environments: ['Live', 'Dev', 'Test', 'Demo']
@@ -595,7 +676,7 @@ async function startServer() {
           name: resolvedDisplayName,
           email: cleanEmail,
           avatar_storage_path: null,
-          bio: null,
+          bio: about || null,
           goals: null,
           privacy_default: 'public'
         });
@@ -603,8 +684,24 @@ async function startServer() {
         // Safe fallback if creator record exists
       }
 
-      // Send Welcome Email via Resend API
-      await emailService.sendWelcomeEmail(cleanEmail, resolvedDisplayName, derivedUsername);
+      // Generate email verification token with 24-hour time delay expiration
+      const verificationToken = `vtf_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
+      const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      try {
+        await supabase
+          .from('users')
+          .update({
+            reset_token: verificationToken,
+            reset_token_expires: verificationExpires
+          })
+          .eq('id', userId);
+      } catch (e) {
+        // Safe fallback
+      }
+
+      // Send Welcome Email with verification link via Resend API
+      await emailService.sendWelcomeEmail(cleanEmail, resolvedDisplayName, derivedUsername, verificationToken);
 
       const sessionUser: UserSession = {
         id: newUser.id,
@@ -708,6 +805,29 @@ async function startServer() {
     }
   });
 
+  // POST /api/email/send - Proxy email dispatches via server-side Resend service
+  app.post('/api/email/send', async (req: Request, res: Response) => {
+    try {
+      const { to, subject, html, text, from } = req.body;
+      if (!to || !subject || !html) {
+        return res.status(400).json({ success: false, error: 'Recipient, subject, and html content are required.' });
+      }
+
+      const result = await emailService.sendEmail({
+        to,
+        subject,
+        html,
+        text,
+        from
+      });
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error('API /api/email/send error:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to send email.' });
+    }
+  });
+
   // POST /api/auth/reset-password - Verify reset token & update password hash in database
   app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
     const { token, newPassword } = req.body;
@@ -757,6 +877,242 @@ async function startServer() {
     } catch (err: any) {
       console.error('Reset password error:', err);
       return res.status(500).json({ success: false, error: 'Failed to reset password.' });
+    }
+  });
+
+  // Helper to resolve all database identifiers for a user
+  async function getUserIdentifiers(identifier: string): Promise<string[]> {
+    const ids = new Set<string>([identifier]);
+    if (supabase && identifier) {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('id, public_id, username')
+          .or(`id.eq.${identifier},public_id.eq.${identifier},username.eq.${identifier}`);
+        if (data && data.length > 0) {
+          data.forEach(u => {
+            if (u.id) ids.add(u.id);
+            if (u.public_id) ids.add(u.public_id);
+            if (u.username) ids.add(u.username);
+          });
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return Array.from(ids);
+  }
+
+  // GET /api/messages/:userId - Fetch all direct messages involving userId
+  app.get('/api/messages/:userId', async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'User ID is required.' });
+      }
+
+      const identifiers = await getUserIdentifiers(userId);
+
+      if (supabase) {
+        const idListStr = identifiers.map(i => `"${i}"`).join(',');
+        const { data, error } = await supabase
+          .from('direct_messages')
+          .select('*')
+          .or(`sender_id.in.(${idListStr}),recipient_id.in.(${idListStr})`)
+          .order('created_at', { ascending: true });
+
+        if (!error && data) {
+          const formatted = data.map(row => {
+            const createdAt = new Date(row.created_at).getTime();
+            const diffSec = Math.floor((Date.now() - createdAt) / 1000);
+            let timestamp = 'Just now';
+            if (diffSec >= 60 && diffSec < 3600) timestamp = `${Math.floor(diffSec / 60)}m ago`;
+            else if (diffSec >= 3600 && diffSec < 86400) timestamp = `${Math.floor(diffSec / 3600)}h ago`;
+            else if (diffSec >= 86400) timestamp = `${Math.floor(diffSec / 86400)}d ago`;
+
+            return {
+              id: row.id,
+              senderId: row.sender_id,
+              recipientId: row.recipient_id,
+              text: row.text,
+              isRead: Boolean(row.is_read),
+              status: row.status || 'accepted',
+              postThumbnail: row.post_thumbnail || undefined,
+              postId: row.post_id || undefined,
+              createdAt,
+              timestamp
+            };
+          });
+
+          return res.json({ success: true, messages: formatted });
+        }
+      }
+
+      return res.json({ success: true, messages: [] });
+    } catch (err: any) {
+      console.error('Fetch direct messages error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to fetch messages.' });
+    }
+  });
+
+  // POST /api/messages - Send a new direct message
+  app.post('/api/messages', async (req: Request, res: Response) => {
+    try {
+      const { senderId, recipientId, text, postThumbnail, postId, status = 'accepted' } = req.body;
+      if (!senderId || !recipientId || !text || !String(text).trim()) {
+        return res.status(400).json({ success: false, error: 'senderId, recipientId, and text are required.' });
+      }
+
+      const trimmedText = String(text).trim().slice(0, 1400);
+      const createdAt = Date.now();
+
+      if (supabase) {
+        // Try inserting with status column
+        let insertObj: any = {
+          sender_id: senderId,
+          recipient_id: recipientId,
+          text: trimmedText,
+          is_read: true,
+          status,
+          post_thumbnail: postThumbnail || null,
+          post_id: postId || null
+        };
+
+        let { data, error } = await supabase
+          .from('direct_messages')
+          .insert(insertObj)
+          .select('*')
+          .single();
+
+        // If status column is missing on server table, retry without status column
+        if (error && (error.code === 'PGRST204' || error.message?.includes('status'))) {
+          delete insertObj.status;
+          const retryRes = await supabase
+            .from('direct_messages')
+            .insert(insertObj)
+            .select('*')
+            .single();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
+
+        if (!error && data) {
+          const msgObj = {
+            id: data.id,
+            senderId: data.sender_id,
+            recipientId: data.recipient_id,
+            text: data.text,
+            isRead: Boolean(data.is_read),
+            status: data.status || status,
+            postThumbnail: data.post_thumbnail || undefined,
+            postId: data.post_id || undefined,
+            timestamp: 'Just now',
+            createdAt
+          };
+          return res.json({ success: true, message: msgObj });
+        } else if (error) {
+          console.error('Supabase direct message insert error:', error);
+        }
+      }
+
+      // Fallback message object if database was unconfigured
+      const fallbackMsg = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        senderId,
+        recipientId,
+        text: String(text).trim(),
+        isRead: true,
+        status,
+        postThumbnail,
+        postId,
+        timestamp: 'Just now',
+        createdAt
+      };
+
+      return res.json({ success: true, message: fallbackMsg });
+    } catch (err: any) {
+      console.error('Send message error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to send message.' });
+    }
+  });
+
+  // PUT /api/messages/read - Mark messages as read
+  app.put('/api/messages/read', async (req: Request, res: Response) => {
+    try {
+      const { currentUserId, partnerId } = req.body;
+      if (supabase && currentUserId && partnerId) {
+        const myIds = await getUserIdentifiers(currentUserId);
+        const partnerIds = await getUserIdentifiers(partnerId);
+
+        const myIdsStr = myIds.map(i => `"${i}"`).join(',');
+        const partnerIdsStr = partnerIds.map(i => `"${i}"`).join(',');
+
+        await supabase
+          .from('direct_messages')
+          .update({ is_read: true })
+          .or(`and(recipient_id.in.(${myIdsStr}),sender_id.in.(${partnerIdsStr}))`);
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('Mark messages read error:', err);
+      return res.json({ success: true });
+    }
+  });
+
+  // PUT /api/messages/accept - Accept message request
+  app.put('/api/messages/accept', async (req: Request, res: Response) => {
+    try {
+      const { currentUserId, partnerId } = req.body;
+      if (supabase && currentUserId && partnerId) {
+        const myIds = await getUserIdentifiers(currentUserId);
+        const partnerIds = await getUserIdentifiers(partnerId);
+
+        const myIdsStr = myIds.map(i => `"${i}"`).join(',');
+        const partnerIdsStr = partnerIds.map(i => `"${i}"`).join(',');
+
+        try {
+          await supabase
+            .from('direct_messages')
+            .update({ status: 'accepted' })
+            .or(`and(sender_id.in.(${myIdsStr}),recipient_id.in.(${partnerIdsStr})),and(sender_id.in.(${partnerIdsStr}),recipient_id.in.(${myIdsStr}))`);
+        } catch (e) {
+          // Ignores if status column missing
+        }
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('Accept message request error:', err);
+      return res.json({ success: true });
+    }
+  });
+
+  // PUT /api/messages/decline - Decline/Delete message request
+  app.put('/api/messages/decline', async (req: Request, res: Response) => {
+    try {
+      const { currentUserId, partnerId } = req.body;
+      if (supabase && currentUserId && partnerId) {
+        const myIds = await getUserIdentifiers(currentUserId);
+        const partnerIds = await getUserIdentifiers(partnerId);
+
+        const myIdsStr = myIds.map(i => `"${i}"`).join(',');
+        const partnerIdsStr = partnerIds.map(i => `"${i}"`).join(',');
+
+        try {
+          await supabase
+            .from('direct_messages')
+            .delete()
+            .or(`and(sender_id.in.(${myIdsStr}),recipient_id.in.(${partnerIdsStr})),and(sender_id.in.(${partnerIdsStr}),recipient_id.in.(${myIdsStr}))`);
+        } catch (e) {
+          // Ignores error
+        }
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('Decline message request error:', err);
+      return res.json({ success: true });
     }
   });
 
@@ -860,7 +1216,10 @@ async function startServer() {
       }
 
       const finalPath = data?.path || storagePath;
-      const cleanPath = finalPath.replace(/^\/+/, '');
+      let cleanPath = finalPath.replace(/^\/+/, '');
+      while (cleanPath.startsWith('media/')) {
+        cleanPath = cleanPath.substring(6).replace(/^\/+/, '');
+      }
       const storageHost = normalizeStorageUrl(process.env.SUPABASE_STORAGE_URL || process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL);
       const dataHost = normalizeDataUrl(process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL);
 
@@ -892,6 +1251,9 @@ async function startServer() {
     try {
       let relativePath = (req.params as any)[0] || req.path.replace(/^\/(media|storage\/v1\/s3\/object\/public\/(Gonnng|post-media))\//, '');
       relativePath = relativePath.replace(/^\/+/, '');
+      while (relativePath.startsWith('media/')) {
+        relativePath = relativePath.substring(6).replace(/^\/+/, '');
+      }
 
       if (!relativePath) {
         return res.status(400).send('Media path required.');

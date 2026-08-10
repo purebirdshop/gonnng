@@ -11,7 +11,9 @@ import {
   RecipeVisibility,
   ProfileVisibility,
   Phase,
-  Task
+  Task,
+  DirectMessage,
+  MessageThread
 } from '../types';
 import { getPublicMediaUrl, uploadService } from './uploadService';
 import { authService } from './authService';
@@ -26,7 +28,8 @@ const KEYS = {
   PROJECTS: 'gonnng_projects',
   FEEDBACK: 'gonnng_post_feedback',
   BOOKMARKS: 'gonnng_recipe_bookmarks',
-  FOLLOWS: 'gonnng_follows'
+  FOLLOWS: 'gonnng_follows',
+  MESSAGES: 'gonnng_direct_messages'
 };
 
 // IN-MEMORY FALLBACK STORE
@@ -83,6 +86,41 @@ function setLocal<T>(key: string, value: T): void {
     } catch {}
   }
 }
+
+export function toValidUuid(id: string): string {
+  if (!id) return '00000000-0000-4000-8000-000000000000';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) {
+    return id.toLowerCase();
+  }
+
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < id.length; i++) {
+    const code = id.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193);
+    h2 = Math.imul(h2 ^ code, 0x811c9dc5);
+  }
+  let h3 = Math.imul(h1 ^ h2, 0x01000193);
+  let h4 = Math.imul(h2 ^ h3, 0x811c9dc5);
+
+  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  const hex3 = (h3 >>> 0).toString(16).padStart(8, '0');
+  const hex4 = (h4 >>> 0).toString(16).padStart(8, '0');
+
+  const raw = (hex1 + hex2 + hex3 + hex4).slice(0, 32);
+
+  const part1 = raw.slice(0, 8);
+  const part2 = raw.slice(8, 12);
+  const part3 = '4' + raw.slice(13, 16);
+  const part4 = '8' + raw.slice(17, 20);
+  const part5 = raw.slice(20, 32);
+
+  return `${part1}-${part2}-${part3}-${part4}-${part5}`.toLowerCase();
+}
+
+export const DEFAULT_RECIPES: Recipe[] = [];
 
 export const dataService = {
   isSupabaseActive(): boolean {
@@ -152,7 +190,9 @@ export const dataService = {
 
     const existingPosts = await this.getPosts();
     const updatedPosts = existingPosts.map(p => {
-      const isPostAuthor = p.userId === updatedUser.id || (previousName && p.userName === previousName);
+      if (!p) return p;
+      const pUid = p.userId || (p as any).user_id;
+      const isPostAuthor = pUid === updatedUser.id || (previousName && p.userName === previousName);
       if (isPostAuthor) {
         return {
           ...p,
@@ -161,7 +201,7 @@ export const dataService = {
         };
       }
       return p;
-    });
+    }).filter(Boolean);
     setLocal(KEYS.POSTS, updatedPosts);
 
     const existingRecipes = await this.getRecipes();
@@ -285,57 +325,230 @@ export const dataService = {
 
   // ================= RECIPES & FORKING =================
   async getRecipes(): Promise<Recipe[]> {
+    let dbRecipes: Recipe[] = [];
     if (this.isSupabaseActive() && supabase) {
-      const { data: recipeRows, error } = await supabase.from('recipes').select('*');
-      if (!error && recipeRows && recipeRows.length > 0) {
-        const { data: phasesData } = await supabase.from('recipe_phases').select('*').order('position');
-        const { data: tasksData } = await supabase.from('recipe_tasks').select('*').order('position');
-        const { data: usersData } = await supabase.from('users').select('*');
+      try {
+        const { data: recipeRows, error } = await supabase.from('recipes').select('*');
+        if (!error && recipeRows && recipeRows.length > 0) {
+          const { data: phasesData } = await supabase.from('recipe_phases').select('*').order('position');
+          const { data: tasksData } = await supabase.from('recipe_tasks').select('*').order('position');
+          const { data: usersData } = await supabase.from('users').select('*');
 
-        const usersMap = new Map((usersData || []).map(u => [u.id, u]));
+          const usersMap = new Map((usersData || []).map(u => [u.id, u]));
 
-        return recipeRows.map(r => {
-          const author = usersMap.get(r.user_id);
-          const rPhases = (phasesData || []).filter(p => p.recipe_id === r.id);
+          dbRecipes = recipeRows.map(r => {
+            const author = usersMap.get(r.user_id);
+            const rPhases = (phasesData || []).filter(p => p.recipe_id === r.id);
 
-          const phases = rPhases.map(p => {
-            const pTasks = (tasksData || []).filter(t => t.phase_id === p.id);
+            const phases = rPhases.map(p => {
+              const pTasks = (tasksData || []).filter(t => t.phase_id === p.id);
+              return {
+                id: p.id,
+                title: p.title,
+                position: p.position,
+                tasks: pTasks.map(t => ({
+                  id: t.id,
+                  title: t.title,
+                  position: t.position
+                }))
+              };
+            });
+
             return {
-              id: p.id,
-              title: p.title,
-              position: p.position,
-              tasks: pTasks.map(t => ({
-                id: t.id,
-                title: t.title,
-                position: t.position
-              }))
+              id: r.id,
+              title: r.title,
+              description: r.description || '',
+              authorId: r.user_id,
+              authorName: author ? (author.first_name || author.username || 'Creator') : 'Creator',
+              authorUsername: author?.username,
+              category: r.category || r.category_name || r.category_title || 'General',
+              tags: [],
+              phases,
+              visibility: r.visibility,
+              isCustom: false,
+              forkedFrom: r.forked_from_recipe_id || undefined,
+              createdAt: r.created_at,
+              updatedAt: r.updated_at
             };
           });
-
-          return {
-            id: r.id,
-            title: r.title,
-            description: r.description || '',
-            authorId: r.user_id,
-            authorName: author?.first_name,
-            authorUsername: author?.username,
-            category: 'Practical',
-            tags: [],
-            phases,
-            visibility: r.visibility,
-            isCustom: false,
-            forkedFrom: r.forked_from_recipe_id || undefined,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at
-          };
-        });
+        }
+      } catch (err) {
+        console.warn('Error fetching recipes from Supabase:', err);
       }
     }
-    return getLocal<Recipe[]>(KEYS.RECIPES, []);
+
+    const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
+    const combinedMap = new Map<string, Recipe>();
+
+    localRecipes.forEach(r => combinedMap.set(r.id, r));
+    dbRecipes.forEach(r => combinedMap.set(r.id, r));
+
+    const finalRecipes = Array.from(combinedMap.values());
+    setLocal(KEYS.RECIPES, finalRecipes);
+    return finalRecipes;
   },
 
-  async saveRecipes(recipes: Recipe[]): Promise<void> {
+  async saveRecipe(recipe: Recipe, userId?: string): Promise<Recipe> {
+    // 1. Update local storage
+    const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
+    const existsLocally = localRecipes.some(r => r.id === recipe.id);
+    const updatedLocal = existsLocally
+      ? localRecipes.map(r => r.id === recipe.id ? recipe : r)
+      : [recipe, ...localRecipes];
+    setLocal(KEYS.RECIPES, updatedLocal);
+
+    // 2. Write to Supabase if active
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+        const authorId = userId || recipe.authorId;
+
+        let existingDbId: string | null = null;
+        if (isUuid(recipe.id)) {
+          const { data: found } = await supabase.from('recipes').select('id').eq('id', recipe.id).maybeSingle();
+          if (found) existingDbId = found.id;
+        }
+
+        if (existingDbId) {
+          // Update existing recipe row
+          await supabase.from('recipes').update({
+            title: recipe.title,
+            description: recipe.description || '',
+            category: recipe.category || 'General',
+            visibility: recipe.visibility || 'public',
+            updated_at: new Date().toISOString()
+          }).eq('id', existingDbId);
+
+          if (recipe.phases) {
+            for (let pIndex = 0; pIndex < recipe.phases.length; pIndex++) {
+              const ph = recipe.phases[pIndex];
+              let realPhaseId: string | null = null;
+
+              if (isUuid(ph.id)) {
+                const { data: foundPh } = await supabase.from('recipe_phases').select('id').eq('id', ph.id).maybeSingle();
+                if (foundPh) {
+                  realPhaseId = foundPh.id;
+                  await supabase.from('recipe_phases').update({
+                    title: ph.title,
+                    position: ph.position ?? pIndex + 1
+                  }).eq('id', realPhaseId);
+                }
+              }
+
+              if (!realPhaseId) {
+                const { data: newPhRow } = await supabase.from('recipe_phases').insert({
+                  recipe_id: existingDbId,
+                  title: ph.title,
+                  position: ph.position ?? pIndex + 1
+                }).select().single();
+                if (newPhRow) {
+                  realPhaseId = newPhRow.id;
+                  ph.id = newPhRow.id;
+                }
+              }
+
+              if (realPhaseId && ph.tasks) {
+                for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                  const t = ph.tasks[tIndex];
+                  let realTaskId: string | null = null;
+
+                  if (isUuid(t.id)) {
+                    const { data: foundTk } = await supabase.from('recipe_tasks').select('id').eq('id', t.id).maybeSingle();
+                    if (foundTk) {
+                      realTaskId = foundTk.id;
+                      await supabase.from('recipe_tasks').update({
+                        title: t.title,
+                        position: t.position ?? tIndex + 1
+                      }).eq('id', realTaskId);
+                    }
+                  }
+
+                  if (!realTaskId) {
+                    const { data: newTkRow } = await supabase.from('recipe_tasks').insert({
+                      phase_id: realPhaseId,
+                      title: t.title,
+                      position: t.position ?? tIndex + 1
+                    }).select().single();
+                    if (newTkRow) {
+                      t.id = newTkRow.id;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          // Insert new recipe row
+          const insertPayload: any = {
+            title: recipe.title,
+            description: recipe.description || '',
+            category: recipe.category || 'General',
+            visibility: recipe.visibility || 'public'
+          };
+          if (authorId && isUuid(authorId)) {
+            insertPayload.user_id = authorId;
+          }
+          if (isUuid(recipe.id)) {
+            insertPayload.id = recipe.id;
+          }
+          if (recipe.forkedFrom && isUuid(recipe.forkedFrom)) {
+            insertPayload.forked_from_recipe_id = recipe.forkedFrom;
+          }
+
+          const { data: newRecipeRow, error: rErr } = await supabase
+            .from('recipes')
+            .insert(insertPayload)
+            .select()
+            .single();
+
+          if (!rErr && newRecipeRow) {
+            recipe.id = newRecipeRow.id;
+            recipe.authorId = newRecipeRow.user_id;
+
+            if (recipe.phases) {
+              for (let pIndex = 0; pIndex < recipe.phases.length; pIndex++) {
+                const ph = recipe.phases[pIndex];
+                const { data: newPhRow } = await supabase.from('recipe_phases').insert({
+                  recipe_id: newRecipeRow.id,
+                  title: ph.title,
+                  position: ph.position ?? pIndex + 1
+                }).select().single();
+
+                if (newPhRow) {
+                  ph.id = newPhRow.id;
+                  if (ph.tasks) {
+                    for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                      const t = ph.tasks[tIndex];
+                      const { data: newTkRow } = await supabase.from('recipe_tasks').insert({
+                        phase_id: newPhRow.id,
+                        title: t.title,
+                        position: t.position ?? tIndex + 1
+                      }).select().single();
+                      if (newTkRow) {
+                        t.id = newTkRow.id;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.error('Error saving recipe to Supabase:', dbErr);
+      }
+    }
+
+    return recipe;
+  },
+
+  async saveRecipes(recipes: Recipe[], userId?: string): Promise<void> {
     setLocal(KEYS.RECIPES, recipes);
+    if (this.isSupabaseActive() && supabase) {
+      for (const recipe of recipes) {
+        await this.saveRecipe(recipe, userId);
+      }
+    }
   },
 
   /**
@@ -403,55 +616,167 @@ export const dataService = {
     return newForked;
   },
 
+  async ensureUserExistsInSupabase(validUserId: string, userDetails?: Partial<Creator>): Promise<void> {
+    if (!this.isSupabaseActive() || !supabase) return;
+    try {
+      const { data } = await supabase.from('users').select('id').eq('id', validUserId).maybeSingle();
+      if (!data) {
+        await supabase.from('users').upsert({
+          id: validUserId,
+          public_id: validUserId,
+          username: userDetails?.username || `user_${validUserId.slice(0, 8)}`,
+          first_name: userDetails?.name || 'User',
+          last_name: ''
+        }, { onConflict: 'id' });
+      }
+    } catch (err) {
+      console.warn('Error ensuring user in Supabase:', err);
+    }
+  },
+
+  async ensureRecipeExistsInSupabase(validRecipeId: string, validUserId: string, recipeObj?: Partial<Recipe>): Promise<void> {
+    if (!this.isSupabaseActive() || !supabase) return;
+    try {
+      const { data } = await supabase.from('recipes').select('id').eq('id', validRecipeId).maybeSingle();
+      if (!data) {
+        await supabase.from('recipes').upsert({
+          id: validRecipeId,
+          user_id: validUserId,
+          title: recipeObj?.title || 'Saved Recipe',
+          description: recipeObj?.description || '',
+          category: recipeObj?.category || 'General',
+          visibility: 'public'
+        }, { onConflict: 'id' });
+      }
+    } catch (err) {
+      console.warn('Error ensuring recipe in Supabase:', err);
+    }
+  },
+
   /**
    * Recipe Bookmarks: row-per-user in recipe_bookmarks
    */
   async getUserSavedRecipeIds(userId: string): Promise<string[]> {
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    let supabaseIds: string[] = [];
     if (this.isSupabaseActive() && supabase) {
-      const { data, error } = await supabase
-        .from('recipe_bookmarks')
-        .select('recipe_id')
-        .eq('user_id', userId);
-      if (!error && data) {
-        return data.map(b => b.recipe_id);
+      try {
+        const { data, error } = await supabase
+          .from('recipe_bookmarks')
+          .select('recipe_id')
+          .eq('user_id', validUserId);
+        if (!error && data) {
+          supabaseIds = data.map(b => b.recipe_id);
+        }
+      } catch (err) {
+        console.warn('Error fetching bookmarks from Supabase:', err);
       }
     }
-    const bookmarks = getLocal<Array<{ userId: string; recipeId: string }>>(KEYS.BOOKMARKS, []);
-    return bookmarks.filter(b => !b.userId || b.userId === userId).map(b => b.recipeId);
+
+    const localBookmarks = getLocal<any[]>(KEYS.BOOKMARKS, []);
+    const localIds = (Array.isArray(localBookmarks) ? localBookmarks : [])
+      .filter(b => {
+        if (!b) return false;
+        if (typeof b === 'string') return true;
+        const bUid = b.userId || (b as any).user_id;
+        return !bUid || bUid === userId || bUid === validUserId;
+      })
+      .map(b => (typeof b === 'string' ? b : (b.recipeId || (b as any).recipe_id)))
+      .filter(Boolean);
+
+    const stringSaved = getLocal<string[]>('gonnng_recipe_bookmarks', []);
+
+    const allKnownRecipes = await this.getRecipes();
+    const uuidToOrigMap = new Map<string, string>();
+    allKnownRecipes.forEach(r => {
+      if (!r) return;
+      uuidToOrigMap.set(toValidUuid(r.id), r.id);
+      uuidToOrigMap.set(r.id, r.id);
+    });
+
+    const mappedSupabaseIds: string[] = [];
+    supabaseIds.forEach(sid => {
+      mappedSupabaseIds.push(sid);
+      const orig = uuidToOrigMap.get(sid);
+      if (orig) mappedSupabaseIds.push(orig);
+    });
+
+    const combined = Array.from(new Set([
+      ...mappedSupabaseIds,
+      ...localIds,
+      ...(Array.isArray(stringSaved) ? stringSaved : [])
+    ]));
+    return combined;
   },
 
-  async toggleBookmarkRecipe(userId: string, recipeId: string): Promise<boolean> {
-    if (this.isSupabaseActive() && supabase) {
-      const { data: existing } = await supabase
-        .from('recipe_bookmarks')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('recipe_id', recipeId)
-        .maybeSingle();
+  async toggleBookmarkRecipe(userId: string, recipeId: string, recipeObj?: Recipe): Promise<boolean> {
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    const validRecipeId = toValidUuid(recipeId);
 
-      if (existing) {
-        await supabase.from('recipe_bookmarks').delete().eq('id', existing.id);
-        return false;
-      } else {
-        await supabase.from('recipe_bookmarks').upsert(
-          { user_id: userId, recipe_id: recipeId },
-          { onConflict: 'user_id, recipe_id' }
-        );
-        return true;
-      }
+    // 1. Local Storage synchronization
+    const localBookmarks = getLocal<any[]>(KEYS.BOOKMARKS, []);
+    const arr = Array.isArray(localBookmarks) ? localBookmarks : [];
+    const idx = arr.findIndex(b => {
+      if (!b) return false;
+      if (typeof b === 'string') return b === recipeId || b === validRecipeId;
+      const bUid = b.userId || (b as any).user_id;
+      const bRId = b.recipeId || (b as any).recipe_id;
+      return (!bUid || bUid === userId || bUid === validUserId) && (bRId === recipeId || bRId === validRecipeId);
+    });
+    let isNowBookmarked = false;
+
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+      isNowBookmarked = false;
     } else {
-      const bookmarks = getLocal<Array<{ userId: string; recipeId: string }>>(KEYS.BOOKMARKS, []);
-      const idx = bookmarks.findIndex(b => b.userId === userId && b.recipeId === recipeId);
-      let bookmarked = false;
-      if (idx >= 0) {
-        bookmarks.splice(idx, 1);
-      } else {
-        bookmarks.push({ userId, recipeId });
-        bookmarked = true;
+      arr.push({ userId, recipeId });
+      if (recipeId !== validRecipeId) {
+        arr.push({ userId: validUserId, recipeId: validRecipeId });
       }
-      setLocal(KEYS.BOOKMARKS, bookmarks);
-      return bookmarked;
+      isNowBookmarked = true;
     }
+    setLocal(KEYS.BOOKMARKS, arr);
+
+    const stringBookmarkIds = arr
+      .filter(b => {
+        if (!b) return false;
+        if (typeof b === 'string') return true;
+        const bUid = b.userId || (b as any).user_id;
+        return !bUid || bUid === userId || bUid === validUserId;
+      })
+      .map(b => (typeof b === 'string' ? b : (b.recipeId || (b as any).recipe_id)))
+      .filter(Boolean);
+    try {
+      localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify(Array.from(new Set(stringBookmarkIds))));
+    } catch {}
+
+    // 2. Direct database writes to Supabase recipe_bookmarks table
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        await this.ensureUserExistsInSupabase(validUserId);
+        await this.ensureRecipeExistsInSupabase(validRecipeId, validUserId, recipeObj);
+
+        const { data: existing } = await supabase
+          .from('recipe_bookmarks')
+          .select('*')
+          .eq('user_id', validUserId)
+          .eq('recipe_id', validRecipeId)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase.from('recipe_bookmarks').delete().eq('id', existing.id);
+        } else {
+          await supabase.from('recipe_bookmarks').upsert(
+            { user_id: validUserId, recipe_id: validRecipeId },
+            { onConflict: 'user_id, recipe_id' }
+          );
+        }
+      } catch (err) {
+        console.warn('Supabase bookmark sync error:', err);
+      }
+    }
+
+    return isNowBookmarked;
   },
 
   // ================= PROJECTS (Recipe execution) =================
@@ -492,6 +817,7 @@ export const dataService = {
             title: p.title,
             recipeId: p.recipe_id || '',
             recipeTitle: p.title,
+            category: p.category || 'General',
             phases,
             createdAt: p.created_at,
             privacy: 'public'
@@ -500,14 +826,307 @@ export const dataService = {
       }
     }
     const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+    const safeAll = Array.isArray(all) ? all.filter(Boolean) : [];
     if (userId) {
-      return all.filter(p => !p.userId || p.userId === userId);
+      return safeAll.filter(p => p && (!p.userId && !(p as any).user_id || p.userId === userId || (p as any).user_id === userId));
     }
-    return all;
+    return safeAll;
   },
 
-  async saveProjects(projects: Project[]): Promise<void> {
+  async saveProjects(projects: Project[], userId?: string): Promise<void> {
     setLocal(KEYS.PROJECTS, projects);
+    if (this.isSupabaseActive() && supabase) {
+      for (const p of projects) {
+        await this.updateProject(p, userId);
+      }
+    }
+  },
+
+  async updateProject(project: Project, userId?: string): Promise<Project> {
+    // 1. Update in local storage
+    const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+    const exists = all.some(p => p.id === project.id);
+    const updatedAll = exists
+      ? all.map(p => p.id === project.id ? project : p)
+      : [project, ...all];
+    setLocal(KEYS.PROJECTS, updatedAll);
+
+    // 2. Update/Insert in Supabase if active
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+        const ownerId = userId || project.userId;
+
+        let existingDbId: string | null = null;
+        if (isUuid(project.id)) {
+          const { data: found } = await supabase.from('projects').select('id').eq('id', project.id).maybeSingle();
+          if (found) existingDbId = found.id;
+        }
+
+        if (existingDbId) {
+          // UPDATE existing project row
+          await supabase.from('projects').update({
+            title: project.title,
+            category: project.category || 'General',
+            updated_at: new Date().toISOString()
+          }).eq('id', existingDbId);
+
+          if (project.phases) {
+            for (let pIndex = 0; pIndex < project.phases.length; pIndex++) {
+              const ph = project.phases[pIndex];
+              let realPhaseId: string | null = null;
+
+              if (isUuid(ph.id)) {
+                const { data: foundPh } = await supabase.from('project_phases').select('id').eq('id', ph.id).maybeSingle();
+                if (foundPh) {
+                  realPhaseId = foundPh.id;
+                  await supabase.from('project_phases').update({
+                    title: ph.title,
+                    position: ph.position ?? pIndex + 1
+                  }).eq('id', realPhaseId);
+                }
+              }
+
+              if (!realPhaseId) {
+                const { data: newPhRow } = await supabase.from('project_phases').insert({
+                  project_id: existingDbId,
+                  title: ph.title,
+                  position: ph.position ?? pIndex + 1,
+                  is_complete: false
+                }).select().single();
+                if (newPhRow) {
+                  realPhaseId = newPhRow.id;
+                  ph.id = newPhRow.id;
+                }
+              }
+
+              if (realPhaseId && ph.tasks) {
+                for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                  const t = ph.tasks[tIndex];
+                  let realTaskId: string | null = null;
+
+                  if (isUuid(t.id)) {
+                    const { data: foundTk } = await supabase.from('project_tasks').select('id').eq('id', t.id).maybeSingle();
+                    if (foundTk) {
+                      realTaskId = foundTk.id;
+                      await supabase.from('project_tasks').update({
+                        title: t.title,
+                        position: t.position ?? tIndex + 1,
+                        is_complete: Boolean(t.completed)
+                      }).eq('id', realTaskId);
+                    }
+                  }
+
+                  if (!realTaskId) {
+                    const { data: newTkRow } = await supabase.from('project_tasks').insert({
+                      project_phase_id: realPhaseId,
+                      title: t.title,
+                      position: t.position ?? tIndex + 1,
+                      is_complete: Boolean(t.completed)
+                    }).select().single();
+                    if (newTkRow) {
+                      t.id = newTkRow.id;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          // INSERT new project row
+          const insertPayload: any = {
+            title: project.title,
+            category: project.category || 'General',
+            recipe_id: isUuid(project.recipeId) ? project.recipeId : null
+          };
+          if (ownerId && isUuid(ownerId)) {
+            insertPayload.user_id = ownerId;
+          }
+          if (isUuid(project.id)) {
+            insertPayload.id = project.id;
+          }
+
+          const { data: newProjRow, error: pErr } = await supabase
+            .from('projects')
+            .insert(insertPayload)
+            .select()
+            .single();
+
+          if (!pErr && newProjRow) {
+            project.id = newProjRow.id;
+            if (newProjRow.user_id) project.userId = newProjRow.user_id;
+
+            if (project.phases) {
+              for (let pIndex = 0; pIndex < project.phases.length; pIndex++) {
+                const ph = project.phases[pIndex];
+                const { data: newPhRow } = await supabase.from('project_phases').insert({
+                  project_id: newProjRow.id,
+                  title: ph.title,
+                  position: ph.position ?? pIndex + 1,
+                  is_complete: false
+                }).select().single();
+
+                if (newPhRow) {
+                  ph.id = newPhRow.id;
+                  if (ph.tasks) {
+                    for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                      const t = ph.tasks[tIndex];
+                      const { data: newTkRow } = await supabase.from('project_tasks').insert({
+                        project_phase_id: newPhRow.id,
+                        title: t.title,
+                        position: t.position ?? tIndex + 1,
+                        is_complete: Boolean(t.completed)
+                      }).select().single();
+                      if (newTkRow) {
+                        t.id = newTkRow.id;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error updating project in Supabase:', err);
+      }
+    }
+
+    return project;
+  },
+
+  /**
+   * Custom Project creation with Title, Category, Cover Image, Phases & Steps, and Privacy
+   */
+  async createProject(
+    userId: string,
+    data: {
+      title: string;
+      category: string;
+      imageUrl?: string;
+      phases: Phase[];
+      privacy?: ProfileVisibility;
+      recipeId?: string;
+      recipeTitle?: string;
+    }
+  ): Promise<Project> {
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const recipeId = data.recipeId || `custom-${Date.now()}`;
+    const recipeTitle = data.recipeTitle || data.title;
+    const category = data.category || 'General';
+    const privacy = data.privacy || 'public';
+
+    if (this.isSupabaseActive() && supabase) {
+      const { data: projectRow, error: pErr } = await supabase
+        .from('projects')
+        .insert({
+          user_id: userId,
+          recipe_id: isUuid(recipeId) ? recipeId : null,
+          title: data.title,
+          category: category
+        })
+        .select()
+        .single();
+
+      if (!pErr && projectRow) {
+        const createdPhases: Phase[] = [];
+        for (let pIndex = 0; pIndex < data.phases.length; pIndex++) {
+          const ph = data.phases[pIndex];
+          const { data: phaseRow } = await supabase
+            .from('project_phases')
+            .insert({
+              project_id: projectRow.id,
+              title: ph.title,
+              position: ph.position ?? pIndex + 1,
+              is_complete: false
+            })
+            .select()
+            .single();
+
+          if (!phaseRow) continue;
+
+          const createdTasks: Task[] = [];
+          for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+            const t = ph.tasks[tIndex];
+            const { data: taskRow } = await supabase
+              .from('project_tasks')
+              .insert({
+                project_phase_id: phaseRow.id,
+                title: t.title,
+                position: t.position ?? tIndex + 1,
+                is_complete: false
+              })
+              .select()
+              .single();
+
+            if (taskRow) {
+              createdTasks.push({
+                id: taskRow.id,
+                title: taskRow.title,
+                completed: false,
+                position: taskRow.position
+              });
+            }
+          }
+
+          createdPhases.push({
+            id: phaseRow.id,
+            title: phaseRow.title,
+            position: phaseRow.position,
+            tasks: createdTasks
+          });
+        }
+
+        const newProj: Project = {
+          id: projectRow.id,
+          title: projectRow.title,
+          recipeId,
+          recipeTitle,
+          category,
+          phases: createdPhases,
+          createdAt: projectRow.created_at,
+          privacy,
+          progressPhotos: data.imageUrl
+            ? [{ url: data.imageUrl, caption: 'Project Cover', date: new Date().toLocaleDateString() }]
+            : []
+        };
+
+        const existing = await this.getProjects();
+        await this.saveProjects([newProj, ...existing]);
+        return newProj;
+      }
+    }
+
+    // Local fallback
+    const phases: Phase[] = data.phases.map((p, pIdx) => ({
+      id: p.id || `phase-local-${pIdx}-${Date.now()}`,
+      title: p.title,
+      position: pIdx + 1,
+      tasks: p.tasks.map((t, tIdx) => ({
+        id: t.id || `task-local-${tIdx}-${Date.now()}`,
+        title: t.title,
+        completed: false,
+        position: tIdx + 1
+      }))
+    }));
+
+    const newProj: Project = {
+      id: `project-${Date.now()}`,
+      title: data.title,
+      recipeId,
+      recipeTitle,
+      category,
+      phases,
+      createdAt: new Date().toISOString(),
+      privacy,
+      progressPhotos: data.imageUrl
+        ? [{ url: data.imageUrl, caption: 'Project Cover', date: new Date().toLocaleDateString() }]
+        : []
+    };
+
+    const existing = await this.getProjects();
+    await this.saveProjects([newProj, ...existing]);
+    return newProj;
   },
 
   /**
@@ -521,7 +1140,8 @@ export const dataService = {
         .insert({
           user_id: userId,
           recipe_id: recipe.id,
-          title: recipe.title
+          title: recipe.title,
+          category: recipe.category || 'General'
         })
         .select()
         .single();
@@ -589,6 +1209,7 @@ export const dataService = {
         title: projectRow.title,
         recipeId: recipe.id,
         recipeTitle: recipe.title,
+        category: projectRow.category || recipe.category || 'General',
         phases: createdPhases,
         createdAt: projectRow.created_at,
         privacy: 'public'
@@ -643,61 +1264,67 @@ export const dataService = {
 
         const usersMap = new Map((usersRows || []).map(u => [u.id, u]));
 
-        return postRows.map(p => {
-          const author = usersMap.get(p.user_id);
-          const pMedia = (mediaRows || []).filter(m => m.post_id === p.id);
-          const pFeedback = (feedbackRows || []).filter(f => f.post_id === p.id);
-          const pComments = (commentsRows || []).filter(c => c.post_id === p.id);
+        return postRows
+          .filter(Boolean)
+          .map(p => {
+            if (!p) return null;
+            const author = usersMap.get(p.user_id);
+            const pMedia = (mediaRows || []).filter(m => m && m.post_id === p.id);
+            const pFeedback = (feedbackRows || []).filter(f => f && f.post_id === p.id);
+            const pComments = (commentsRows || []).filter(c => c && c.post_id === p.id);
 
-          // Calculate feedback counts from post_feedback rows (never counter increments)
-          const gongs = {
-            continue: pFeedback.filter(f => f.feedback_type === 'success').length,
-            refine: pFeedback.filter(f => f.feedback_type === 'promise').length,
-            reconsider: pFeedback.filter(f => f.feedback_type === 'potential').length
-          };
+            // Calculate feedback counts from post_feedback rows (never counter increments)
+            const gongs = {
+              continue: pFeedback.filter(f => f && f.feedback_type === 'success').length,
+              refine: pFeedback.filter(f => f && f.feedback_type === 'promise').length,
+              reconsider: pFeedback.filter(f => f && f.feedback_type === 'potential').length
+            };
 
-          // Build post media items with dynamically resolved URLs
-          const media: PostMediaItem[] = pMedia.map(m => ({
-            id: m.id,
-            postId: m.post_id,
-            storageBucket: m.storage_bucket,
-            storagePath: m.storage_path,
-            mediaType: m.media_type,
-            position: m.position,
-            width: m.width,
-            height: m.height,
-            durationMs: m.duration_ms,
-            resolvedUrl: getPublicMediaUrl(m.storage_bucket, m.storage_path)
-          }));
+            // Build post media items with dynamically resolved URLs
+            const media: PostMediaItem[] = pMedia.map(m => ({
+              id: m.id,
+              postId: m.post_id,
+              storageBucket: m.storage_bucket,
+              storagePath: m.storage_path,
+              mediaType: m.media_type,
+              position: m.position,
+              width: m.width,
+              height: m.height,
+              durationMs: m.duration_ms,
+              resolvedUrl: getPublicMediaUrl(m.storage_bucket, m.storage_path)
+            }));
 
-          // First media resolved URL as primary image fallback
-          const primaryImage = media.length > 0 ? media[0].resolvedUrl : undefined;
+            // First media resolved URL as primary image fallback
+            const primaryImage = media.length > 0 ? media[0].resolvedUrl : undefined;
 
-          // Build recursive nested comments tree
-          const formattedComments = this.buildCommentsTree(pComments, usersMap);
+            // Build recursive nested comments tree
+            const formattedComments = this.buildCommentsTree(pComments, usersMap);
 
-          return {
-            id: p.id,
-            type: 'update_logged',
-            userId: p.user_id,
-            userName: author?.username,
-            username: author?.username,
-            userAvatar: getPublicMediaUrl('Gonnng', author.avatar_storage_path),
-            timeString: new Date(p.created_at).toLocaleDateString(),
-            title: p.description?.substring(0, 60),
-            content: p.description,
-            projectId: p.project_id,
-            image: primaryImage,
-            media,
-            privacy: 'public',
-            createdAt: p.created_at,
-            gongs,
-            comments: formattedComments
-          };
-        });
+            const displayAuthorName = author?.username || author?.first_name || 'Creator';
+
+            return {
+              id: p.id,
+              type: 'update_logged',
+              userId: p.user_id,
+              userName: displayAuthorName,
+              username: displayAuthorName,
+              userAvatar: author?.avatar_storage_path ? getPublicMediaUrl('Gonnng', author.avatar_storage_path) : '',
+              timeString: p.created_at ? new Date(p.created_at).toLocaleDateString() : 'Recently',
+              title: p.description?.substring(0, 60),
+              content: p.description,
+              projectId: p.project_id,
+              image: primaryImage,
+              media,
+              privacy: 'public',
+              createdAt: p.created_at,
+              gongs,
+              comments: formattedComments
+            };
+          }).filter(Boolean) as FeedPost[];
       }
     }
-    return getLocal<FeedPost[]>(KEYS.POSTS, []);
+    const localPosts = getLocal<FeedPost[]>(KEYS.POSTS, []);
+    return (Array.isArray(localPosts) ? localPosts : []).filter(Boolean);
   },
 
   async savePosts(posts: FeedPost[]): Promise<void> {
@@ -860,21 +1487,23 @@ export const dataService = {
       };
     } else {
       // Local fallback using UPSERT logic in LocalStorage
-      const localFb = getLocal<Array<{ postId: string; userId: string; feedbackType: FeedbackType }>>(KEYS.FEEDBACK, []);
-      const idx = localFb.findIndex(f => f.postId === postId && f.userId === userId);
+      const localFb = getLocal<any[]>(KEYS.FEEDBACK, []);
+      const arr = Array.isArray(localFb) ? localFb : [];
+      const idx = arr.findIndex(f => f && (f.postId || f.post_id) === postId && (f.userId || f.user_id) === userId);
 
       if (idx >= 0) {
-        localFb[idx].feedbackType = feedbackType;
+        arr[idx].feedbackType = feedbackType;
+        arr[idx].feedback_type = feedbackType;
       } else {
-        localFb.push({ postId, userId, feedbackType });
+        arr.push({ postId, userId, feedbackType, post_id: postId, user_id: userId, feedback_type: feedbackType });
       }
-      setLocal(KEYS.FEEDBACK, localFb);
+      setLocal(KEYS.FEEDBACK, arr);
 
-      const postFb = localFb.filter(f => f.postId === postId);
+      const postFb = arr.filter(f => f && (f.postId || f.post_id) === postId);
       return {
-        continue: postFb.filter(f => f.feedbackType === 'success').length,
-        refine: postFb.filter(f => f.feedbackType === 'promise').length,
-        reconsider: postFb.filter(f => f.feedbackType === 'potential').length,
+        continue: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'success').length,
+        refine: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'promise').length,
+        reconsider: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'potential').length,
         userVoted: feedbackType
       };
     }
@@ -898,12 +1527,12 @@ export const dataService = {
         throw new Error(`Failed to add comment: ${error?.message || 'Unknown error'}`);
       }
 
-      const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+      const { data: user } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
 
       return {
         id: commentRow.id,
         userId: commentRow.user_id,
-        userName: user?.username,
+        userName: user?.username || user?.first_name || 'Creator',
         userAvatar: user?.avatar_storage_path ? getPublicMediaUrl('Gonnng', user.avatar_storage_path) : '',
         body: commentRow.body,
         content: commentRow.body,
@@ -927,7 +1556,7 @@ export const dataService = {
         children: []
       };
 
-      const targetPost = posts.find(p => p.id === postId);
+      const targetPost = posts.find(p => p && p.id === postId);
       if (targetPost) {
         targetPost.comments = targetPost.comments || [];
         targetPost.comments.push(newComment);
@@ -941,27 +1570,29 @@ export const dataService = {
     const map = new Map<string, PostComment>();
     const roots: PostComment[] = [];
 
-      commentsList.forEach(c => {
-        const author = usersMap.get(c.user_id);
-        const item: PostComment = {
-          id: c.id,
-          userId: c.user_id,
-          userName: author?.username,
-          userAvatar: author?.avatar_storage_path ? getPublicMediaUrl('Gonnng', author.avatar_storage_path) : '',
-        body: c.body,
-        content: c.body,
-        timeString: new Date(c.created_at).toLocaleTimeString(),
-        parentId: c.parent_comment_id,
-        createdAt: c.created_at,
+    (commentsList || []).forEach(c => {
+      if (!c) return;
+      const cUserId = c.user_id || c.userId;
+      const author = usersMap.get(cUserId);
+      const item: PostComment = {
+        id: c.id,
+        userId: cUserId,
+        userName: author?.username || author?.first_name || c.userName || 'Creator',
+        userAvatar: author?.avatar_storage_path ? getPublicMediaUrl('Gonnng', author.avatar_storage_path) : (c.userAvatar || ''),
+        body: c.body || c.content || '',
+        content: c.body || c.content || '',
+        timeString: c.created_at ? new Date(c.created_at).toLocaleTimeString() : (c.timeString || 'Recently'),
+        parentId: c.parent_comment_id || c.parentId || null,
+        createdAt: c.created_at || c.createdAt || new Date().toISOString(),
         children: []
       };
       map.set(c.id, item);
     });
 
     map.forEach(item => {
-      if (item.parentId && map.has(item.parentId)) {
+      if (item && item.parentId && map.has(item.parentId)) {
         map.get(item.parentId)!.children!.push(item);
-      } else {
+      } else if (item) {
         roots.push(item);
       }
     });
@@ -1120,6 +1751,378 @@ export const dataService = {
       }
     }
     return [];
+  },
+
+  // ================= DIRECT MESSAGES (DATABASE & STORAGE) =================
+  async getDirectMessages(currentUserId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    recipientId: string;
+    text: string;
+    isRead: boolean;
+    status?: 'pending' | 'accepted';
+    postThumbnail?: string;
+    postId?: string;
+    createdAt: number;
+    timestamp: string;
+  }>> {
+    const formatTime = (ms: number): string => {
+      const diffSec = Math.floor((Date.now() - ms) / 1000);
+      if (diffSec < 60) return 'Just now';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays < 30) return `${diffDays}d ago`;
+      return new Date(ms).toLocaleDateString();
+    };
+
+    try {
+      const res = await fetch(`/api/messages/${encodeURIComponent(currentUserId)}`);
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && Array.isArray(body.messages)) {
+          if (body.messages.length > 0) {
+            setLocal(KEYS.MESSAGES, body.messages);
+            return body.messages;
+          }
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('direct_messages')
+          .select('*')
+          .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
+          .order('created_at', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          return data.map(row => {
+            const createdAt = new Date(row.created_at).getTime();
+            return {
+              id: row.id,
+              senderId: row.sender_id,
+              recipientId: row.recipient_id,
+              text: row.text,
+              isRead: Boolean(row.is_read),
+              status: row.status || 'accepted',
+              postThumbnail: row.post_thumbnail || undefined,
+              postId: row.post_id || undefined,
+              createdAt,
+              timestamp: formatTime(createdAt)
+            };
+          });
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Local Storage Fallback Store
+    let rawMessages = getLocal<any[]>(KEYS.MESSAGES, []);
+    if (!Array.isArray(rawMessages)) {
+      rawMessages = [];
+    }
+
+    return rawMessages
+      .filter(m => m && (m.senderId === currentUserId || m.recipientId === currentUserId || m.sender_id === currentUserId || m.recipient_id === currentUserId))
+      .map(m => {
+        const createdAt = typeof m.createdAt === 'number' ? m.createdAt : new Date(m.created_at || Date.now()).getTime();
+        return {
+          id: m.id || `msg-${Math.random().toString(36).substring(2, 8)}`,
+          senderId: m.senderId || m.sender_id || 'user-current',
+          recipientId: m.recipientId || m.recipient_id || currentUserId,
+          text: m.text || '',
+          isRead: Boolean(m.isRead ?? m.is_read),
+          status: m.status || 'accepted',
+          postThumbnail: m.postThumbnail || m.post_thumbnail,
+          postId: m.postId || m.post_id,
+          createdAt,
+          timestamp: formatTime(createdAt)
+        };
+      });
+  },
+
+  async sendDirectMessage(
+    senderId: string,
+    recipientId: string,
+    text: string,
+    postThumbnail?: string,
+    postId?: string,
+    status: 'pending' | 'accepted' = 'accepted'
+  ): Promise<DirectMessage> {
+    const createdAt = Date.now();
+    const formatTime = 'Just now';
+    const cleanedText = String(text || '').trim().slice(0, 1400);
+
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId,
+          recipientId,
+          text: cleanedText,
+          postThumbnail,
+          postId,
+          status
+        })
+      });
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && body.message) {
+          const localMsgs = getLocal<any[]>(KEYS.MESSAGES, []);
+          localMsgs.push(body.message);
+          setLocal(KEYS.MESSAGES, localMsgs);
+          return body.message;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        const newRow: any = {
+          sender_id: senderId,
+          recipient_id: recipientId,
+          text,
+          is_read: true,
+          post_thumbnail: postThumbnail || null,
+          post_id: postId || null
+        };
+
+        const { data, error } = await supabase
+          .from('direct_messages')
+          .insert(newRow)
+          .select('*')
+          .single();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            senderId: data.sender_id,
+            recipientId: data.recipient_id,
+            text: data.text,
+            isRead: Boolean(data.is_read),
+            status: data.status || status,
+            postThumbnail: data.post_thumbnail || undefined,
+            postId: data.post_id || undefined,
+            timestamp: formatTime,
+            createdAt
+          };
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Local Storage Fallback Store
+    const localMsgs = getLocal<any[]>(KEYS.MESSAGES, []);
+    const newMsgObj = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      senderId,
+      recipientId,
+      text,
+      isRead: true,
+      status,
+      postThumbnail,
+      postId,
+      createdAt
+    };
+    localMsgs.push(newMsgObj);
+    setLocal(KEYS.MESSAGES, localMsgs);
+
+    return {
+      id: newMsgObj.id,
+      senderId,
+      recipientId,
+      text,
+      isRead: true,
+      status,
+      postThumbnail,
+      postId,
+      timestamp: formatTime,
+      createdAt
+    };
+  },
+
+  async acceptMessageRequest(currentUserId: string, partnerId: string): Promise<void> {
+    try {
+      await fetch('/api/messages/accept', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUserId, partnerId })
+      });
+    } catch {
+      // Fallback
+    }
+
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        await supabase
+          .from('direct_messages')
+          .update({ status: 'accepted' })
+          .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${partnerId}),and(sender_id.eq.${partnerId},recipient_id.eq.${currentUserId})`);
+      } catch {
+        // Ignore
+      }
+    }
+
+    const localMsgs = getLocal<any[]>(KEYS.MESSAGES, []);
+    if (Array.isArray(localMsgs)) {
+      const updated = localMsgs.map(m => {
+        const rId = m.recipientId || m.recipient_id;
+        const sId = m.senderId || m.sender_id;
+        if ((rId === currentUserId && sId === partnerId) || (rId === partnerId && sId === currentUserId)) {
+          return { ...m, status: 'accepted' };
+        }
+        return m;
+      });
+      setLocal(KEYS.MESSAGES, updated);
+    }
+  },
+
+  async declineMessageRequest(currentUserId: string, partnerId: string): Promise<void> {
+    try {
+      await fetch('/api/messages/decline', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUserId, partnerId })
+      });
+    } catch {
+      // Fallback
+    }
+
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        await supabase
+          .from('direct_messages')
+          .delete()
+          .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${partnerId}),and(sender_id.eq.${partnerId},recipient_id.eq.${currentUserId})`);
+      } catch {
+        // Ignore
+      }
+    }
+
+    const localMsgs = getLocal<any[]>(KEYS.MESSAGES, []);
+    if (Array.isArray(localMsgs)) {
+      const updated = localMsgs.filter(m => {
+        const rId = m.recipientId || m.recipient_id;
+        const sId = m.senderId || m.sender_id;
+        return !((rId === currentUserId && sId === partnerId) || (rId === partnerId && sId === currentUserId));
+      });
+      setLocal(KEYS.MESSAGES, updated);
+    }
+  },
+
+  async markDirectMessagesAsRead(currentUserId: string, partnerId: string): Promise<void> {
+    try {
+      await fetch('/api/messages/read', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUserId, partnerId })
+      });
+    } catch {
+      // Fallback
+    }
+
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        await supabase
+          .from('direct_messages')
+          .update({ is_read: true })
+          .eq('recipient_id', currentUserId)
+          .eq('sender_id', partnerId);
+      } catch {
+        // Ignore
+      }
+    }
+
+    const localMsgs = getLocal<any[]>(KEYS.MESSAGES, []);
+    if (Array.isArray(localMsgs)) {
+      const updated = localMsgs.map(m => {
+        const rId = m.recipientId || m.recipient_id;
+        const sId = m.senderId || m.sender_id;
+        if (rId === currentUserId && sId === partnerId) {
+          return { ...m, isRead: true, is_read: true };
+        }
+        return m;
+      });
+      setLocal(KEYS.MESSAGES, updated);
+    }
+  },
+
+  async getDirectMessageThreads(currentUserId: string, creators: Creator[]): Promise<MessageThread[]> {
+    const allMsgs = await this.getDirectMessages(currentUserId);
+    
+    // Group messages by target partner creator ID
+    const threadsMap = new Map<string, DirectMessage[]>();
+
+    allMsgs.forEach(m => {
+      const partnerId = m.senderId === currentUserId ? m.recipientId : m.senderId;
+      if (!partnerId) return;
+      if (!threadsMap.has(partnerId)) {
+        threadsMap.set(partnerId, []);
+      }
+      threadsMap.get(partnerId)!.push({
+        id: m.id,
+        senderId: m.senderId,
+        recipientId: m.recipientId,
+        text: m.text,
+        timestamp: m.timestamp,
+        createdAt: m.createdAt,
+        isRead: m.isRead,
+        postThumbnail: m.postThumbnail,
+        postId: m.postId
+      });
+    });
+
+    const threads: MessageThread[] = [];
+
+    threadsMap.forEach((msgs, partnerId) => {
+      // Sort messages within thread chronologically
+      msgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+      const partnerCreator: Creator = creators.find(c =>
+        c.id === partnerId ||
+        c.username === partnerId ||
+        c.name.toLowerCase() === partnerId.toLowerCase()
+      ) || {
+        id: partnerId,
+        name: partnerId.startsWith('creator-') ? partnerId.replace('creator-', '').toUpperCase() : partnerId,
+        username: partnerId,
+        email: `${partnerId}@gonnng.com`,
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(partnerId)}&background=F59E0B&color=fff`,
+        bio: 'Creative collaborator on Gonnng.',
+        goals: 'Process engineering and community builds.',
+        privacyDefault: 'public' as const,
+        followersCount: 1,
+        followingCount: 1,
+        isFollowing: false
+      };
+
+      const unreadCount = msgs.filter(m => m.recipientId === currentUserId && !m.isRead).length;
+      const lastMsg = msgs[msgs.length - 1];
+      const lastUpdated = lastMsg ? (lastMsg.createdAt || Date.now()) : Date.now();
+
+      threads.push({
+        creator: partnerCreator,
+        messages: msgs,
+        lastUpdated,
+        unreadCount
+      });
+    });
+
+    // Sort threads by most recent activity
+    threads.sort((a, b) => b.lastUpdated - a.lastUpdated);
+
+    return threads;
   }
 };
 

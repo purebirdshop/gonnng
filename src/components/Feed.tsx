@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FeedPost, PostComment, Creator } from '../types';
+import { FeedPost, PostComment, Creator, Project, Recipe } from '../types';
 import { isFollowingUser, isUserInCircle as checkCircleRelation } from '../utils/followUtils';
 import { getPublicMediaUrl } from '../services/uploadService';
+import CircleCategoryDiscovery from './CircleCategoryDiscovery';
+import PostTile from './PostTile';
 import { 
   Globe, 
   CircleDotDashed,
@@ -22,7 +24,9 @@ import {
   Heart,
   CornerDownRight,
   ArrowUpRight,
-  User
+  User,
+  FolderPlus,
+  Sparkles
 } from 'lucide-react';
 
 export function formatCount(num: number): string {
@@ -44,10 +48,13 @@ interface FeedProps {
   currentUserId: string;
   currentUser?: Creator;
   creators?: Creator[];
-  filter: 'all' | 'internal' | 'private';
+  projects?: Project[];
+  recipes?: Recipe[];
+  filter: 'all' | 'internal' | 'private' | 'creator';
   onUpdatePostGong: (postId: string, voteType: 'continue' | 'refine' | 'reconsider') => void;
   onAddComment?: (postId: string, commentContent: string, parentId?: string, replyToUser?: string) => void;
   onToggleCommentHeart?: (postId: string, commentId: string) => void;
+  onToggleFollow?: (creatorId: string) => void;
   onFeedScroll?: (scrolled: boolean) => void;
   onOpenCreatorProfile?: (userIdOrName: string) => void;
   onOpenShareDrawer?: (post: FeedPost) => void;
@@ -56,6 +63,8 @@ interface FeedProps {
   autoOpenCommentsPostId?: string | null;
   onClearSuperimposedPost?: () => void;
   onOpenPostModal?: (post: FeedPost | null) => void;
+  onStartProject?: () => void;
+  onCreateRecipe?: () => void;
 }
 
 export default function Feed({ 
@@ -63,10 +72,13 @@ export default function Feed({
   currentUserId, 
   currentUser, 
   creators, 
+  projects = [],
+  recipes = [],
   filter, 
   onUpdatePostGong, 
   onAddComment, 
   onToggleCommentHeart, 
+  onToggleFollow,
   onFeedScroll, 
   onOpenCreatorProfile, 
   onOpenShareDrawer, 
@@ -74,7 +86,9 @@ export default function Feed({
   superimposedPostId,
   autoOpenCommentsPostId,
   onClearSuperimposedPost,
-  onOpenPostModal
+  onOpenPostModal,
+  onStartProject,
+  onCreateRecipe
 }: FeedProps) {
   const [fullPostModal, setFullPostModal] = useState<FeedPost | null>(null);
 
@@ -220,20 +234,25 @@ export default function Feed({
   // "Circle" (internal): Posts from all other users in the authenticated user's circle (mutual follow: you follow them & they follow you)
   // "Mine" (private): My own posts
   const filteredPosts = posts.filter(post => {
+    if (!post) return false;
+    const pUserId = post.userId || (post as any).user_id;
+    if (filter === 'creator') {
+      return true;
+    }
     const isMyPost = Boolean(
-      (currentUserId && post.userId === currentUserId) ||
-      (currentUser && post.userId === currentUser.id) ||
+      (currentUserId && pUserId === currentUserId) ||
+      (currentUser && pUserId === currentUser.id) ||
       (currentUser && currentUser.publicId && post.publicId === currentUser.publicId) ||
       (currentUser && post.userName && currentUser.name && post.userName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
     );
     if (filter === 'all') {
       if (isMyPost) return false;
       if (post.privacy === 'public') return true;
-      if (post.privacy === 'internal') return isUserInCircle(post.userId, post.userName);
+      if (post.privacy === 'internal') return isUserInCircle(pUserId, post.userName);
       return false;
     } else if (filter === 'internal') {
       // Circle filter: show posts from all other users in the authenticated user's circle
-      return !isMyPost && post.privacy !== 'private' && isUserInCircle(post.userId, post.userName);
+      return !isMyPost && post.privacy !== 'private' && isUserInCircle(pUserId, post.userName);
     } else {
       // 'private' represents 'Mine' / Profile feed
       return isMyPost;
@@ -425,311 +444,87 @@ export default function Feed({
               : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 h-[calc(100vh-130px)] sm:h-auto overflow-y-scroll sm:overflow-visible snap-y snap-mandatory scroll-smooth sm:scroll-auto no-scrollbar rounded-none border-0 p-0 shadow-2xl sm:shadow-none bg-[#f8fafc] sm:bg-transparent"
           }
         >
-          {displayedPosts.map((post, idx) => {
-            const fallbackImage = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800';
-            const rawImages = (post.images && post.images.length > 0)
-              ? post.images.filter(img => Boolean(img && img.trim()))
-              : (post.image && post.image.trim() ? [post.image.trim()] : [fallbackImage]);
-            const postImages: string[] = rawImages.length > 0 ? rawImages : [fallbackImage];
-            const currentImgIndex = (carouselIndices[post.id] || 0) % postImages.length;
-            const displayImage = (postImages[currentImgIndex] && postImages[currentImgIndex].trim()) || fallbackImage;
-            const commentsCount = post.comments?.length || 0;
-
-            return (
-              <div 
-                key={post.id} 
-                id={`feed-post-${post.id}`}
-                className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-[500px] shrink-0 sm:shrink flex flex-col justify-between bg-white border border-gray-200 rounded-none p-3.5 relative overflow-hidden shadow-md hover:border-[#FF5C00]/50 transition-all gap-2 text-gray-900 group"
-              >
-                {/* 1. Full Vertical Space Image (Cover) behind post content */}
-                <div 
-                  onClick={() => setFullPostModal(post)}
-                  className="absolute inset-0 w-full h-full cursor-pointer z-0 bg-white"
-                  title="Click image to open full post details"
-                >
-                  <img 
-                    src={displayImage} 
-                    alt={post.title} 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-
-                {/* Superimposed Badge if this post was selected from Updates */}
-                {superimposedPost && post.id === superimposedPost.id && (
-                  <div className="relative z-20 flex items-center justify-between bg-[#FF5C00] text-black px-3 py-1 rounded-full text-[10px] font-mono font-bold shadow-lg mb-1">
-                    <span className="flex items-center gap-1">SUPERIMPOSED UPDATE POST</span>
-                    {onClearSuperimposedPost && (
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onClearSuperimposedPost();
-                        }}
-                        className="p-0.5 hover:bg-black/20 rounded-full cursor-pointer ml-2"
-                        title="Dismiss superimposed view"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Top Metadata & Share Button (z-10 over absolute image) */}
-                <div className="relative z-10 flex items-center justify-between gap-2">
-                  <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenCreatorProfile?.(post.userId || post.userName);
-                    }}
-                    className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-all group/user px-2.5 py-1 rounded-full border shadow-md bg-white/95 border-gray-300 text-gray-900 backdrop-blur-md"
-                    title={`View ${getUserName(post.userId, post.userName)}'s profile`}
-                  >
-                    {getUserAvatar(post.userId, post.userAvatar) ? (
-                      <img 
-                        src={getUserAvatar(post.userId, post.userAvatar)} 
-                        alt={getUserName(post.userId, post.userName)} 
-                        className={`w-5 h-5 rounded-full object-cover shrink-0 border border-gray-300 ${
-                          isUserFollowed(post.userId, post.userName) ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-white' : ''
-                        }`}
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className={`w-5 h-5 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0 ${
-                        isUserFollowed(post.userId, post.userName) ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-white' : ''
-                      }`}>
-                        <User className="w-3 h-3 text-gray-600" />
-                      </div>
-                    )}
-                    <span className="font-bold text-xs truncate max-w-[110px] sm:max-w-[150px] group-hover/user:underline text-gray-900">
-                      {getUserName(post.userId, post.userName)}
-                    </span>
-                    <span className="text-[10px] font-mono shrink-0 text-gray-500">• {post.timeString}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      id={`share-post-btn-${post.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenShareDrawer && onOpenShareDrawer(post);
-                      }}
-                      className="p-1.5 rounded-full transition-all cursor-pointer z-30 border shadow-md flex items-center justify-center bg-white/95 hover:bg-[#FF5C00] text-gray-800 hover:text-black border-gray-300"
-                      title="Share post & copy permalink"
-                    >
-                      <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Carousel Left / Right Chevrons (Vertically Centered, Light Mode) */}
-                {postImages.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCarouselIndices(prev => ({
-                          ...prev,
-                          [post.id]: ((prev[post.id] || 0) - 1 + postImages.length) % postImages.length
-                        }));
-                      }}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-white/95 hover:bg-white text-gray-800 border border-gray-200 shadow-lg backdrop-blur-md transition-all cursor-pointer hover:scale-110 active:scale-95"
-                      title="Previous media"
-                    >
-                      <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCarouselIndices(prev => ({
-                          ...prev,
-                          [post.id]: ((prev[post.id] || 0) + 1) % postImages.length
-                        }));
-                      }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-white/95 hover:bg-white text-gray-800 border border-gray-200 shadow-lg backdrop-blur-md transition-all cursor-pointer hover:scale-110 active:scale-95"
-                      title="Next media"
-                    >
-                      <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-                  </>
-                )}
-
-                {/* Bottom Content Area (z-10 over absolute image) */}
-                <div className="relative z-10 space-y-2 mt-auto">
-                  
-                  {/* Carousel Breadcrumbs (Bottom Center of Media, Interactive Dots) */}
-                  {postImages.length > 1 && (
-                    <div 
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex justify-center w-full my-1 pointer-events-auto"
-                    >
-                      <div className="inline-flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full border border-gray-200 shadow-md">
-                        {postImages.map((_, dotIdx) => {
-                          const isActive = dotIdx === currentImgIndex;
-                          return (
-                            <button
-                              key={dotIdx}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCarouselIndices(prev => ({
-                                  ...prev,
-                                  [post.id]: dotIdx
-                                }));
-                              }}
-                              className={`transition-all duration-300 cursor-pointer ${
-                                isActive
-                                  ? 'w-4 h-1.5 bg-[#FF5C00] rounded-full shadow-sm'
-                                  : 'w-1.5 h-1.5 bg-gray-300 hover:bg-gray-500 rounded-full'
-                              }`}
-                              title={`Jump to media ${dotIdx + 1}`}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Title - Clicking title opens Full Post Detail Modal */}
-                  <h3 
-                    onClick={() => setFullPostModal(post)}
-                    className="text-base sm:text-lg leading-snug font-display font-bold cursor-pointer hover:text-[#FF5C00] transition-colors text-gray-900 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-gray-200 shadow-sm flex items-center gap-2 max-w-full overflow-hidden"
-                    title={post.title}
-                  >
-                    {post.privacy === 'public' && <Globe className="w-4 h-4 text-[#FF5C00] shrink-0" title="Public" />}
-                    {post.privacy === 'internal' && <CircleDotDashed className="w-4 h-4 text-[#FF5C00] shrink-0" title="Circle" />}
-                    {post.privacy === 'private' && <Album className="w-4 h-4 text-[#FF5C00] shrink-0" title="Private" />}
-                    <span className="truncate flex-1 min-w-0">{post.title}</span>
-                  </h3>
-
-                  {/* Description Preview Block */}
-                  <div className="p-2.5 sm:p-3 rounded-2xl space-y-1.5 border border-gray-200 text-gray-900 bg-white/95 backdrop-blur-md shadow-lg">
-                    <p className="text-xs sm:text-sm font-sans leading-relaxed line-clamp-2 text-gray-800">
-                      {post.content}
-                      {post.hashtags && (
-                        <span className="block mt-0.5 text-[#FF5C00] font-mono text-xs font-bold break-words">
-                          {Array.isArray(post.hashtags)
-                            ? post.hashtags.map(tag => tag.startsWith('#') ? tag : `#${tag}`).join(' ')
-                            : post.hashtags}
-                        </span>
-                      )}
-                    </p>
-
-                    <div className="flex justify-between items-center pt-1 border-t border-gray-200">
-                      {post.attachedName ? (
-                        <span className="text-[10px] font-mono text-[#FF5C00] truncate max-w-[160px]">
-                          📂 {post.attachedName}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-mono text-gray-500">
-                          {idx + 1} of {sortedPosts.length}
-                        </span>
-                      )}
-
-                      <button
-                        id={`keep-reading-btn-${post.id}`}
-                        type="button"
-                        onClick={() => handleOpenDescription(post)}
-                        className="text-xs font-bold text-[#FF5C00] hover:text-[#FF751A] hover:underline cursor-pointer flex items-center gap-1 ml-auto"
-                      >
-                        Keep reading <ChevronDown className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Gong Buttons Cluster + Comments Trigger */}
-                  <div className="flex items-center justify-between p-1.5 sm:p-2 rounded-2xl border border-gray-200 text-gray-900 bg-white/95 backdrop-blur-md shadow-xl gap-1">
-                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-                      {/* Continue */}
-                      <button
-                        id={`gong-continue-btn-${post.id}`}
-                        type="button"
-                        onClick={() => onUpdatePostGong(post.id, 'continue')}
-                        className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
-                          post.gongs.userVoted === 'continue'
-                            ? 'bg-emerald-500 text-black font-black shadow-md'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-300'
-                        }`}
-                        title="Perfect — You've got it!"
-                      >
-                        <Disc3 className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                        <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.continue)}</span>
-                      </button>
-
-                      {/* Refine */}
-                      <button
-                        id={`gong-refine-btn-${post.id}`}
-                        type="button"
-                        onClick={() => onUpdatePostGong(post.id, 'refine')}
-                        className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
-                          post.gongs.userVoted === 'refine'
-                            ? 'bg-[#FF5C00] text-black font-black shadow-md'
-                            : 'bg-orange-50 text-[#FF5C00] hover:bg-orange-100 border border-orange-300'
-                        }`}
-                        title="Potential — Keep working on it"
-                      >
-                        <Pencil className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                        <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.refine)}</span>
-                      </button>
-
-                      {/* Reconsider */}
-                      <button
-                        id={`gong-reconsider-btn-${post.id}`}
-                        type="button"
-                        onClick={() => onUpdatePostGong(post.id, 'reconsider')}
-                        className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
-                          post.gongs.userVoted === 'reconsider'
-                            ? 'bg-red-500 text-white font-black shadow-md'
-                            : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-300'
-                        }`}
-                        title="Promise — Try another approach"
-                      >
-                        <Octagon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                        <span className="text-[10px] sm:text-[11px]">{formatCount(post.gongs.reconsider)}</span>
-                      </button>
-                    </div>
-
-                    {/* Comments Button */}
-                    <button
-                      id={`comments-trigger-btn-${post.id}`}
-                      type="button"
-                      onClick={() => handleOpenComments(post)}
-                      className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer border shadow-md shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300"
-                      title="View & add comments"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0 text-gray-700" />
-                      <span className="text-[10px] sm:text-[11px]">{formatCount(commentsCount)}</span>
-                    </button>
-                  </div>
-
-                </div>
-
-              </div>
-            );
-          })}
+          {displayedPosts.map((post, idx) => (
+            <PostTile
+              key={post.id}
+              post={post}
+              idx={idx}
+              totalPosts={sortedPosts.length}
+              currentUser={currentUser}
+              allCreators={creators}
+              onUpdatePostGong={onUpdatePostGong}
+              onOpenComments={(p) => handleOpenComments(p)}
+              onOpenShareDrawer={onOpenShareDrawer}
+              onOpenCreatorProfile={onOpenCreatorProfile}
+              onSelectPostDetails={(p) => setFullPostModal(p)}
+              isSuperimposed={Boolean(superimposedPost && post.id === superimposedPost.id)}
+              onClearSuperimposedPost={onClearSuperimposedPost}
+            />
+          ))}
 
           {visibleCount < sortedPosts.length && (
             <div className="col-span-1 sm:col-span-2 lg:col-span-3 py-6 text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-mono text-white/60 shadow-lg">
-                <span className="w-2 h-2 rounded-full bg-[#FF5C00] animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-ping" />
                 <span>Loading more posts ({visibleCount} of {sortedPosts.length})...</span>
               </div>
             </div>
           )}
         </div>
+      ) : filter === 'private' ? (
+        <div className="w-full py-12 flex flex-col items-center justify-center p-8 text-center bg-[#151515] border border-white/10 rounded-3xl space-y-4 my-2">
+          <div className="w-12 h-12 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 text-[#F59E0B] flex items-center justify-center mx-auto">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-base font-bold text-white font-display">Welcome to your Gonnng Workspace</h4>
+            <p className="text-xs text-white/60 max-w-md mx-auto leading-relaxed">
+              You haven't published any project updates or recipes yet. Start a new project or create a recipe blueprint to build your workspace!
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            {onStartProject && (
+              <button
+                type="button"
+                id="profile-empty-start-project-btn"
+                onClick={onStartProject}
+                className="px-4 py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-extrabold text-xs rounded-xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4" /> Start Project
+              </button>
+            )}
+            {onCreateRecipe && (
+              <button
+                type="button"
+                id="profile-empty-create-recipe-btn"
+                onClick={onCreateRecipe}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/15 transition-all inline-flex items-center gap-2 cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-[#F59E0B]" /> Create Recipe
+              </button>
+            )}
+          </div>
+        </div>
       ) : (
         <div className="w-full py-20 flex flex-col items-center justify-center p-8 text-center bg-[#121212] border border-white/10 rounded-3xl">
           <BookOpen className="w-10 h-10 text-white/20 mb-3" />
           <p className="text-white/50 text-sm font-sans">
-            {filter === 'private' 
-              ? 'You have not created any project posts yet.' 
+            {filter === 'creator'
+              ? 'This creator has not posted any public projects yet.'
               : 'No project posts found in your Circle.'}
           </p>
         </div>
+      )}
+
+      {filter === 'internal' && (
+        <CircleCategoryDiscovery
+          currentUser={currentUser}
+          creators={creators || []}
+          projects={projects || []}
+          recipes={recipes || []}
+          onToggleFollow={onToggleFollow}
+          onOpenCreatorProfile={onOpenCreatorProfile}
+        />
       )}
 
       {/* CONSOLIDATED GALLERY MODAL */}
@@ -778,10 +573,10 @@ export default function Feed({
                           }
                         } : null);
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer m-0 border-0 ${
                         fullPostModal.gongs.userVoted === 'continue'
-                          ? 'bg-emerald-500 text-black font-black'
-                          : 'bg-white/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
+                          ? 'bg-[#F59E0B] text-[#18181B] font-black'
+                          : 'bg-transparent text-[#F59E0B] hover:bg-[#F59E0B]/15'
                       }`}
                       title="Perfect — You've got it!"
                     >
@@ -789,7 +584,7 @@ export default function Feed({
                       <span>{formatCount(fullPostModal.gongs.continue)}</span>
                     </button>
 
-                    {/* Refine */}
+                    {/* 2. Potential — Keep working on it */}
                     <button
                       type="button"
                       onClick={() => {
@@ -805,10 +600,10 @@ export default function Feed({
                           }
                         } : null);
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer m-0 border-0 ${
                         fullPostModal.gongs.userVoted === 'refine'
-                          ? 'bg-[#FF5C00] text-black font-black'
-                          : 'bg-white/10 text-[#FF5C00] hover:bg-[#FF5C00]/20 border border-[#FF5C00]/30'
+                          ? 'bg-[#99F6E4] text-[#18181B] font-black'
+                          : 'bg-transparent text-[#99F6E4] hover:bg-[#99F6E4]/15'
                       }`}
                       title="Potential — Keep working on it"
                     >
@@ -816,7 +611,7 @@ export default function Feed({
                       <span>{formatCount(fullPostModal.gongs.refine)}</span>
                     </button>
 
-                    {/* Reconsider */}
+                    {/* 3. Promise — Try another approach */}
                     <button
                       type="button"
                       onClick={() => {
@@ -832,10 +627,10 @@ export default function Feed({
                           }
                         } : null);
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer m-0 border-0 ${
                         fullPostModal.gongs.userVoted === 'reconsider'
-                          ? 'bg-red-500 text-white font-black'
-                          : 'bg-white/10 text-red-400 hover:bg-red-500/20 border border-red-500/30'
+                          ? 'bg-[#FF9A84] text-[#18181B] font-black'
+                          : 'bg-transparent text-[#FF9A84] hover:bg-[#FF9A84]/15'
                       }`}
                       title="Promise — Try another approach"
                     >
@@ -850,7 +645,7 @@ export default function Feed({
                     onClick={() => {
                       document.getElementById('gallery-comments-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono bg-[#FF5C00] text-black hover:bg-[#FF751A] transition-all cursor-pointer shadow-md shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono bg-[#F59E0B] text-black hover:bg-[#FF751A] transition-all cursor-pointer shadow-md shrink-0"
                     title="Jump to comments"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-black shrink-0" />
@@ -894,7 +689,7 @@ export default function Feed({
                     onClick={() => {
                       onOpenShareDrawer && onOpenShareDrawer(fullPostModal);
                     }}
-                    className="p-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all cursor-pointer shrink-0 shadow-md flex items-center gap-1.5 text-xs font-bold font-mono"
+                    className="p-2 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-xl transition-all cursor-pointer shrink-0 shadow-md flex items-center gap-1.5 text-xs font-bold font-mono"
                     title="Share post"
                   >
                     <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
@@ -904,7 +699,7 @@ export default function Feed({
 
                 {/* 3. Gallery of all media in the post */}
                 <div className="space-y-3 pt-2">
-                  <span className="text-[10px] font-mono text-[#FF5C00] uppercase font-bold tracking-wider block">
+                  <span className="text-[10px] font-mono text-[#F59E0B] uppercase font-bold tracking-wider block">
                     Media Gallery
                   </span>
                   <div className="grid grid-cols-1 gap-3">
@@ -926,7 +721,7 @@ export default function Feed({
 
                 {/* 4. Full title & description section in same rounded box */}
                 <div id="gallery-description-section" className="space-y-2 pt-3 border-t border-white/10 scroll-mt-4">
-                  <span className="text-[10px] font-mono text-[#FF5C00] uppercase font-bold tracking-wider block">
+                  <span className="text-[10px] font-mono text-[#F59E0B] uppercase font-bold tracking-wider block">
                     Project Overview
                   </span>
                   <div className="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-3">
@@ -937,7 +732,7 @@ export default function Feed({
                       <p className="text-sm text-white/90 font-sans leading-relaxed whitespace-pre-line">
                         {fullPostModal.content}
                         {fullPostModal.hashtags && (
-                          <span className="block mt-2 text-[#FF5C00] font-mono text-xs font-bold break-words">
+                          <span className="block mt-2 text-[#F59E0B] font-mono text-xs font-bold break-words">
                             {Array.isArray(fullPostModal.hashtags)
                               ? fullPostModal.hashtags.map(tag => tag.startsWith('#') ? tag : `#${tag}`).join(' ')
                               : fullPostModal.hashtags}
@@ -948,9 +743,9 @@ export default function Feed({
                   </div>
 
                   {fullPostModal.attachedName && (
-                    <div className="bg-[#FF5C00]/10 border border-[#FF5C00]/30 p-3 rounded-xl flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-[#FF5C00]" />
-                      <span className="text-xs font-mono font-bold text-[#FF5C00]">
+                    <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-3 rounded-xl flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-[#F59E0B]" />
+                      <span className="text-xs font-mono font-bold text-[#F59E0B]">
                         Attached Recipe: {fullPostModal.attachedName}
                       </span>
                     </div>
@@ -960,7 +755,7 @@ export default function Feed({
                 {/* 6. Comments section */}
                 <div id="gallery-comments-section" className="space-y-3 pt-3 border-t border-white/10 scroll-mt-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-[#FF5C00] uppercase font-bold tracking-wider block">
+                    <span className="text-[10px] font-mono text-[#F59E0B] uppercase font-bold tracking-wider block">
                       Comments ({fullPostModal.comments?.length || 0})
                     </span>
                   </div>
@@ -1036,7 +831,7 @@ export default function Feed({
                                         [parentComment.id]: (prev[parentComment.id] ?? 2) + 3
                                       }));
                                     }}
-                                    className="text-[11px] font-mono text-[#FF5C00] hover:text-[#FF751A] hover:underline flex items-center gap-1 pt-1 font-bold cursor-pointer"
+                                    className="text-[11px] font-mono text-[#F59E0B] hover:text-[#FF751A] hover:underline flex items-center gap-1 pt-1 font-bold cursor-pointer"
                                   >
                                     <span>+ View {Math.min(3, remainingCount)} more {remainingCount === 1 ? 'reply' : 'replies'} ({remainingCount} hidden)</span>
                                   </button>
@@ -1054,7 +849,7 @@ export default function Feed({
                     {replyTarget && (
                       <div className="flex items-center justify-between bg-white/10 px-3 py-1 rounded-lg text-xs font-mono text-white/70">
                         <span>
-                          Replying to <span className="text-[#FF5C00] font-bold">@{replyTarget.userName}</span>
+                          Replying to <span className="text-[#F59E0B] font-bold">@{replyTarget.userName}</span>
                         </span>
                         <button 
                           type="button" 
@@ -1073,12 +868,12 @@ export default function Feed({
                         value={newCommentText}
                         onChange={(e) => setNewCommentText(e.target.value)}
                         placeholder={replyTarget ? `Reply to @${replyTarget.userName}...` : "Write a constructive feedback comment..."}
-                        className="flex-1 px-3.5 py-2 bg-white/5 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#FF5C00]"
+                        className="flex-1 px-3.5 py-2 bg-white/5 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#F59E0B]"
                       />
                       <button
                         type="submit"
                         disabled={!newCommentText.trim()}
-                        className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] disabled:opacity-40 text-black font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                        className="px-4 py-2 bg-[#F59E0B] hover:bg-[#FF751A] disabled:opacity-40 text-black font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                       >
                         <Send className="w-3.5 h-3.5" /> Send
                       </button>
@@ -1133,13 +928,13 @@ function CommentCard({
               src={displayAvatar} 
               alt={displayName} 
               className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full object-cover shrink-0 border border-white/20 ${
-                isFollowed ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-black' : ''
+                isFollowed ? 'ring-2 ring-[#F59E0B] ring-offset-1 ring-offset-black' : ''
               }`}
               referrerPolicy="no-referrer"
             />
           ) : (
             <div className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/20 ${
-              isFollowed ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-black' : ''
+              isFollowed ? 'ring-2 ring-[#F59E0B] ring-offset-1 ring-offset-black' : ''
             }`}>
               <User className="w-3 h-3 text-white/70" />
             </div>
@@ -1180,7 +975,7 @@ function CommentCard({
         <button
           type="button"
           onClick={onReply}
-          className="flex items-center gap-1 text-white/40 hover:text-[#FF5C00] transition-all cursor-pointer"
+          className="flex items-center gap-1 text-white/40 hover:text-[#F59E0B] transition-all cursor-pointer"
           title="Reply to comment"
         >
           <CornerDownRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />

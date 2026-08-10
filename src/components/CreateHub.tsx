@@ -18,7 +18,8 @@ import {
   ArrowRight,
   Video,
   Square,
-  FolderKanban
+  FolderKanban,
+  RefreshCw
 } from 'lucide-react';
 import FileUploadZone from './FileUploadZone';
 import { UploadedFile } from '../services/uploadService';
@@ -75,8 +76,8 @@ export default function CreateHub({
   onUpdatePermissions,
   onRequestDevicePermissions
 }: CreateHubProps) {
-  const myUserId = currentUser?.id || 'user-current';
-  const myUserName = currentUser?.name || 'Creative Architect';
+  const myUserId = currentUser?.id;
+  const myUserName = currentUser?.name;
   const myUserAvatar = currentUser?.avatarUrl || '';
   
   // Carousel Step State: 1 = Camera / Media Capture, 2 = Details Form, 3 = Preview
@@ -94,6 +95,14 @@ export default function CreateHub({
     }
   }, [privacyDefault]);
 
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
   // Media attachments state (up to 10 items)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [imageError, setImageError] = useState('');
@@ -107,11 +116,28 @@ export default function CreateHub({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [cameraCaptureMode, setCameraCaptureMode] = useState<'video' | 'photo'>('video');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [hasMultipleCameras, setHasMultipleCameras] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const timerRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    async function checkCameras() {
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter(d => d.kind === 'videoinput');
+          setHasMultipleCameras(videoInputs.length > 1);
+        } catch (e) {
+          console.warn('Error enumerating camera devices:', e);
+        }
+      }
+    }
+    checkCameras();
+  }, []);
 
   const createSyntheticCameraStream = (): MediaStream => {
     const canvas = document.createElement('canvas');
@@ -155,7 +181,7 @@ export default function CreateHub({
       ctx.stroke();
 
       // Focus ring
-      ctx.strokeStyle = '#FF5C00';
+      ctx.strokeStyle = '#F59E0B';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(640, 360, 50, 0, Math.PI * 2);
@@ -220,7 +246,8 @@ export default function CreateHub({
     setIsRecording(false);
   };
 
-  const startCameraStream = async () => {
+  const startCameraStream = async (requestedFacingMode?: 'user' | 'environment') => {
+    const targetFacing = requestedFacingMode || facingMode;
     if (permissions?.camera === false) {
       setCameraError(true);
       setCameraActive(false);
@@ -234,7 +261,7 @@ export default function CreateHub({
     if (permissions?.microphone !== false && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: targetFacing },
           audio: true
         });
       } catch (err1) {
@@ -244,7 +271,7 @@ export default function CreateHub({
       if (!stream) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: { facingMode: targetFacing },
             audio: true
           });
         } catch (err2) {
@@ -257,7 +284,7 @@ export default function CreateHub({
     if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: targetFacing }
         });
       } catch (err3) {
         console.warn('Camera stream attempt 3 (video-only ideal) failed:', err3);
@@ -267,7 +294,7 @@ export default function CreateHub({
     if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: true
+          video: { facingMode: targetFacing }
         });
       } catch (err4) {
         console.warn('Camera stream attempt 4 (video-only basic) failed:', err4);
@@ -296,6 +323,13 @@ export default function CreateHub({
       setCameraError(true);
       setCameraActive(false);
     }
+  };
+
+  const handleFlipCamera = () => {
+    const nextFacing = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextFacing);
+    stopCameraInternal();
+    startCameraStream(nextFacing);
   };
 
   // Camera lifecycle based on step 1 and permissions
@@ -1125,31 +1159,35 @@ export default function CreateHub({
         className="hidden"
       />
 
-      <div className="rounded-none sm:rounded-3xl w-full h-full sm:h-auto max-w-none sm:max-w-xl overflow-hidden shadow-2xl border max-h-full sm:max-h-[92vh] flex flex-col relative transition-colors bg-white text-gray-900 border-gray-200">
+      <div className={`rounded-none sm:rounded-3xl w-full h-full ${carouselStep === 1 ? 'sm:h-[600px]' : 'sm:h-auto'} max-w-none sm:max-w-xl overflow-hidden shadow-2xl border max-h-full sm:max-h-[92vh] flex flex-col relative transition-colors ${carouselStep === 1 ? 'bg-black text-white border-gray-800' : 'bg-white text-gray-900 border-gray-200'}`}>
         
-        {/* Fixed Non-Scrollable Header */}
-        <div className="p-4 sm:p-5 border-b flex items-center justify-between gap-3 shrink-0 border-gray-200 bg-gray-50/50">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-display font-bold text-gray-900 tracking-tight">Creation Station</h2>
-          </div>
+        {/* Fixed Non-Scrollable Header - Only shown on Steps 2 and 3 */}
+        {carouselStep !== 1 && (
+          <div className="p-4 sm:p-5 border-b flex items-center justify-between gap-3 shrink-0 border-gray-200 bg-gray-50/50">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-display font-bold text-gray-900 tracking-tight">
+                {carouselStep === 2 ? 'Creation Station — Details' : 'Creation Station — Preview'}
+              </h2>
+            </div>
 
-          {/* Close Button */}
-          <button
-            type="button"
-            id="close-hub-btn"
-            onClick={handleCloseRequest}
-            className="p-2 rounded-full transition-all border cursor-pointer shadow-sm shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300"
-            title="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+            {/* Close Button */}
+            <button
+              type="button"
+              id="close-hub-btn"
+              onClick={handleCloseRequest}
+              className="p-2 rounded-full transition-all border cursor-pointer shadow-sm shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border-gray-300"
+              title="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
 
         {/* Modal Content Container */}
-        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 flex flex-col justify-between">
+        <div className={carouselStep === 1 ? "w-full h-full flex-1 relative bg-black overflow-hidden flex flex-col justify-between" : "p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 flex flex-col justify-between"}>
 
           {imageError && (
-            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-xl text-red-400 text-xs font-mono flex items-center gap-2">
+            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-xl text-red-400 text-xs font-mono flex items-center gap-2 absolute top-16 left-4 right-4 z-40 shadow-xl backdrop-blur-md">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
               <span>{imageError}</span>
             </div>
@@ -1157,184 +1195,198 @@ export default function CreateHub({
 
           {/* STEP 1: CAMERA & MEDIA CAPTURE */}
           {carouselStep === 1 && (
-            <div className="flex-1 flex flex-col justify-between space-y-4 min-h-0">
-              {/* Camera View Finder */}
-              <div className="relative w-full flex-1 min-h-[300px] max-h-[400px] rounded-2xl overflow-hidden bg-black border border-white/10 flex items-center justify-center shadow-inner group">
-                {permissions?.camera !== false && cameraActive && !cameraError ? (
-                  <video
-                    ref={(el) => {
-                      (videoRef as any).current = el;
-                      if (el && cameraStreamRef.current) {
-                        if (el.srcObject !== cameraStreamRef.current) {
-                          el.srcObject = cameraStreamRef.current;
-                        }
-                        el.play().catch(() => {});
+            <div className="relative w-full h-full flex-1 bg-black overflow-hidden flex items-center justify-center">
+              {/* Full Modal Camera Viewfinder (Width & Height 100%) */}
+              {permissions?.camera !== false && cameraActive && !cameraError ? (
+                <video
+                  ref={(el) => {
+                    (videoRef as any).current = el;
+                    if (el && cameraStreamRef.current) {
+                      if (el.srcObject !== cameraStreamRef.current) {
+                        el.srcObject = cameraStreamRef.current;
                       }
-                    }}
-                    autoPlay
-                    playsInline
-                    muted
-                    onLoadedMetadata={(e) => {
-                      e.currentTarget.play().catch(() => {});
-                    }}
-                    className="w-full h-full object-cover rounded-2xl"
-                    style={{ transform: 'scaleX(-1)', WebkitTransform: 'scaleX(-1)' }}
-                  />
-                ) : (
-                  <>
-                    {/* Centered at the top of this element */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
-                      <button
-                        type="button"
-                        id="reset-device-permissions-btn"
-                        onClick={handleResetDevicePermissions}
-                        className="px-4 py-1.5 bg-[#FF5C00]/20 hover:bg-[#FF5C00]/30 text-[#FF5C00] border border-[#FF5C00]/40 font-mono text-xs font-bold rounded-full shadow-lg transition-all cursor-pointer backdrop-blur-md flex items-center gap-1.5 whitespace-nowrap"
-                      >
-                        Reset device permissions
-                      </button>
-                    </div>
-
-                    {/* Centered Placeholder Text */}
-                    <div className="flex flex-col items-center justify-center text-center p-6 space-y-3 pt-10">
-                      <div className="w-16 h-16 rounded-full bg-[#FF5C00]/10 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
-                        <Camera className="w-8 h-8 text-[#FF5C00]" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white font-display">Camera Viewfinder</h4>
-                        <p className="text-xs text-white/70 font-sans mt-2 max-w-xs leading-relaxed">
-                          Camera stream unavailable. You may upload files from your device.
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Live Recording Tag */}
-                {isRecording && permissions?.camera && (
-                  <div className="absolute top-4 left-4 bg-red-600/90 text-white font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg animate-pulse z-20">
-                    <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
-                    <span>00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</span>
+                      el.play().catch(() => {});
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  onLoadedMetadata={(e) => {
+                    e.currentTarget.play().catch(() => {});
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{
+                    transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                    WebkitTransform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-6 space-y-3 z-10">
+                  <div className="w-16 h-16 rounded-full bg-[#F59E0B]/10 border border-[#F59E0B]/30 flex items-center justify-center text-[#F59E0B]">
+                    <Camera className="w-8 h-8 text-[#F59E0B]" />
                   </div>
-                )}
-
-                {/* Attached Badge */}
-                {mediaItems.length > 0 && (
-                  <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-md text-emerald-400 border border-emerald-500/30 font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md z-20">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{mediaItems.length} Captured</span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white font-display">Camera Viewfinder</h4>
+                    <p className="text-xs text-white/70 font-sans mt-2 max-w-xs leading-relaxed">
+                      Camera stream unavailable. You can upload files using the upload icon button in the top right.
+                    </p>
+                    <button
+                      type="button"
+                      id="reset-device-permissions-btn"
+                      onClick={handleResetDevicePermissions}
+                      className="mt-4 px-4 py-1.5 bg-[#F59E0B]/20 hover:bg-[#F59E0B]/30 text-[#F59E0B] border border-[#F59E0B]/40 font-mono text-xs font-bold rounded-full shadow-lg transition-all cursor-pointer backdrop-blur-md inline-block"
+                    >
+                      Reset device permissions
+                    </button>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* TikTok Style Camera Overlay Controls */}
-                {permissions?.camera && (
-                  <>
-                    {/* VIDEO / PHOTO Mode Switcher - Lower Left Corner */}
-                    <div className="absolute bottom-4 left-4 z-20 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider bg-black/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-xl">
-                      <button
-                        type="button"
-                        id="camera-mode-video-btn"
-                        onClick={() => setCameraCaptureMode('video')}
-                        className={`transition-all cursor-pointer relative py-0.5 ${
-                          cameraCaptureMode === 'video' ? 'text-[#FF5C00] font-black' : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        Video
-                        {cameraCaptureMode === 'video' && (
-                          <span className="absolute -bottom-0.5 inset-x-0 h-0.5 bg-[#FF5C00] rounded-full" />
-                        )}
-                      </button>
-                      <span className="text-white/20">|</span>
-                      <button
-                        type="button"
-                        id="camera-mode-photo-btn"
-                        onClick={() => setCameraCaptureMode('photo')}
-                        className={`transition-all cursor-pointer relative py-0.5 ${
-                          cameraCaptureMode === 'photo' ? 'text-[#FF5C00] font-black' : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        Photo
-                        {cameraCaptureMode === 'photo' && (
-                          <span className="absolute -bottom-0.5 inset-x-0 h-0.5 bg-[#FF5C00] rounded-full" />
-                        )}
-                      </button>
-                    </div>
+              {/* TOP LEFT: Cancel/Close Button */}
+              <button
+                type="button"
+                id="close-hub-step1-btn"
+                onClick={handleCloseRequest}
+                className="absolute top-4 left-4 z-30 p-2.5 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all cursor-pointer backdrop-blur-md border border-white/20 shadow-lg flex items-center justify-center"
+                title="Cancel / Close"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
 
-                    {/* TikTok Central Shutter / Record Button */}
-                    <div className="absolute bottom-4 inset-x-0 flex items-center justify-center z-20 pointer-events-none">
-                      <div className="pointer-events-auto">
-                        {cameraCaptureMode === 'photo' ? (
-                          <button
-                            type="button"
-                            id="tiktok-photo-shutter-btn"
-                            onClick={capturePhoto}
-                            className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 backdrop-blur-sm flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-2xl group"
-                            title="Take Photo"
-                          >
-                            <span className="w-11 h-11 rounded-full bg-white group-hover:scale-105 transition-transform shadow-inner" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            id="tiktok-video-shutter-btn"
-                            onClick={toggleVideoRecording}
-                            className={`w-16 h-16 rounded-full border-4 flex items-center justify-center cursor-pointer transition-all shadow-2xl ${
-                              isRecording
-                                ? 'border-red-500 bg-red-600/30 scale-90 ring-4 ring-red-500/50 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)]'
-                                : 'border-white bg-white/20 hover:bg-white/30 active:scale-90'
-                            }`}
-                            title={isRecording ? "Stop Recording" : "Record Video"}
-                          >
-                            {isRecording ? (
-                              <span className="w-5 h-5 rounded-sm bg-red-600 shadow-md animate-pulse" />
-                            ) : (
-                              <span className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 transition-transform shadow-inner" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Bottom Recording Timeline Bar */}
-                {isRecording && (
-                  <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/60 z-30 overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-red-600 via-[#FF5C00] to-amber-400 transition-all duration-300 ease-linear shadow-[0_0_12px_rgba(255,92,0,0.9)]"
-                      style={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Step 1 Bottom Bar: Upload button on left, Right Arrow button on right ONLY */}
-              <div className="flex items-center justify-between pt-3 border-t border-white/10 shrink-0">
+              {/* TOP CENTER: "Video | Photo" Text Links (No background color) */}
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                 <button
                   type="button"
-                  id="upload-image-video-btn"
+                  id="camera-mode-video-btn"
+                  onClick={() => setCameraCaptureMode('video')}
+                  className={`transition-all cursor-pointer p-1 bg-transparent border-none ${
+                    cameraCaptureMode === 'video'
+                      ? 'text-[#F59E0B] font-black underline decoration-2 underline-offset-4'
+                      : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  Video
+                </button>
+                <span className="text-white/40 font-normal">|</span>
+                <button
+                  type="button"
+                  id="camera-mode-photo-btn"
+                  onClick={() => setCameraCaptureMode('photo')}
+                  className={`transition-all cursor-pointer p-1 bg-transparent border-none ${
+                    cameraCaptureMode === 'photo'
+                      ? 'text-[#F59E0B] font-black underline decoration-2 underline-offset-4'
+                      : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  Photo
+                </button>
+              </div>
+
+              {/* TOP RIGHT: Flip Camera Button (if multiple cameras detected) + Upload Icon Button directly below it */}
+              <div className="absolute top-4 right-4 z-30 flex flex-col items-center gap-3">
+                {hasMultipleCameras && (
+                  <button
+                    type="button"
+                    id="flip-camera-btn"
+                    onClick={handleFlipCamera}
+                    className="p-2.5 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all cursor-pointer backdrop-blur-md border border-white/20 shadow-lg flex items-center justify-center"
+                    title="Flip camera"
+                  >
+                    <RefreshCw className="w-5 h-5 text-white" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  id="upload-media-icon-btn"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     fileInputRef.current?.click();
                   }}
-                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer border border-white/10"
+                  className="p-2.5 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all cursor-pointer backdrop-blur-md border border-white/20 shadow-lg flex items-center justify-center"
+                  title="Upload image or video"
                 >
-                  <Upload className="w-4 h-4 text-[#FF5C00]" />
-                  <span>Upload Image / Video</span>
+                  <Upload className="w-5 h-5 text-[#F59E0B]" />
                 </button>
+              </div>
 
+              {/* LIVE RECORDING TIMER */}
+              {isRecording && permissions?.camera && (
+                <div className="absolute top-16 left-4 z-30 bg-red-600/90 text-white font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
+                  <span>00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</span>
+                </div>
+              )}
+
+              {/* BOTTOM CENTER: Shutter / Record Button */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                <div className="pointer-events-auto">
+                  {cameraCaptureMode === 'photo' ? (
+                    <button
+                      type="button"
+                      id="tiktok-photo-shutter-btn"
+                      onClick={capturePhoto}
+                      className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 backdrop-blur-sm flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-2xl group"
+                      title="Take Photo"
+                    >
+                      <span className="w-11 h-11 rounded-full bg-white group-hover:scale-105 transition-transform shadow-inner" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      id="tiktok-video-shutter-btn"
+                      onClick={toggleVideoRecording}
+                      className={`w-16 h-16 rounded-full border-4 flex items-center justify-center cursor-pointer transition-all shadow-2xl ${
+                        isRecording
+                          ? 'border-red-500 bg-red-600/30 scale-90 ring-4 ring-red-500/50 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)]'
+                          : 'border-white bg-white/20 hover:bg-white/30 active:scale-90'
+                      }`}
+                      title={isRecording ? "Stop Recording" : "Record Video"}
+                    >
+                      {isRecording ? (
+                        <span className="w-5 h-5 rounded-sm bg-red-600 shadow-md animate-pulse" />
+                      ) : (
+                        <span className="w-11 h-11 rounded-full bg-red-500 hover:bg-red-600 transition-transform shadow-inner" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* LOWER LEFT: Captured Badge */}
+              {mediaItems.length > 0 && (
+                <div className="absolute bottom-4 left-4 z-30 bg-black/60 backdrop-blur-md text-emerald-400 border border-emerald-500/30 font-mono text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{mediaItems.length} Captured</span>
+                </div>
+              )}
+
+              {/* LOWER RIGHT: Next Button */}
+              <div className="absolute bottom-4 right-4 z-30">
                 <button
                   type="button"
+                  id="next-step-btn"
                   onClick={() => {
                     stopCameraInternal();
                     setCarouselStep(2);
                   }}
-                  className="p-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow-lg flex items-center justify-center cursor-pointer font-bold"
+                  className="p-3.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-full transition-all shadow-xl flex items-center justify-center cursor-pointer font-bold active:scale-95"
                   title="Next Step: Details Form"
                 >
-                  <ArrowRight className="w-5 h-5 stroke-[3]" />
+                  <ArrowRight className="w-6 h-6 stroke-[3]" />
                 </button>
               </div>
+
+              {/* Bottom Recording Progress Bar */}
+              {isRecording && (
+                <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/60 z-30 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-red-600 via-[#F59E0B] to-amber-400 transition-all duration-300 ease-linear shadow-[0_0_12px_rgba(255,92,0,0.9)]"
+                    style={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -1351,7 +1403,7 @@ export default function CreateHub({
                     <button
                       type="button"
                       onClick={() => setCarouselStep(1)}
-                      className="text-[10px] font-mono text-[#FF5C00] hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-[10px] font-mono text-[#F59E0B] hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <Camera className="w-3 h-3" /> Re-record / Upload
                     </button>
@@ -1369,7 +1421,7 @@ export default function CreateHub({
                         <button
                           type="button"
                           onClick={() => removeMediaItem(mediaItems[0].id)}
-                          className="absolute top-2 right-2 p-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow-lg border border-white/30 z-10 flex items-center justify-center"
+                          className="absolute top-2 right-2 p-1.5 bg-[#F59E0B] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow-lg border border-white/30 z-10 flex items-center justify-center"
                           title="Remove media"
                         >
                           <X className="w-4 h-4 stroke-[2.5]" />
@@ -1389,7 +1441,7 @@ export default function CreateHub({
                               <button
                                 type="button"
                                 onClick={() => removeMediaItem(item.id)}
-                                className="absolute top-0.5 right-0.5 p-1 bg-[#FF5C00] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow border border-white/30 z-10 flex items-center justify-center"
+                                className="absolute top-0.5 right-0.5 p-1 bg-[#F59E0B] hover:bg-[#FF751A] text-white rounded-full transition-all cursor-pointer shadow border border-white/30 z-10 flex items-center justify-center"
                                 title="Remove media"
                               >
                                 <X className="w-3 h-3 stroke-[2.5]" />
@@ -1402,13 +1454,13 @@ export default function CreateHub({
                   ) : (
                     <div 
                       onClick={() => setCarouselStep(1)}
-                      className="p-3 bg-white/5 border border-dashed border-white/20 rounded-2xl flex items-center justify-between cursor-pointer hover:border-[#FF5C00] transition-all"
+                      className="p-3 bg-white/5 border border-dashed border-white/20 rounded-2xl flex items-center justify-between cursor-pointer hover:border-[#F59E0B] transition-all"
                     >
                       <div className="flex items-center gap-2.5">
-                        <Camera className="w-4 h-4 text-[#FF5C00]" />
+                        <Camera className="w-4 h-4 text-[#F59E0B]" />
                         <span className="text-xs font-bold text-white/80">No media attached yet</span>
                       </div>
-                      <span className="text-xs font-mono text-[#FF5C00] font-bold">Record / Upload →</span>
+                      <span className="text-xs font-mono text-[#F59E0B] font-bold">Record / Upload →</span>
                     </div>
                   )}
                 </div>
@@ -1429,7 +1481,7 @@ export default function CreateHub({
                               setUpdateProjId('');
                               setSelectedTaskIds([]);
                             }}
-                            className="text-[10px] font-mono text-white/40 hover:text-[#FF5C00] transition-colors cursor-pointer"
+                            className="text-[10px] font-mono text-white/40 hover:text-[#F59E0B] transition-colors cursor-pointer"
                           >
                             Deselect Project
                           </button>
@@ -1454,7 +1506,7 @@ export default function CreateHub({
                               }}
                               className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
                                 isSelected
-                                  ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
+                                  ? 'bg-[#F59E0B] text-black font-bold border-[#F59E0B]'
                                   : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
                               }`}
                             >
@@ -1474,7 +1526,7 @@ export default function CreateHub({
                         onChange={(e) => setUpdateDesc(e.target.value)}
                         rows={3}
                         required
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] leading-relaxed"
                         placeholder="Share details about your work progress or checkpoint..."
                       />
                     </div>
@@ -1488,7 +1540,7 @@ export default function CreateHub({
                           onClick={() => setPrivacy('public')}
                           className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
                             privacy === 'public'
-                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              ? 'bg-[#F59E0B] text-black shadow-sm font-bold'
                               : 'text-gray-600 hover:text-gray-900'
                           }`}
                         >
@@ -1500,7 +1552,7 @@ export default function CreateHub({
                           onClick={() => setPrivacy('internal')}
                           className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
                             privacy === 'internal'
-                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              ? 'bg-[#F59E0B] text-black shadow-sm font-bold'
                               : 'text-gray-600 hover:text-gray-900'
                           }`}
                         >
@@ -1512,7 +1564,7 @@ export default function CreateHub({
                           onClick={() => setPrivacy('private')}
                           className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono ${
                             privacy === 'private'
-                              ? 'bg-[#FF5C00] text-black shadow-sm font-bold'
+                              ? 'bg-[#F59E0B] text-black shadow-sm font-bold'
                               : 'text-gray-600 hover:text-gray-900'
                           }`}
                         >
@@ -1528,7 +1580,7 @@ export default function CreateHub({
                         type="text"
                         value={updateHashtags}
                         onChange={(e) => setUpdateHashtags(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#FF5C00]"
+                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#F59E0B]"
                         placeholder="#woodworking, #diy, #progress"
                       />
                     </div>
@@ -1547,7 +1599,7 @@ export default function CreateHub({
 
                             return (
                               <div key={phase.id || `ph-${pIdx}`} className="space-y-1.5">
-                                <h5 className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider">
+                                <h5 className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider">
                                   Phase {pIdx + 1}: {phase.title}
                                 </h5>
                                 <div className="space-y-1 pl-1">
@@ -1556,7 +1608,7 @@ export default function CreateHub({
                                       key={task.id || `task-${pIdx}-${tIdx}`}
                                       className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
                                         selectedTaskIds.includes(task.id)
-                                          ? 'bg-[#FF5C00]/15 border-[#FF5C00] text-white'
+                                          ? 'bg-[#F59E0B]/15 border-[#F59E0B] text-white'
                                           : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
                                       }`}
                                     >
@@ -1564,7 +1616,7 @@ export default function CreateHub({
                                         type="checkbox"
                                         checked={selectedTaskIds.includes(task.id)}
                                         onChange={() => toggleTaskSelection(task.id)}
-                                        className="w-4 h-4 rounded border-white/20 bg-black text-[#FF5C00] focus:ring-0 cursor-pointer"
+                                        className="w-4 h-4 rounded border-white/20 bg-black text-[#F59E0B] focus:ring-0 cursor-pointer"
                                       />
                                       <span className="flex-1 font-sans truncate">{task.title}</span>
                                     </label>
@@ -1593,7 +1645,7 @@ export default function CreateHub({
                               onClick={() => setProjFocusId(prev => prev === col.id ? '' : col.id)}
                               className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
                                 projFocusId === col.id
-                                  ? 'bg-[#FF5C00] text-black font-bold border-[#FF5C00]'
+                                  ? 'bg-[#F59E0B] text-black font-bold border-[#F59E0B]'
                                   : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:text-white'
                               }`}
                             >
@@ -1609,7 +1661,7 @@ export default function CreateHub({
                       <select
                         value={selectedRecipeId}
                         onChange={(e) => handleRecipeSelect(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-[#181818] border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] cursor-pointer"
+                        className="w-full px-4 py-2.5 bg-[#181818] border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] cursor-pointer"
                       >
                         <option value="" className="bg-[#181818] text-white/60">Select a Recipe from Library...</option>
                         {recipes.map(recipe => (
@@ -1629,7 +1681,7 @@ export default function CreateHub({
                         required
                         value={projTitle}
                         onChange={(e) => setProjTitle(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B]"
                         placeholder="e.g. Master Oil Painting Canvas Study"
                       />
                     </div>
@@ -1648,7 +1700,7 @@ export default function CreateHub({
                         value={projDesc}
                         onChange={(e) => setProjDesc(e.target.value)}
                         rows={3}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] leading-relaxed"
                         placeholder="Explain project details, milestones, and deliverables..."
                       />
                     </div>
@@ -1660,7 +1712,7 @@ export default function CreateHub({
                           type="button"
                           onClick={() => setPrivacy('public')}
                           className={`p-2 rounded-lg transition-all cursor-pointer ${
-                            privacy === 'public' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                            privacy === 'public' ? 'bg-[#F59E0B] text-black font-bold' : 'text-white/60'
                           }`}
                         >
                           <Globe className="w-4 h-4" />
@@ -1669,7 +1721,7 @@ export default function CreateHub({
                           type="button"
                           onClick={() => setPrivacy('internal')}
                           className={`p-2 rounded-lg transition-all cursor-pointer ${
-                            privacy === 'internal' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                            privacy === 'internal' ? 'bg-[#F59E0B] text-black font-bold' : 'text-white/60'
                           }`}
                         >
                           <CircleDotDashed className="w-4 h-4" />
@@ -1678,7 +1730,7 @@ export default function CreateHub({
                           type="button"
                           onClick={() => setPrivacy('private')}
                           className={`p-2 rounded-lg transition-all cursor-pointer ${
-                            privacy === 'private' ? 'bg-[#FF5C00] text-black font-bold' : 'text-white/60'
+                            privacy === 'private' ? 'bg-[#F59E0B] text-black font-bold' : 'text-white/60'
                           }`}
                         >
                           <Album className="w-4 h-4" />
@@ -1693,7 +1745,7 @@ export default function CreateHub({
                         <button
                           type="button"
                           onClick={handleAddPhase}
-                          className="px-3 py-1 bg-white/10 hover:bg-white/20 text-[#FF5C00] font-mono text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-[#FF5C00]/30"
+                          className="px-3 py-1 bg-white/10 hover:bg-white/20 text-[#F59E0B] font-mono text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer border border-[#F59E0B]/30"
                         >
                           <Plus className="w-3.5 h-3.5" /> Add Phase
                         </button>
@@ -1707,7 +1759,7 @@ export default function CreateHub({
                                 type="text"
                                 value={phase.title}
                                 onChange={(e) => handleUpdatePhaseTitle(phase.id, e.target.value)}
-                                className="flex-1 px-3 py-1.5 bg-[#181818] border border-white/10 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#FF5C00]"
+                                className="flex-1 px-3 py-1.5 bg-[#181818] border border-white/10 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#F59E0B]"
                                 placeholder={`Phase ${pIdx + 1} Title...`}
                                 required
                               />
@@ -1719,7 +1771,7 @@ export default function CreateHub({
                                     type="text"
                                     value={task.title}
                                     onChange={(e) => handleUpdateTaskTitle(phase.id, task.id, e.target.value)}
-                                    className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white/90 focus:outline-none focus:border-[#FF5C00]"
+                                    className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white/90 focus:outline-none focus:border-[#F59E0B]"
                                     placeholder={`Task ${tIdx + 1} description...`}
                                     required
                                   />
@@ -1728,7 +1780,7 @@ export default function CreateHub({
                               <button
                                 type="button"
                                 onClick={() => handleAddTask(phase.id)}
-                                className="text-[11px] font-mono text-[#FF5C00] flex items-center gap-1 pt-1 cursor-pointer"
+                                className="text-[11px] font-mono text-[#F59E0B] flex items-center gap-1 pt-1 cursor-pointer"
                               >
                                 <Plus className="w-3 h-3" /> Add Task
                               </button>
@@ -1752,7 +1804,7 @@ export default function CreateHub({
                         required
                         value={focusTitle}
                         onChange={(e) => setFocusTitle(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B]"
                         placeholder="e.g. Fine Art Painting, Hardware Prototyping"
                       />
                     </div>
@@ -1763,7 +1815,7 @@ export default function CreateHub({
                         value={focusDesc}
                         onChange={(e) => setFocusDesc(e.target.value)}
                         rows={3}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] leading-relaxed"
                         placeholder="Describe this area of FOCUS and core creative goals..."
                       />
                     </div>
@@ -1782,7 +1834,7 @@ export default function CreateHub({
                         required
                         value={recipeTitle}
                         onChange={(e) => setRecipeTitle(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00]"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B]"
                         placeholder="e.g. Standard Oil Canvas Preparation"
                       />
                     </div>
@@ -1802,7 +1854,7 @@ export default function CreateHub({
                         value={recipeDesc}
                         onChange={(e) => setRecipeDesc(e.target.value)}
                         rows={3}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#FF5C00] leading-relaxed"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] leading-relaxed"
                         placeholder="Explain this blueprint process..."
                       />
                     </div>
@@ -1865,7 +1917,7 @@ export default function CreateHub({
                     setImageError('');
                     setCarouselStep(3);
                   }}
-                  className="p-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all cursor-pointer font-bold font-mono shadow-lg flex items-center gap-1.5"
+                  className="p-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-xl transition-all cursor-pointer font-bold font-mono shadow-lg flex items-center gap-1.5"
                   title="Next Step: Preview Post"
                 >
                   <ArrowRight className="w-5 h-5 stroke-[3]" />
@@ -1895,9 +1947,9 @@ export default function CreateHub({
                       </div>
                     </div>
                     <div className="px-2 py-0.5 rounded bg-white/10 text-white/70 text-[10px] font-mono flex items-center gap-1">
-                      {privacy === 'public' && <Globe className="w-3 h-3 text-[#FF5C00]" />}
-                      {privacy === 'internal' && <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" />}
-                      {privacy === 'private' && <Album className="w-3 h-3 text-[#FF5C00]" />}
+                      {privacy === 'public' && <Globe className="w-3 h-3 text-[#F59E0B]" />}
+                      {privacy === 'internal' && <CircleDotDashed className="w-3 h-3 text-[#F59E0B]" />}
+                      {privacy === 'private' && <Album className="w-3 h-3 text-[#F59E0B]" />}
                       <span className="capitalize">{privacy}</span>
                     </div>
                   </div>
@@ -1952,7 +2004,7 @@ export default function CreateHub({
 
                   {/* Hashtags Preview */}
                   {activeMode === 'update' && updateHashtags && (
-                    <div className="text-[11px] font-mono text-[#FF5C00] font-bold">
+                    <div className="text-[11px] font-mono text-[#F59E0B] font-bold">
                       {updateHashtags.split(/[\s,]+/).map(t => t.startsWith('#') ? t : `#${t}`).join(' ')}
                     </div>
                   )}
@@ -1993,7 +2045,7 @@ export default function CreateHub({
                     else if (activeMode === 'focus') handleCreateFocus(e);
                     else if (activeMode === 'recipe') handleCreateRecipe(e);
                   }}
-                  className={`px-6 py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
+                  className={`px-6 py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
                     isSubmitting ? 'opacity-70 cursor-wait' : ''
                   }`}
                 >

@@ -30,6 +30,8 @@
     "react-webcam": "^7.2.0",
     "resend": "^6.18.1",
     "ssh2-sftp-client": "^12.1.1",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
@@ -39,6 +41,8 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.14.0",
     "@types/ssh2-sftp-client": "^9.0.6",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "autoprefixer": "^10.4.21",
     "cypress": "^15.20.0",
     "esbuild": "^0.25.0",

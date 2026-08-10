@@ -25,7 +25,8 @@ import {
   Home,
   CircleDotDashed,
   Edit2,
-  X
+  X,
+  BookPlus
 } from 'lucide-react';
 
 import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase, ProfileVisibility } from './types';
@@ -34,7 +35,7 @@ import { dataService } from './services/dataService';
 import { uploadService, getPublicMediaUrl } from './services/uploadService';
 import { permissionService } from './services/permissionService';
 import { authService, isAuthFeatureEnabled, UserSession } from './services/authService';
-import { hydrateCreators } from './utils/followUtils';
+import { hydrateCreators, isUserInCircle } from './utils/followUtils';
 
 // Component imports
 import Onboarding from './components/Onboarding';
@@ -46,8 +47,11 @@ import SearchRecipesModal from './components/SearchRecipesModal';
 import CreatorProfileModal from './components/CreatorProfileModal';
 import UpdatesView, { MessageThread } from './components/UpdatesView';
 import ShareDrawer from './components/ShareDrawer';
+import MessageDrawer from './components/MessageDrawer';
 import HomeCreatorProfileView from './components/HomeCreatorProfileView';
 import PermissionsPromptModal from './components/PermissionsPromptModal';
+import PostDetailModal from './components/PostDetailModal';
+import { ProjectExploreModal, RecipeExploreModal } from './components/ExploreModals';
 
 // Website Component imports
 import { WebsiteHeader } from './components/website/WebsiteHeader';
@@ -161,19 +165,29 @@ export default function App() {
   useEffect(() => {
     const uid = currentUser?.id || 'user-current';
     dataService.getUserSavedRecipeIds(uid).then(ids => {
-      if (ids) setSavedRecipeIds(ids);
+      if (ids && ids.length > 0) {
+        setSavedRecipeIds(prev => Array.from(new Set([...prev, ...ids])));
+      }
     });
   }, [currentUser?.id]);
 
-  const handleToggleSaveRecipe = async (recipeId: string) => {
+  const handleToggleSaveRecipe = async (recipeId: string, recipeObj?: Recipe) => {
     const uid = currentUser?.id || 'user-current';
     const isNowSaved = await dataService.toggleBookmarkRecipe(uid, recipeId);
+    if (recipeObj && isNowSaved) {
+      setRecipes(prev => {
+        if (prev.some(r => r.id === recipeObj.id)) return prev;
+        return [recipeObj, ...prev];
+      });
+    }
     setSavedRecipeIds(prev => {
-      if (isNowSaved) {
-        return prev.includes(recipeId) ? prev : [...prev, recipeId];
-      } else {
-        return prev.filter(id => id !== recipeId);
-      }
+      const next = isNowSaved
+        ? (prev.includes(recipeId) ? prev : [...prev, recipeId])
+        : prev.filter(id => id !== recipeId);
+      try {
+        localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify(next));
+      } catch {}
+      return next;
     });
   };
   const parsePath = (pathname: string): { 
@@ -429,25 +443,63 @@ export default function App() {
 
   const [showPermissionsPromptModal, setShowPermissionsPromptModal] = useState<boolean>(false);
 
-  // Flow 1: Cold start / login permission check (Silent - never prompts automatically)
+  // Flow 1: Cold start / login permission check (Authenticated users only)
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      setShowPermissionsPromptModal(false);
+      return;
+    }
 
-    permissionService.onLoginOrColdStart(currentUser.id).then(resMap => {
-      const saved = localStorage.getItem('gonnng_permissions');
-      let userDefined: AppPermissions | null = null;
-      if (saved) {
-        try { userDefined = JSON.parse(saved); } catch {}
+    let isMounted = true;
+
+    async function checkUserDevicePermissions() {
+      try {
+        const userId = currentUser!.id;
+        const resMap = await permissionService.onLoginOrColdStart(userId);
+        
+        const saved = localStorage.getItem('gonnng_permissions');
+        let userDefined: AppPermissions | null = null;
+        if (saved) {
+          try { userDefined = JSON.parse(saved); } catch {}
+        }
+
+        const updated: AppPermissions = {
+          camera: userDefined?.camera !== undefined ? userDefined.camera : (resMap.camera === 'granted'),
+          microphone: userDefined?.microphone !== undefined ? userDefined.microphone : (resMap.microphone === 'granted'),
+          files: userDefined?.files !== undefined ? userDefined.files : (resMap.file_access === 'granted')
+        };
+
+        if (isMounted) {
+          setPermissions(updated);
+          localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
+        }
+
+        // Query user_device_permissions table for this user & device
+        const cameraStored = await permissionService.getStoredPermission(userId, 'camera');
+        const micStored = await permissionService.getStoredPermission(userId, 'microphone');
+        const filesStored = await permissionService.getStoredPermission(userId, 'file_access');
+
+        // Only triggers if permissions are NOT set on the device (null) or set to 'not_requested' for the device
+        const isNotSetOrNotRequested =
+          cameraStored === null || cameraStored === 'not_requested' ||
+          micStored === null || micStored === 'not_requested' ||
+          filesStored === null || filesStored === 'not_requested';
+
+        const promptedLocally = localStorage.getItem('gonnng_permissions_prompted');
+
+        if (isMounted && isNotSetOrNotRequested && !promptedLocally) {
+          setShowPermissionsPromptModal(true);
+        }
+      } catch (err) {
+        console.warn('Permission cold start check note:', err);
       }
+    }
 
-      const updated: AppPermissions = {
-        camera: userDefined?.camera !== undefined ? userDefined.camera : (resMap.camera === 'granted'),
-        microphone: userDefined?.microphone !== undefined ? userDefined.microphone : (resMap.microphone === 'granted'),
-        files: userDefined?.files !== undefined ? userDefined.files : (resMap.file_access === 'granted')
-      };
-      setPermissions(updated);
-      localStorage.setItem('gonnng_permissions', JSON.stringify(updated));
-    }).catch(err => console.warn('Permission cold start sync error:', err));
+    checkUserDevicePermissions();
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentUser?.id]);
 
   // Flow 2: Sync permissions on app foreground / resume
@@ -494,6 +546,12 @@ export default function App() {
     localStorage.setItem('gonnng_permissions', JSON.stringify(allApproved));
     localStorage.setItem('gonnng_permissions_prompted', 'true');
     setShowPermissionsPromptModal(false);
+
+    if (currentUser?.id) {
+      permissionService.upsertPermission(currentUser.id, 'camera', 'granted');
+      permissionService.upsertPermission(currentUser.id, 'microphone', 'granted');
+      permissionService.upsertPermission(currentUser.id, 'file_access', 'granted');
+    }
   };
 
   const handleCustomPermissions = (custom: AppPermissions) => {
@@ -501,6 +559,12 @@ export default function App() {
     localStorage.setItem('gonnng_permissions', JSON.stringify(custom));
     localStorage.setItem('gonnng_permissions_prompted', 'true');
     setShowPermissionsPromptModal(false);
+
+    if (currentUser?.id) {
+      permissionService.upsertPermission(currentUser.id, 'camera', custom.camera ? 'granted' : 'denied');
+      permissionService.upsertPermission(currentUser.id, 'microphone', custom.microphone ? 'granted' : 'denied');
+      permissionService.upsertPermission(currentUser.id, 'file_access', custom.files ? 'granted' : 'denied');
+    }
   };
 
   const handleNavigateToPermissions = () => {
@@ -552,6 +616,7 @@ export default function App() {
   const [updatesChatUser, setUpdatesChatUser] = useState<Creator | null>(null);
 
   const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
+  const [selectedPostModal, setSelectedPostModal] = useState<FeedPost | null>(null);
 
   const updateRoute = (
     newViewMode?: 'website' | 'workspace',
@@ -721,7 +786,7 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll, { capture: true });
   }, []);
 
-  const handleTabChange = (tab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile') => {
+  const handleTabChange = (tab: 'updates' | 'recipes' | 'coach' | 'social' | 'profile', options?: { keepCreatorProfile?: boolean }) => {
     setShowTutorial(false);
     if (tab === 'updates') {
       setUpdatesCategory(null);
@@ -732,18 +797,21 @@ export default function App() {
       document.getElementById('profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (tab === 'social') {
-      setHomeViewCreatorProfile(null);
+      if (!options?.keepCreatorProfile) {
+        setHomeViewCreatorProfile(null);
+      }
       const feedContainer = document.getElementById('feed-root')?.querySelector('.overflow-y-scroll');
       if (feedContainer) {
         feedContainer.scrollTo({ top: 0, behavior: 'smooth' });
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    setActiveTab(tab);
     updateRoute('workspace', undefined, tab, {
       updatesCategory: null,
       updatesChatUser: null,
       processTab: tab === 'recipes' ? 'library' : tab === 'coach' ? 'projects' : undefined,
-      viewedCreator: null,
+      viewedCreator: options?.keepCreatorProfile ? homeViewCreatorProfile : null,
       postId: null,
       recipeId: null
     });
@@ -767,14 +835,42 @@ export default function App() {
     updateRoute('workspace', undefined, targetAppTab, { processTab: tab, viewedCreator: null, postId: null, recipeId: null });
   };
 
+  const getActiveViewTitle = () => {
+    if (activeTab === 'profile') return 'Profile';
+    if (activeTab === 'updates') return 'Updates';
+    if (activeTab === 'social') return 'My Circle';
+    if (activeTab === 'coach' || activeTab === 'recipes') return 'Process';
+    return 'Gonnng';
+  };
+
   // Message Threads & Share Drawer States
   const [shareDrawerPost, setShareDrawerPost] = useState<FeedPost | null>(null);
   const [isShareDrawerOpen, setIsShareDrawerOpen] = useState<boolean>(false);
+
+  const [messageDrawerPartner, setMessageDrawerPartner] = useState<Creator | null>(null);
+  const [isMessageDrawerOpen, setIsMessageDrawerOpen] = useState<boolean>(false);
+  const [messageDrawerInitialItem, setMessageDrawerInitialItem] = useState<{ text: string; postId?: string; postThumbnail?: string } | undefined>(undefined);
+
+  const handleOpenMessageDrawer = (partner: Creator, initialSharedItem?: { text: string; postId?: string; postThumbnail?: string }) => {
+    setMessageDrawerPartner(partner);
+    setMessageDrawerInitialItem(initialSharedItem);
+    setIsMessageDrawerOpen(true);
+  };
 
   const handleSelectPost = (postId: string, actionType?: 'comment' | 'vote' | 'shared_message') => {
     setShowTutorial(false);
     const match = posts.find(p => p.id === postId || (p.title && p.title.toLowerCase().includes(postId.toLowerCase()))) || posts[0];
     const actualPostId = match ? match.id : postId;
+
+    if (activeTab === 'updates') {
+      setSelectedPostModal(match || posts[0]);
+      if (actionType === 'comment') {
+        setAutoOpenCommentsPostId(actualPostId);
+      } else {
+        setAutoOpenCommentsPostId(null);
+      }
+      return;
+    }
 
     setProfileSuperimposedPostId(actualPostId);
     setHomeSuperimposedPostId(actualPostId);
@@ -795,6 +891,9 @@ export default function App() {
     const targetRecipe = recipes.find(r => r.id === recipeId) || recipes[0];
     if (targetRecipe) {
       setSelectedRecipeModal(targetRecipe);
+      if (activeTab === 'updates') {
+        return;
+      }
       updateRoute('workspace', undefined, 'recipes', { recipeId: targetRecipe.id, processTab: 'library' });
     }
     setTimeout(() => {
@@ -804,45 +903,79 @@ export default function App() {
 
   const handleSelectUser = (creatorId: string) => {
     setShowTutorial(false);
-    const targetCreator = creators.find(c => c.id === creatorId || c.username === creatorId || c.name === creatorId);
-    if (targetCreator) {
-      if (currentUser && targetCreator.id === currentUser.id) {
-        setHomeViewCreatorProfile(null);
-        setViewedCreatorId(null);
-        updateRoute('workspace', undefined, 'profile', { viewedCreator: null });
-      } else {
-        setHomeViewCreatorProfile(targetCreator);
-        updateRoute('workspace', undefined, 'social', { viewedCreator: targetCreator });
-      }
-      setTimeout(() => {
-        document.getElementById('home-profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
-    } else {
-      setViewedCreatorId(creatorId);
-      updateRoute('workspace', undefined, 'social', { viewedCreator: creatorId });
-    }
+    handleOpenCreatorProfile(creatorId);
   };
 
-  const [messageThreads, setMessageThreads] = useState<MessageThread[]>(() => {
-    const saved = localStorage.getItem('gonnng_message_threads');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return [];
-  });
+  const [messageThreads, setMessageThreads] = useState<MessageThread[]>([]);
 
   useEffect(() => {
-    localStorage.setItem('gonnng_message_threads', JSON.stringify(messageThreads));
-  }, [messageThreads]);
+    let isMounted = true;
+    const loadThreads = async () => {
+      const threads = await dataService.getDirectMessageThreads(currentUser.id || 'user-current', creators);
+      if (isMounted) {
+        setMessageThreads(threads);
+      }
+    };
+    loadThreads();
+    return () => { isMounted = false; };
+  }, [currentUser.id, creators]);
 
-  const [unreadNotifsCount, setUnreadNotifsCount] = useState(7); // default 4 post + 2 follower + 1 appinfo unread
+  const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const computeInitialUnreadNotifs = async () => {
+      try {
+        const uid = currentUser?.id || 'user-current';
+        const readsMap = await dataService.getUserUpdateReads(uid);
+
+        // 1. App Info unread
+        const appUpdates = await dataService.getAppUpdates();
+        const unreadAppInfo = (appUpdates || []).filter(u => !readsMap[u.id]).length;
+
+        // 2. Post notifications unread
+        let postNotifs: any[] = [];
+        const dbNotifs = await dataService.getPostNotifications(uid);
+        if (dbNotifs && dbNotifs.length > 0) {
+          postNotifs = dbNotifs.map(n => ({ ...n, isRead: Boolean(readsMap[n.id]) }));
+        } else {
+          const saved = localStorage.getItem('gonnng_post_notifs');
+          if (saved) {
+            try { postNotifs = JSON.parse(saved); } catch (e) {}
+          }
+        }
+        const unreadPosts = (postNotifs || []).filter(n => !n.isRead).length;
+
+        // 3. Follower notifications unread
+        let followerNotifs: any[] = [];
+        const dbFollowers = await dataService.getFollowerNotifications(uid);
+        if (dbFollowers && dbFollowers.length > 0) {
+          followerNotifs = dbFollowers.map(f => ({ ...f, isRead: Boolean(readsMap[f.id]) }));
+        } else {
+          const saved = localStorage.getItem('gonnng_follower_notifs');
+          if (saved) {
+            try { followerNotifs = JSON.parse(saved); } catch (e) {}
+          }
+        }
+        const unreadFollowers = (followerNotifs || []).filter(f => !f.isRead).length;
+
+        if (isMounted) {
+          setUnreadNotifsCount(unreadAppInfo + unreadPosts + unreadFollowers);
+        }
+      } catch (e) {
+        if (isMounted) setUnreadNotifsCount(0);
+      }
+    };
+
+    computeInitialUnreadNotifs();
+    return () => { isMounted = false; };
+  }, [currentUser?.id]);
+
   const unreadMessageCount = messageThreads.reduce((sum, t) => sum + (t.unreadCount || 0), 0);
   const totalUnreadNotifications = unreadMessageCount + unreadNotifsCount;
 
-  const handleMarkThreadAsRead = (creatorId: string) => {
+  const handleMarkThreadAsRead = async (creatorId: string) => {
+    const currentUserId = currentUser.id || 'user-current';
     setMessageThreads(prev => prev.map(t => {
       if (t.creator.id === creatorId) {
         return {
@@ -853,44 +986,17 @@ export default function App() {
       }
       return t;
     }));
+
+    await dataService.markDirectMessagesAsRead(currentUserId, creatorId);
+    const refreshed = await dataService.getDirectMessageThreads(currentUserId, creators);
+    setMessageThreads(refreshed);
   };
 
-  const handleSendMessage = (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => {
-    setMessageThreads(prev => {
-      const existingIndex = prev.findIndex(t => t.creator.id === targetUserId);
-      const targetCreator = creators.find(c => c.id === targetUserId);
-
-      if (!targetCreator) return prev;
-
-      const newMsg = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        senderId: 'user-current',
-        text: messageText,
-        timestamp: 'Just now',
-        isRead: true,
-        postThumbnail,
-        postId
-      };
-
-      if (existingIndex >= 0) {
-        const existingThread = prev[existingIndex];
-        const updatedThread: MessageThread = {
-          ...existingThread,
-          messages: [...existingThread.messages, newMsg],
-          lastUpdated: Date.now()
-        };
-        const filtered = prev.filter((_, idx) => idx !== existingIndex);
-        return [updatedThread, ...filtered];
-      } else {
-        const newThread: MessageThread = {
-          creator: targetCreator,
-          messages: [newMsg],
-          lastUpdated: Date.now(),
-          unreadCount: 0
-        };
-        return [newThread, ...prev];
-      }
-    });
+  const handleSendMessage = async (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => {
+    const currentUserId = currentUser.id || 'user-current';
+    await dataService.sendDirectMessage(currentUserId, targetUserId, messageText.slice(0, 1400), postThumbnail, postId, 'accepted');
+    const refreshed = await dataService.getDirectMessageThreads(currentUserId, creators);
+    setMessageThreads(refreshed);
   };
   const [showPhilosophyModal, setShowPhilosophyModal] = useState<boolean>(() => {
     return !localStorage.getItem('gonnng_philosophy_seen');
@@ -898,24 +1004,89 @@ export default function App() {
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
     return !localStorage.getItem('gonnng_tutorial_done');
   });
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [editingBlankProject, setEditingBlankProject] = useState<Project | null>(null);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
+  const [searchModalInitialCategory, setSearchModalInitialCategory] = useState<string>('All');
+
+  const handleOpenSearchModal = (show: boolean = true, category: string = 'All') => {
+    setSearchModalInitialCategory(category);
+    setShowSearchModal(show);
+  };
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState<boolean>(false);
   const [forkInitialData, setForkInitialData] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [editingRecipeForExploreModal, setEditingRecipeForExploreModal] = useState<Recipe | null>(null);
+
+  const handleOpenCreateRecipeModal = () => {
+    const blankRecipe: Recipe = {
+      id: `rec_${Date.now()}`,
+      title: 'New Recipe Blueprint',
+      category: 'General',
+      description: '',
+      tags: [],
+      authorName: currentUser?.name || 'Creator',
+      authorId: currentUser?.id || 'user-1',
+      visibility: 'public',
+      phases: [
+        {
+          id: `ph-1-${Date.now()}`,
+          title: 'Phase 1: Setup',
+          position: 1,
+          tasks: [
+            {
+              id: `t-1-${Date.now()}`,
+              title: 'Initial step',
+              position: 1
+            }
+          ]
+        }
+      ],
+      gongsCount: { continue: 0, refine: 0, reconsider: 0 },
+      createdAt: new Date().toISOString(),
+      isCustom: true
+    };
+    setEditingRecipeForExploreModal(blankRecipe);
+  };
+
+  const handleOpenNewBlankProjectModal = () => {
+    const blankProject: Project = {
+      id: `proj-${Date.now()}`,
+      title: '',
+      category: 'General',
+      phases: [
+        {
+          id: `ph-1-${Date.now()}`,
+          title: 'Phase 1',
+          tasks: [
+            { id: `t-1-${Date.now()}`, title: 'Initial step', completed: false }
+          ]
+        }
+      ],
+      privacy: 'public',
+      createdAt: new Date().toISOString()
+    };
+    setEditingBlankProject(blankProject);
+  };
   const [congratulateProject, setCongratulateProject] = useState<string | null>(null);
 
-  // Initial loader if Supabase is active
+  // Initial loader
   useEffect(() => {
-    if (dataService.isSupabaseActive()) {
-      const uid = currentUser?.id || 'user-current';
-      dataService.getCreators().then(c => c.length > 0 && setCreators(c));
-      dataService.getRecipes().then(r => r.length > 0 && setRecipes(r));
-      dataService.getCollections().then(col => col.length > 0 && setCollections(col));
-      dataService.getProjects(uid).then(p => setProjects(p));
-      dataService.getPosts().then(pst => pst.length > 0 && setPosts(pst));
-    }
+    const uid = currentUser?.id || 'user-current';
+    dataService.getCreators().then(c => c && c.length > 0 && setCreators(c));
+    dataService.getRecipes().then(r => {
+      if (r && r.length > 0) {
+        setRecipes(prev => {
+          const existingIds = new Set(prev.map(item => item.id));
+          const newItems = r.filter(item => !existingIds.has(item.id));
+          return [...prev, ...newItems];
+        });
+      }
+    });
+    dataService.getCollections().then(col => col && col.length > 0 && setCollections(col));
+    dataService.getProjects(uid).then(p => p && setProjects(p));
+    dataService.getPosts().then(pst => pst && pst.length > 0 && setPosts(pst));
   }, [currentUser?.id]);
 
   // Persistence side-effects via dataService (handles both Supabase and LocalStorage)
@@ -1077,7 +1248,7 @@ export default function App() {
   const handleDeleteProject = (id: string) => {
     setProjects(prev => prev.filter(p => p.id !== id));
     if (selectedProjectId === id) {
-      setSelectedProjectId('');
+      setSelectedProjectId(null);
     }
   };
 
@@ -1091,24 +1262,50 @@ export default function App() {
 
   const handleOpenCreatorProfile = (creatorIdOrName: string) => {
     if (!creatorIdOrName) return;
+
+    // Close any active post or recipe modals and drawers
+    setSelectedPostModal(null);
+    setAutoOpenCommentsPostId(null);
+    setSelectedRecipeModal(null);
+    setViewedCreatorId(null);
+    setIsShareDrawerOpen(false);
+    setShareDrawerPost(null);
+    setShowSearchModal(false);
+    setHomeSuperimposedPostId(null);
+    setProfileSuperimposedPostId(null);
+
     const found = creators.find(c => c.id === creatorIdOrName || c.username === creatorIdOrName || c.name === creatorIdOrName);
-    if (found) {
-      if (currentUser && found.id === currentUser.id) {
-        setHomeViewCreatorProfile(null);
-        setViewedCreatorId(null);
-        updateRoute('workspace', undefined, 'profile', { viewedCreator: null });
-      } else {
-        setHomeViewCreatorProfile(found);
-        updateRoute('workspace', undefined, activeTab === 'social' ? 'social' : 'profile', { viewedCreator: found });
-      }
-      setTimeout(() => {
-        document.getElementById('home-profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
+    const targetCreator: Creator = found || {
+      id: creatorIdOrName,
+      name: creatorIdOrName,
+      username: creatorIdOrName.toLowerCase().replace(/\s+/g, ''),
+      email: `${creatorIdOrName.toLowerCase().replace(/\s+/g, '')}@gonnng.com`,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorIdOrName)}&background=F59E0B&color=fff`,
+      bio: 'Creative collaborator on Gonnng.',
+      goals: 'Documenting projects & sharing ideas.',
+      privacyDefault: 'public' as const,
+      followersCount: 1,
+      followingCount: 1,
+      isFollowing: false,
+      isInCircle: false,
+      followerIds: [],
+      followingIds: []
+    };
+
+    if (currentUser && targetCreator.id === currentUser.id) {
+      setHomeViewCreatorProfile(null);
+      handleTabChange('profile');
+      updateRoute('workspace', undefined, 'profile', { viewedCreator: null });
     } else {
-      setViewedCreatorId(creatorIdOrName);
-      updateRoute('workspace', undefined, 'profile', { viewedCreator: creatorIdOrName });
+      setHomeViewCreatorProfile(targetCreator);
+      handleTabChange('social', { keepCreatorProfile: true });
+      updateRoute('workspace', undefined, 'social', { viewedCreator: targetCreator });
     }
+
+    setTimeout(() => {
+      document.getElementById('home-profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   const viewedCreator = useMemo(() => {
@@ -1134,11 +1331,18 @@ export default function App() {
     };
   }, [viewedCreatorId, creators, currentUser]);
 
-  // Creator following toggle (updates bidirectional followerIds & followingIds)
-  const handleToggleFollowCreator = (targetUserId: string) => {
+  // Creator following toggle (updates bidirectional followerIds & followingIds in DB & local state)
+  const handleToggleFollowCreator = async (targetUserId: string) => {
     if (!currentUser || currentUser.id === targetUserId) return;
 
     const currentUserId = currentUser.id;
+
+    // Persist follow/unfollow in database (or local storage fallback)
+    try {
+      await dataService.toggleFollowUser(currentUserId, targetUserId);
+    } catch (err) {
+      console.error('Error toggling follow in database:', err);
+    }
 
     setCreators(prevCreators => {
       const activeUser = prevCreators.find(c => c.id === currentUserId);
@@ -1160,7 +1364,7 @@ export default function App() {
         newTargetFollowers = Array.from(new Set([...targetFollowers, currentUserId]));
       }
 
-      return prevCreators.map(c => {
+      const updated = prevCreators.map(c => {
         if (c.id === currentUserId) {
           return {
             ...c,
@@ -1172,11 +1376,15 @@ export default function App() {
           return {
             ...c,
             followerIds: newTargetFollowers,
-            followersCount: newTargetFollowers.length
+            followersCount: newTargetFollowers.length,
+            isFollowing: !isCurrentlyFollowing
           };
         }
         return c;
       });
+
+      dataService.saveCreators(updated);
+      return updated;
     });
   };
 
@@ -1211,9 +1419,8 @@ export default function App() {
   };
 
   const handleForkCommunityRecipe = (recipe: Recipe) => {
-    setForkInitialData(recipe);
     setShowSearchModal(false);
-    setShowCreateModal(true);
+    handleInstantiateRecipe(recipe);
   };
 
   // Gong voting calculation for Social Feed
@@ -1304,8 +1511,43 @@ export default function App() {
     }));
   };
 
-  const handleUpdateProject = (updatedProject: Project) => {
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+  const handleAddRecipe = async (r: Recipe) => {
+    setRecipes(prev => {
+      const exists = prev.some(item => item.id === r.id);
+      if (exists) return prev.map(item => item.id === r.id ? r : item);
+      return [r, ...prev];
+    });
+    await dataService.saveRecipe(r, currentUser?.id);
+  };
+
+  const handleUpdateRecipe = async (updatedR: Recipe) => {
+    setRecipes(prev => {
+      const exists = prev.some(r => r.id === updatedR.id);
+      if (exists) return prev.map(r => r.id === updatedR.id ? updatedR : r);
+      return [updatedR, ...prev];
+    });
+    await dataService.saveRecipe(updatedR, currentUser?.id);
+  };
+
+  const handleAddProject = async (p: Project) => {
+    setProjects(prev => {
+      const exists = prev.some(item => item.id === p.id);
+      if (exists) return prev.map(item => item.id === p.id ? p : item);
+      return [p, ...prev];
+    });
+    setSelectedProjectId(p.id);
+    await dataService.updateProject(p, currentUser?.id);
+  };
+
+  const handleUpdateProject = async (updatedProject: Project) => {
+    setProjects(prev => {
+      const exists = prev.some(p => p.id === updatedProject.id);
+      if (exists) {
+        return prev.map(p => p.id === updatedProject.id ? updatedProject : p);
+      }
+      return [updatedProject, ...prev];
+    });
+    await dataService.updateProject(updatedProject, currentUser?.id);
   };
 
   const handleUpdateCollection = (updatedCol: Collection) => {
@@ -1392,7 +1634,7 @@ export default function App() {
         
         <main className="flex-1">
           {websiteTab === 'home' && (
-            <HomePage onNavigate={handleNavigateWebsite} onOpenWorkspace={handleOpenWorkspace} />
+            <HomePage onNavigate={handleNavigateWebsite} onOpenWorkspace={handleOpenWorkspace} recipes={recipes} />
           )}
           {websiteTab === 'download' && (
             <DownloadPage onOpenWorkspace={handleOpenWorkspace} />
@@ -1409,7 +1651,7 @@ export default function App() {
           {websiteTab === 'contact' && (
             <ContactPage />
           )}
-          {websiteTab === 'login' && (
+          {(websiteTab === 'login' || websiteTab === 'register') && (
             authSession && !authSession.isOnboarded ? (
               <OnboardingWizard 
                 user={authSession} 
@@ -1424,6 +1666,7 @@ export default function App() {
               />
             ) : (
               <LoginPage 
+                initialMode={websiteTab === 'register' ? 'register' : 'login'}
                 onLoginSuccess={handleLoginSuccess} 
                 onNavigate={handleNavigateWebsite} 
               />
@@ -1477,7 +1720,7 @@ export default function App() {
               className="lg:hidden flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform"
               title="Click to reset tutorial"
             >
-              <GonnngGIcon className="w-8 h-8" />
+              <GonnngGIcon className="w-8 h-8 text-[#F59E0B]" />
             </div>
 
             {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
@@ -1495,6 +1738,13 @@ export default function App() {
           </div>
 
 
+          {/* Mobile Center View Title */}
+          <div className="md:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 text-center max-w-[180px] sm:max-w-[220px] truncate">
+            <span className="font-mono font-bold text-xs uppercase tracking-wider text-gray-900">
+              {getActiveViewTitle()}
+            </span>
+          </div>
+
           {/* Center Navigation tabs */}
           <nav className="hidden md:flex items-center gap-1 p-1 rounded-2xl shadow-inner md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 z-10 transition-colors bg-gray-200/80 border border-gray-300">
             <button
@@ -1502,7 +1752,7 @@ export default function App() {
               onClick={() => handleTabChange('profile')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'profile' && !showTutorial 
-                  ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
+                  ? 'bg-[#F59E0B] text-black font-black border border-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
@@ -1522,8 +1772,8 @@ export default function App() {
               id="nav-coach-tab"
               onClick={() => handleTabChange('coach')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'coach' && !showTutorial 
-                  ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
+                (activeTab === 'coach' || activeTab === 'recipes') && !showTutorial 
+                  ? 'bg-[#F59E0B] text-black font-black border border-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
@@ -1533,8 +1783,8 @@ export default function App() {
             {/* Centered plus action button */}
             <button
               onClick={() => setShowCreateModal(true)}
-              className="p-1.5 mx-1 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-full transition-all shadow-md flex items-center justify-center cursor-pointer shrink-0 hover:scale-110 active:scale-95"
-              title="New Recipe"
+              className="p-1.5 mx-1 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black rounded-full transition-all shadow-md flex items-center justify-center cursor-pointer shrink-0 hover:scale-110 active:scale-95"
+              title="New Post"
             >
               <Plus className="w-4.5 h-4.5 font-black" />
             </button>
@@ -1544,13 +1794,13 @@ export default function App() {
               onClick={() => handleTabChange('updates')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer relative ${
                 activeTab === 'updates' && !showTutorial 
-                  ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
+                  ? 'bg-[#F59E0B] text-black font-black border border-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
               <Bell className="w-4 h-4" /> Updates
               {totalUnreadNotifications > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#F59E0B] text-black shadow-sm">
                   {totalUnreadNotifications}
                 </span>
               )}
@@ -1560,7 +1810,7 @@ export default function App() {
               onClick={() => handleTabChange('social')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'social' && !showTutorial 
-                  ? 'bg-[#FF5C00] text-black font-black border border-[#FF5C00] shadow-[0_0_14px_rgba(255,92,0,0.35)]' 
+                  ? 'bg-[#F59E0B] text-black font-black border border-[#F59E0B] shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
@@ -1570,7 +1820,31 @@ export default function App() {
 
           {/* Action Area on the Right */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {activeTab === 'profile' ? (
+            {(activeTab === 'coach' || activeTab === 'recipes') && processTab === 'projects' && (
+              <button
+                type="button"
+                id="header-new-project-btn"
+                onClick={handleOpenNewBlankProjectModal}
+                className="p-1.5 sm:p-2 text-black transition-all flex items-center justify-center cursor-pointer hover:opacity-75 hover:scale-110 active:scale-95 rounded-xl border border-transparent hover:bg-gray-200/60"
+                title="New Project"
+              >
+                <BookPlus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
+              </button>
+            )}
+
+            {(activeTab === 'coach' || activeTab === 'recipes') && processTab === 'library' && (
+              <button
+                type="button"
+                id="header-library-search-btn"
+                onClick={() => handleOpenSearchModal(true, 'Recipes')}
+                className="p-1.5 sm:p-2 text-black transition-all flex items-center justify-center cursor-pointer hover:opacity-75 hover:scale-110 active:scale-95 rounded-xl border border-transparent hover:bg-gray-200/60"
+                title="Search Recipes"
+              >
+                <Search className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
+              </button>
+            )}
+
+            {activeTab === 'profile' && (
               <button
                 type="button"
                 id="header-profile-menu-btn"
@@ -1582,17 +1856,19 @@ export default function App() {
               >
                 <Settings className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
               </button>
-            ) : activeTab === 'social' ? (
+            )}
+
+            {activeTab === 'social' && (
               <button
                 type="button"
                 id="circle-search-btn"
-                onClick={() => setShowSearchModal(true)}
+                onClick={() => handleOpenSearchModal(true, 'Users')}
                 className="p-1.5 sm:p-2 text-black transition-all flex items-center justify-center cursor-pointer hover:opacity-75 hover:scale-110 active:scale-95"
                 title="Search Circle"
               >
                 <Search className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
               </button>
-            ) : null}
+            )}
           </div>
 
         </div>
@@ -1621,12 +1897,12 @@ export default function App() {
           onClick={() => handleTabChange('profile')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'profile' && !showTutorial 
-              ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
+              ? 'text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]' 
               : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {activeTab === 'profile' && !showTutorial && (
-            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
+            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#F59E0B] shadow-[0_0_8px_#F59E0B]" />
           )}
           {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
             <img 
@@ -1643,13 +1919,13 @@ export default function App() {
         <button 
           onClick={() => handleTabChange('coach')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
-            activeTab === 'coach' && !showTutorial 
-              ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
+            (activeTab === 'coach' || activeTab === 'recipes') && !showTutorial 
+              ? 'text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]' 
               : 'text-gray-500 hover:text-gray-900'
           }`}
         >
-          {activeTab === 'coach' && !showTutorial && (
-            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
+          {(activeTab === 'coach' || activeTab === 'recipes') && !showTutorial && (
+            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#F59E0B] shadow-[0_0_8px_#F59E0B]" />
           )}
           <FileSliders className="w-4.5 h-4.5" /> Process
         </button>
@@ -1657,8 +1933,8 @@ export default function App() {
         {/* Centered circle plus button */}
         <button 
           onClick={() => setShowCreateModal(true)}
-          className="w-11 h-11 rounded-full bg-[#FF5C00] text-black flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer hover:scale-105"
-          title="New Recipe"
+          className="w-11 h-11 rounded-full bg-[#F59E0B] text-black flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer hover:scale-105"
+          title="New Post"
         >
           <Plus className="w-5.5 h-5.5 font-black" />
         </button>
@@ -1667,17 +1943,17 @@ export default function App() {
           onClick={() => handleTabChange('updates')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'updates' && !showTutorial 
-              ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
+              ? 'text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]' 
               : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {totalUnreadNotifications > 0 ? (
-            <span className="absolute -top-2 left-1/2 -translate-x-1/2 min-w-[18px] h-4 px-1 rounded-full text-[9px] font-mono font-black bg-[#FF5C00] text-black flex items-center justify-center shadow-md z-10">
+            <span className="absolute -top-2 left-1/2 -translate-x-1/2 min-w-[18px] h-4 px-1 rounded-full text-[9px] font-mono font-black bg-[#F59E0B] text-black flex items-center justify-center shadow-md z-10">
               {totalUnreadNotifications}
             </span>
           ) : (
             activeTab === 'updates' && !showTutorial && (
-              <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
+              <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#F59E0B] shadow-[0_0_8px_#F59E0B]" />
             )
           )}
           <Bell className="w-4.5 h-4.5" /> Updates
@@ -1686,12 +1962,12 @@ export default function App() {
           onClick={() => handleTabChange('social')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'social' && !showTutorial 
-              ? 'text-[#FF5C00] bg-[#FF5C00]/10 border border-[#FF5C00]/50 shadow-[0_0_10px_rgba(255,92,0,0.2)]' 
+              ? 'text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]' 
               : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {activeTab === 'social' && !showTutorial && (
-            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#FF5C00] shadow-[0_0_8px_#FF5C00]" />
+            <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#F59E0B] shadow-[0_0_8px_#F59E0B]" />
           )}
           <CircleDotDashed className="w-4.5 h-4.5" /> Circle
         </button>
@@ -1741,16 +2017,18 @@ export default function App() {
                   setShowCreateModal={setShowCreateModal}
                   activeProject={activeProject}
                   recipes={recipes}
-                  onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
+                  onAddRecipe={handleAddRecipe}
+                  onUpdateRecipe={handleUpdateRecipe}
                   savedRecipeIds={savedRecipeIds}
                   onToggleSaveRecipe={handleToggleSaveRecipe}
                   initialTab={activeTab === 'recipes' ? 'library' : (processTab || 'projects')}
                   onTabChange={handleProcessTabChange}
                   currentUser={currentUser}
-                  setShowSearchModal={setShowSearchModal}
+                  setShowSearchModal={handleOpenSearchModal}
                   setEditingRecipe={setEditingRecipe}
                   setForkInitialData={setForkInitialData}
                   handleInstantiateRecipe={handleInstantiateRecipe}
+                  onOpenCreatorProfile={handleOpenCreatorProfile}
                 />
               </motion.div>
             )}
@@ -1799,7 +2077,7 @@ export default function App() {
                     posts={posts}
                     currentUserId={currentUser.id}
                     currentUser={currentUser}
-                    onBackToHome={() => setHomeViewCreatorProfile(null)}
+                    onBackToHome={() => handleTabChange('social')}
                     onToggleFollow={handleToggleFollowCreator}
                     onUpdatePostGong={handleUpdatePostGong}
                     onAddComment={handleAddComment}
@@ -1808,7 +2086,8 @@ export default function App() {
                       setShareDrawerPost(post);
                       setIsShareDrawerOpen(true);
                     }}
-                    onOpenCreatorProfile={(id) => setViewedCreatorId(id)}
+                    onOpenCreatorProfile={handleOpenCreatorProfile}
+                    onOpenMessageDrawer={handleOpenMessageDrawer}
                   />
                 ) : (
                   <Feed 
@@ -1816,10 +2095,13 @@ export default function App() {
                     currentUserId={currentUser.id}
                     currentUser={currentUser}
                     creators={creators}
+                    projects={projects}
+                    recipes={recipes}
                     filter={feedFilter}
                     onUpdatePostGong={handleUpdatePostGong}
                     onAddComment={handleAddComment}
                     onToggleCommentHeart={handleToggleCommentHeart}
+                    onToggleFollow={handleToggleFollowCreator}
                     onFeedScroll={(scrolled) => setIsScrolled(scrolled)}
                     onOpenCreatorProfile={handleOpenCreatorProfile}
                     superimposedPostId={homeSuperimposedPostId}
@@ -1890,6 +2172,10 @@ export default function App() {
                     setShareDrawerPost(post);
                     setIsShareDrawerOpen(true);
                   }}
+                  projects={projects}
+                  recipes={recipes}
+                  onStartProject={handleOpenNewBlankProjectModal}
+                  onCreateRecipe={handleOpenCreateRecipeModal}
                 />
               </motion.div>
             )}
@@ -1900,11 +2186,51 @@ export default function App() {
 
       {/* Device Permissions Initial Prompt Modal (Logged in workspace mode only) */}
       <PermissionsPromptModal
-        isOpen={showPermissionsPromptModal && viewMode === 'workspace'}
+        isOpen={showPermissionsPromptModal && Boolean(currentUser?.id) && viewMode === 'workspace'}
         currentPermissions={permissions}
-        onClose={() => setShowPermissionsPromptModal(false)}
+        onClose={() => {
+          localStorage.setItem('gonnng_permissions_prompted', 'true');
+          setShowPermissionsPromptModal(false);
+        }}
         onSavePermissions={handleCustomPermissions}
       />
+
+      {/* Blank Project Explore Modal in Edit Mode */}
+      {editingBlankProject && (
+        <ProjectExploreModal
+          project={editingBlankProject}
+          isOpen={Boolean(editingBlankProject)}
+          initialEditMode={true}
+          currentUser={currentUser}
+          onClose={() => setEditingBlankProject(null)}
+          onAddRecipe={handleAddRecipe}
+          onUpdateProject={(updated) => {
+            handleUpdateProject(updated);
+            setSelectedProjectId(updated.id);
+            setProcessTab('projects');
+            setEditingBlankProject(null);
+          }}
+          onDeleteProject={(id) => {
+            handleDeleteProject(id);
+            setEditingBlankProject(null);
+          }}
+        />
+      )}
+
+      {/* Recipe Explore Modal in Edit Mode (from Profile / Empty States) */}
+      {editingRecipeForExploreModal && (
+        <RecipeExploreModal
+          recipe={editingRecipeForExploreModal}
+          isOpen={Boolean(editingRecipeForExploreModal)}
+          onClose={() => setEditingRecipeForExploreModal(null)}
+          onUpdateRecipe={async (updated) => {
+            await handleUpdateRecipe(updated);
+            setEditingRecipeForExploreModal(null);
+          }}
+          currentUser={currentUser}
+          initialEditMode={true}
+        />
+      )}
 
       {/* CreationStation Modular Modal Overlay */}
       {showCreateModal && (
@@ -1923,20 +2249,13 @@ export default function App() {
           onNavigateToPermissions={handleNavigateToPermissions}
           onUpdatePermissions={handleUpdatePermissions}
           onRequestDevicePermissions={handleRequestDevicePermissions}
-          onAddRecipe={(r) => setRecipes(prev => [r, ...prev])}
-          onUpdateRecipe={(updatedR) => {
-            setRecipes(prev => prev.map(r => r.id === updatedR.id ? updatedR : r));
-          }}
-          onAddProject={(p) => {
-            setProjects(prev => [...prev, p]);
-            setSelectedProjectId(p.id);
-          }}
+          onAddRecipe={handleAddRecipe}
+          onUpdateRecipe={handleUpdateRecipe}
+          onAddProject={handleAddProject}
           onAddCollection={(col) => {
             setCollections(prev => [col, ...prev]);
           }}
-          onUpdateProject={(updatedProj) => {
-            setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
-          }}
+          onUpdateProject={handleUpdateProject}
           onAddPost={async (post) => {
             setPosts(prev => [post, ...prev]);
             try {
@@ -1962,10 +2281,31 @@ export default function App() {
           creators={creators}
           communityRecipes={recipes}
           posts={posts}
+          projects={projects}
+          savedRecipeIds={savedRecipeIds}
+          currentUser={currentUser}
           onSaveRecipe={handleSaveCommunityRecipe}
           onForkRecipe={handleForkCommunityRecipe}
+          onToggleSaveRecipe={handleToggleSaveRecipe}
           onToggleFollowCreator={handleToggleFollowCreator}
           onToggleCircleCreator={handleToggleCircleCreator}
+          onOpenCreatorProfile={handleOpenCreatorProfile}
+          onSelectProject={(project) => {
+            setSelectedProjectId(project.id);
+            setProcessTab('projects');
+            setActiveTab('coach');
+            setShowSearchModal(false);
+          }}
+          onEditProject={(project) => {
+            setSelectedProjectId(project.id);
+            setProcessTab('projects');
+            setActiveTab('coach');
+            setShowSearchModal(false);
+          }}
+          onDeleteProject={(projectId) => {
+            handleDeleteProject(projectId);
+          }}
+          initialCategory={searchModalInitialCategory}
         />
       )}
 
@@ -1979,7 +2319,7 @@ export default function App() {
           >
             <div className="flex justify-between items-start">
               <div>
-                <span className="bg-[#FF5C00]/15 text-[#FF5C00] font-mono text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-wider">
+                <span className="bg-[#F59E0B]/15 text-[#F59E0B] font-mono text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-wider">
                   Brand Mantra — Keep Gonnng.
                 </span>
                 <h3 className="text-xl font-display font-black text-gray-900 mt-1.5 uppercase tracking-tight">
@@ -2026,7 +2366,7 @@ export default function App() {
               <div className="bg-orange-50 border border-orange-200 p-3.5 rounded-2xl flex items-start gap-3">
                 <span className="text-xl shrink-0" role="img" aria-label="potential">🟡</span>
                 <div>
-                  <h4 className="text-xs font-mono font-black uppercase text-[#FF5C00]">Potential</h4>
+                  <h4 className="text-xs font-mono font-black uppercase text-[#F59E0B]">Potential</h4>
                   <p className="text-[11px] text-orange-950/80 leading-normal mt-0.5 font-medium">
                     Keep working on it. Micro-adjustments and subtle polish will take this to the next level.
                   </p>
@@ -2050,7 +2390,7 @@ export default function App() {
                   setShowPhilosophyModal(false);
                   localStorage.setItem('gonnng_philosophy_seen', 'true');
                 }}
-                className="w-full py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer tracking-wider uppercase"
+                className="w-full py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer tracking-wider uppercase"
               >
                 Acknowledge & Sync Blueprint
               </button>
@@ -2083,7 +2423,7 @@ export default function App() {
             
             <button
               onClick={() => setCongratulateProject(null)}
-              className="w-full py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow transition-all cursor-pointer"
+              className="w-full py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl shadow transition-all cursor-pointer"
             >
               Exquisite. Proceed
             </button>
@@ -2103,7 +2443,7 @@ export default function App() {
             <div className="flex justify-between items-start pb-4 border-b border-gray-200">
               <div className="space-y-1 min-w-0 pr-4">
                 <div className="flex items-center gap-2">
-                  <span className="bg-[#FF5C00]/20 text-[#FF5C00] text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border border-[#FF5C00]/30">
+                  <span className="bg-[#F59E0B]/20 text-[#F59E0B] text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border border-[#F59E0B]/30">
                     {selectedRecipeModal.category}
                   </span>
                   <span className="text-xs font-mono text-gray-500">
@@ -2132,7 +2472,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto my-4 space-y-4 pr-1">
-              <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#FF5C00] flex items-center gap-2">
+              <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#F59E0B] flex items-center gap-2">
                 <BookOpen className="w-4 h-4" /> Recipe Phases & Blueprint Tasks
               </h3>
               {selectedRecipeModal.phases && selectedRecipeModal.phases.map((ph, pIdx) => (
@@ -2140,13 +2480,13 @@ export default function App() {
                   key={ph.id || pIdx} 
                   className="p-3.5 rounded-2xl border space-y-2 bg-gray-50 border-gray-200"
                 >
-                  <h4 className="text-xs font-mono font-bold uppercase text-[#FF5C00]">
+                  <h4 className="text-xs font-mono font-bold uppercase text-[#F59E0B]">
                     Phase {pIdx + 1}: {ph.title}
                   </h4>
                   <div className="space-y-1.5 pl-2">
                     {ph.tasks.map((t, tIdx) => (
                       <div key={t.id || tIdx} className="flex items-center gap-2 text-xs opacity-80">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C00]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" />
                         <span>{t.title}</span>
                       </div>
                     ))}
@@ -2159,12 +2499,11 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setForkInitialData(selectedRecipeModal);
-                  setEditingRecipe(null);
-                  setShowCreateModal(true);
+                  const rec = selectedRecipeModal;
                   setSelectedRecipeModal(null);
+                  if (rec) handleInstantiateRecipe(rec);
                 }}
-                className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
+                className="px-4 py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" /> Instantiate as Project
               </button>
@@ -2181,6 +2520,7 @@ export default function App() {
           onToggleFollow={handleToggleFollowCreator}
           posts={posts}
           currentUserId={currentUser.id}
+          onOpenMessageDrawer={handleOpenMessageDrawer}
         />
       )}
 
@@ -2195,6 +2535,49 @@ export default function App() {
         onOpenAuth={() => {
           updateRoute('website', 'login');
         }}
+        onOpenMessageDrawer={handleOpenMessageDrawer}
+      />
+
+      {/* Message Drawer Modal */}
+      <MessageDrawer
+        isOpen={isMessageDrawerOpen}
+        onClose={() => {
+          setIsMessageDrawerOpen(false);
+          setMessageDrawerPartner(null);
+          setMessageDrawerInitialItem(undefined);
+        }}
+        partnerUser={messageDrawerPartner}
+        currentUser={currentUser}
+        allCreators={creators}
+        posts={posts}
+        onSelectPost={handleSelectPost}
+        onSelectUser={handleOpenCreatorProfile}
+        initialSharedItem={messageDrawerInitialItem}
+      />
+
+      {/* Selected Post Modal (For Updates View & Notification Clicks) */}
+      <PostDetailModal
+        isOpen={!!selectedPostModal}
+        post={selectedPostModal}
+        onClose={() => {
+          setSelectedPostModal(null);
+          setAutoOpenCommentsPostId(null);
+        }}
+        currentUser={currentUser}
+        allCreators={creators}
+        onUpdatePostGong={handleUpdatePostGong}
+        onAddComment={handleAddComment}
+        onToggleCommentHeart={handleToggleCommentHeart}
+        onOpenShareDrawer={(p) => {
+          setShareDrawerPost(p);
+          setIsShareDrawerOpen(true);
+        }}
+        onOpenCreatorProfile={handleOpenCreatorProfile}
+        onOpenRecipeModal={(rId) => {
+          const foundRec = recipes.find(r => r.id === rId || r.title === rId);
+          if (foundRec) setSelectedRecipeModal(foundRec);
+        }}
+        autoOpenComments={autoOpenCommentsPostId === selectedPostModal?.id}
       />
 
       {/* Global Cookie Infrastructure Components */}

@@ -170,6 +170,7 @@ export interface Database {
           user_id: string
           recipe_id: string | null
           title: string
+          category?: string | null
           created_at: string
           updated_at: string
         }
@@ -178,6 +179,7 @@ export interface Database {
           user_id: string
           recipe_id?: string | null
           title: string
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -186,6 +188,7 @@ export interface Database {
           user_id?: string
           recipe_id?: string | null
           title?: string
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -393,6 +396,38 @@ export interface Database {
           permission_type?: PermissionType
           status?: PermissionStatus
           updated_at?: string
+        }
+      }
+      direct_messages: {
+        Row: {
+          id: string
+          sender_id: string
+          recipient_id: string
+          text: string
+          is_read: boolean
+          post_id: string | null
+          post_thumbnail: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sender_id: string
+          recipient_id: string
+          text: string
+          is_read?: boolean
+          post_id?: string | null
+          post_thumbnail?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          sender_id?: string
+          recipient_id?: string
+          text?: string
+          is_read?: boolean
+          post_id?: string | null
+          post_thumbnail?: string | null
+          created_at?: string
         }
       }
     }

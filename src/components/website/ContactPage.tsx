@@ -21,7 +21,7 @@ export const ContactPage: React.FC = () => {
     <div className="max-w-4xl mx-auto px-4 lg:px-8 py-12 space-y-12 text-gray-900">
       {/* HEADER */}
       <div className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-2 bg-[#FF5C00]/10 border border-[#FF5C00]/30 px-3 py-1 rounded-full text-xs font-mono font-bold text-[#FF5C00]">
+        <div className="inline-flex items-center gap-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 px-3 py-1 rounded-full text-xs font-mono font-bold text-[#F59E0B]">
           <Mail className="w-3.5 h-3.5" />
           <span>Get in Touch</span>
         </div>
@@ -56,26 +56,26 @@ export const ContactPage: React.FC = () => {
             
             <div className="space-y-4 text-xs text-gray-700">
               <div className="flex items-start gap-3">
-                <Mail className="w-4 h-4 text-[#FF5C00] shrink-0 mt-0.5" />
+                <Mail className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
                 <div>
                   <span className="block font-bold text-gray-900">General Support</span>
-                  <a href="mailto:support@gonnng.com" className="text-[#FF5C00] hover:underline">support@gonnng.com</a>
+                  <a href="mailto:support@gonnng.com" className="text-[#F59E0B] hover:underline">support@gonnng.com</a>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <Building2 className="w-4 h-4 text-[#FF5C00] shrink-0 mt-0.5" />
+                <Building2 className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
                 <div>
                   <span className="block font-bold text-gray-900">Partnerships & Press</span>
-                  <a href="mailto:press@gonnng.com" className="text-[#FF5C00] hover:underline">press@gonnng.com</a>
+                  <a href="mailto:press@gonnng.com" className="text-[#F59E0B] hover:underline">press@gonnng.com</a>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <Sparkles className="w-4 h-4 text-[#FF5C00] shrink-0 mt-0.5" />
+                <Sparkles className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
                 <div>
                   <span className="block font-bold text-gray-900">Creator Feedback</span>
-                  <a href="mailto:feedback@gonnng.com" className="text-[#FF5C00] hover:underline">feedback@gonnng.com</a>
+                  <a href="mailto:feedback@gonnng.com" className="text-[#F59E0B] hover:underline">feedback@gonnng.com</a>
                 </div>
               </div>
             </div>
@@ -98,7 +98,7 @@ export const ContactPage: React.FC = () => {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Clara Monet"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 />
               </div>
 
@@ -110,7 +110,7 @@ export const ContactPage: React.FC = () => {
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="creator@example.com"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 />
               </div>
             </div>
@@ -121,7 +121,7 @@ export const ContactPage: React.FC = () => {
                 <select
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 >
                   <option value="Support">Support Inquiry</option>
                   <option value="Feedback">Feature Feedback</option>
@@ -138,7 +138,7 @@ export const ContactPage: React.FC = () => {
                   value={form.subject}
                   onChange={(e) => setForm({ ...form, subject: e.target.value })}
                   placeholder="Brief summary..."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 />
               </div>
             </div>
@@ -151,13 +151,13 @@ export const ContactPage: React.FC = () => {
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
                 placeholder="How can we help you..."
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
               ></textarea>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+              className="w-full bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#F59E0B]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Send Message</span>

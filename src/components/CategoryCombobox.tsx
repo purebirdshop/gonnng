@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CATEGORIES_DATA, searchCategories, CategoryMatch, CategoryItem } from '../data/categoriesData';
+import { CATEGORIES_DATA, searchCategories, CategoryMatch, CategoryItem, getCategoryByName } from '../data/categoriesData';
 import { Check, ChevronDown, Search, X, Tag } from 'lucide-react';
 
 interface CategoryComboboxProps {
@@ -16,7 +16,7 @@ interface CategoryComboboxProps {
 export default function CategoryCombobox({
   value,
   onChange,
-  placeholder = 'Search category by name or keyword...',
+  placeholder = 'Search category by name, keyword, or group...',
   label,
   required = false,
   className = '',
@@ -28,6 +28,8 @@ export default function CategoryCombobox({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedCategoryObj = getCategoryByName(value);
 
   // Sync internal search query when external value prop changes
   useEffect(() => {
@@ -105,9 +107,17 @@ export default function CategoryCombobox({
         </label>
       )}
 
-      <div className="relative">
-        <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
-          <Search className="w-4 h-4" />
+      <div className="relative flex items-center">
+        <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-2 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
+          {selectedCategoryObj ? (
+            <span
+              className="w-3 h-3 rounded-full shrink-0 shadow-sm transition-transform"
+              style={{ backgroundColor: selectedCategoryObj.colorHex }}
+              title={`${selectedCategoryObj.parentCategory} (${selectedCategoryObj.colorName})`}
+            />
+          ) : (
+            <Search className="w-4 h-4" />
+          )}
         </div>
 
         <input
@@ -127,8 +137,8 @@ export default function CategoryCombobox({
           autoComplete="off"
           className={`w-full pl-10 pr-16 py-2.5 rounded-xl text-sm font-sans focus:outline-none transition-all ${
             isDark
-              ? 'bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-[#FF5C00]'
-              : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#FF5C00]/50 focus:border-[#FF5C00]'
+              ? 'bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-[#F59E0B]'
+              : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]'
           }`}
         />
 
@@ -164,7 +174,7 @@ export default function CategoryCombobox({
       {/* Autocomplete Dropdown List */}
       {isOpen && (
         <div
-          className={`absolute left-0 right-0 top-full mt-1.5 z-50 max-h-60 overflow-y-auto rounded-2xl shadow-2xl py-1 text-sm border ${
+          className={`absolute left-0 right-0 top-full mt-1.5 z-50 max-h-64 overflow-y-auto rounded-2xl shadow-2xl py-1 text-sm border ${
             isDark ? 'bg-[#181818] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
           }`}
         >
@@ -190,20 +200,44 @@ export default function CategoryCombobox({
                       : isDark
                       ? 'text-white/80 hover:bg-white/5'
                       : 'text-gray-700 hover:bg-gray-50'
-                  } ${isSelected ? 'font-semibold text-[#FF5C00]' : ''}`}
+                  } ${isSelected ? 'font-semibold text-[#F59E0B]' : ''}`}
                 >
                   <div className="flex flex-col min-w-0 pr-2">
-                    <span className="text-sm truncate flex items-center gap-1.5">
-                      {match.category.name}
-                      {isSelected && <Check className="w-4 h-4 text-[#FF5C00] shrink-0" />}
+                    <span className="text-sm truncate flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                        style={{ backgroundColor: match.category.colorHex }}
+                      />
+                      <span>{match.category.name}</span>
+                      {isSelected && <Check className="w-4 h-4 text-[#F59E0B] shrink-0" />}
                     </span>
 
-                    {match.matchedBy === 'synonym' && match.matchedTerm && (
-                      <span className={`text-[11px] font-mono flex items-center gap-1 mt-0.5 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
-                        <Tag className="w-3 h-3 text-[#FF5C00] shrink-0" />
-                        Matches: <span className={`font-semibold ${isDark ? 'text-white/90' : 'text-gray-700'}`}>"{match.matchedTerm}"</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className="text-[10px] font-medium tracking-wide px-1.5 py-0.2 rounded border"
+                        style={{
+                          backgroundColor: `${match.category.colorHex}18`,
+                          color: match.category.colorHex,
+                          borderColor: `${match.category.colorHex}35`
+                        }}
+                      >
+                        {match.category.parentCategory}
                       </span>
-                    )}
+
+                      {match.matchedBy === 'synonym' && match.matchedTerm && (
+                        <span className={`text-[11px] font-mono flex items-center gap-1 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                          <Tag className="w-3 h-3 text-[#F59E0B] shrink-0" />
+                          Match: <span className={`font-semibold ${isDark ? 'text-white/90' : 'text-gray-700'}`}>"{match.matchedTerm}"</span>
+                        </span>
+                      )}
+
+                      {match.matchedBy === 'commonProject' && match.matchedTerm && (
+                        <span className={`text-[11px] font-mono flex items-center gap-1 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                          <Tag className="w-3 h-3 text-[#F59E0B] shrink-0" />
+                          Project: <span className={`font-semibold ${isDark ? 'text-white/90' : 'text-gray-700'}`}>"{match.matchedTerm}"</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <span
@@ -222,3 +256,4 @@ export default function CategoryCombobox({
     </div>
   );
 }
+

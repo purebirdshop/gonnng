@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Gonnng Mobile",
+    "slug": "gonnng-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FF5C00"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.gonnng.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FF5C00"
+      },
+      "package": "app.gonnng.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

@@ -262,3 +262,19 @@ where allowed_environments is null or cardinality(allowed_environments) = 0;
 -- Add goal column to users table if it does not exist
 alter table users add column if not exists goal text;
 
+-- DIRECT MESSAGES (1-on-1 Messages & Shared Post previews)
+create table direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id text not null,       -- sender user/creator ID
+  recipient_id text not null,    -- recipient user/creator ID
+  text text not null,
+  is_read boolean not null default false,
+  post_id text,                  -- optional reference to shared post
+  post_thumbnail text,           -- optional thumbnail image URL
+  created_at timestamptz not null default now()
+);
+
+create index idx_direct_messages_sender on direct_messages(sender_id);
+create index idx_direct_messages_recipient on direct_messages(recipient_id);
+create index idx_direct_messages_created_at on direct_messages(created_at);
+

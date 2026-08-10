@@ -21,7 +21,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
       <div className="space-y-8 text-xs sm:text-sm leading-relaxed font-sans">
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Eye className="w-4 h-4 text-[#FF5C00]" />
+            <Eye className="w-4 h-4 text-[#F59E0B]" />
             <span>1. Information We Collect</span>
           </h2>
           <p>
@@ -37,7 +37,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
 
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Lock className="w-4 h-4 text-[#FF5C00]" />
+            <Lock className="w-4 h-4 text-[#F59E0B]" />
             <span>2. How We Store and Protect Your Data</span>
           </h2>
           <p>
@@ -52,7 +52,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
 
         <section className="space-y-3">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Cookie className="w-4 h-4 text-[#FF5C00]" />
+            <Cookie className="w-4 h-4 text-[#F59E0B]" />
             <span>3. Third-Party Services & Cookie Infrastructure</span>
           </h2>
           <p>
@@ -61,7 +61,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
             <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl space-y-1">
               <h4 className="font-bold text-gray-900 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#FF5C00]"></span>
+                <span className="w-2 h-2 rounded-full bg-[#F59E0B]"></span>
                 Promotional Website Cookies
               </h4>
               <p className="text-gray-600">
@@ -74,7 +74,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
                 Web Application Cookies
               </h4>
               <p className="text-gray-600">
-                Used for secure session authentication (<code className="text-[#FF5C00]">gonnng_session</code>), anti-CSRF protection, and API route verification. Uses HttpOnly and Secure flags.
+                Used for secure session authentication (<code className="text-[#F59E0B]">gonnng_session</code>), anti-CSRF protection, and API route verification. Uses HttpOnly and Secure flags.
               </p>
             </div>
           </div>
@@ -87,7 +87,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
                 onClick={onOpenCookiePreferences}
                 className="px-4 py-2.5 rounded-xl bg-gray-900 text-white font-mono text-xs font-bold hover:bg-gray-800 transition-colors flex items-center gap-2 cursor-pointer shadow-md"
               >
-                <Sliders className="w-4 h-4 text-[#FF5C00]" />
+                <Sliders className="w-4 h-4 text-[#F59E0B]" />
                 <span>Manage Cookie Preferences & Governance Directory</span>
               </button>
             </div>
@@ -96,7 +96,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
 
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Trash2 className="w-4 h-4 text-[#FF5C00]" />
+            <Trash2 className="w-4 h-4 text-[#F59E0B]" />
             <span>4. Your Rights & Data Deletion Process</span>
           </h2>
           <p>
@@ -110,7 +110,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onOpenCookiePreference
 
         <section className="bg-white border border-gray-200 shadow-sm rounded-2xl p-6 space-y-2">
           <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Mail className="w-4 h-4 text-[#FF5C00]" />
+            <Mail className="w-4 h-4 text-[#F59E0B]" />
             <span>Contact Privacy Team</span>
           </h2>
           <p className="text-xs text-gray-600">

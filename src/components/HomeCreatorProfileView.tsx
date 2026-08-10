@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Creator, FeedPost } from '../types';
-import { ArrowLeft, UserPlus, UserCheck, Goal, Link, User, ArrowUpRight, X, Search, CircleDotDashed } from 'lucide-react';
+import { ArrowLeft, UserPlus, UserCheck, Goal, Link, User, ArrowUpRight, X, Search, CircleDotDashed, MessageSquare, MessageSquareShare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Feed from './Feed';
 import { getFollowersOfUser, getFollowingOfUser, isFollowingUser, isFollowedByUser, isUserInCircle } from '../utils/followUtils';
@@ -19,6 +19,7 @@ interface HomeCreatorProfileViewProps {
   onToggleCommentHeart?: (postId: string, commentId: string) => void;
   onOpenShareDrawer?: (post: FeedPost) => void;
   onOpenCreatorProfile?: (creatorId: string) => void;
+  onOpenMessageDrawer?: (creator: Creator) => void;
 }
 
 export default function HomeCreatorProfileView({
@@ -33,20 +34,36 @@ export default function HomeCreatorProfileView({
   onAddComment,
   onToggleCommentHeart,
   onOpenShareDrawer,
-  onOpenCreatorProfile
+  onOpenCreatorProfile,
+  onOpenMessageDrawer
 }: HomeCreatorProfileViewProps) {
   const [showUserListModal, setShowUserListModal] = useState<boolean>(false);
   const [modalTab, setModalTab] = useState<'followers' | 'following'>('followers');
   const [userSearchQuery, setUserSearchQuery] = useState<string>('');
+  const [modalSnapshotIds, setModalSnapshotIds] = useState<string[] | null>(null);
 
   // Latest creator data from state if available
   const activeCreator = allCreators.find(c => c.id === creator.id) || creator;
   const isSelf = activeCreator.id === currentUserId;
 
+  // Snapshot list when modal opens or tab changes so unfollowed users stay in list for safety/re-following
+  React.useEffect(() => {
+    if (showUserListModal) {
+      const list = modalTab === 'following'
+        ? getFollowingOfUser(activeCreator, allCreators)
+        : getFollowersOfUser(activeCreator, allCreators);
+      setModalSnapshotIds(list.map(c => c.id));
+    } else {
+      setModalSnapshotIds(null);
+    }
+  }, [showUserListModal, modalTab]);
+
   // Filter posts to only show this creator's posts
   const userPosts = posts.filter(p => {
+    if (!p) return false;
+    const pUserId = p.userId || (p as any).user_id;
     const belongsToCreator = 
-      p.userId === activeCreator.id || 
+      pUserId === activeCreator.id || 
       p.userName === activeCreator.name || 
       (activeCreator.username && p.userName === activeCreator.username);
     if (!belongsToCreator) return false;
@@ -59,7 +76,11 @@ export default function HomeCreatorProfileView({
   const followersList = getFollowersOfUser(activeCreator, allCreators);
   const followingList = getFollowingOfUser(activeCreator, allCreators);
 
-  const currentTabList = modalTab === 'following' ? followingList : followersList;
+  const liveTabList = modalTab === 'following' ? followingList : followersList;
+
+  const currentTabList = (showUserListModal && modalSnapshotIds !== null)
+    ? modalSnapshotIds.map(id => allCreators.find(c => c.id === id)).filter((c): c is Creator => Boolean(c))
+    : liveTabList;
 
   const displayedModalCreators = currentTabList.filter(c => {
     if (!userSearchQuery.trim()) return true;
@@ -78,19 +99,16 @@ export default function HomeCreatorProfileView({
       id="home-profile-scroll-container"
     >
       {/* Top Bar Navigation to Return to Main Home Feed */}
-      <div className="flex items-center justify-between pb-3 border-b border-white/10 bg-black/60 backdrop-blur-md sticky top-0 z-30 p-2 sm:p-0">
+      <div className="flex items-center justify-between pb-3 mb-0 border-b border-white/10 sticky top-0 z-30 p-2 sm:p-0">
         <button
           type="button"
           onClick={onBackToHome}
-          className="px-3.5 py-1.5 bg-[#FF5C00]/15 hover:bg-[#FF5C00]/25 text-[#FF5C00] border border-[#FF5C00]/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+          title="Back"
+          aria-label="Back"
+          className="p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer border bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300 shadow-sm"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Home Feed
+          <ArrowLeft className="w-5 h-5 text-[#F59E0B]" />
         </button>
-
-        <div className="flex items-center gap-1.5 text-xs font-mono text-white/50">
-          <Link className="w-3.5 h-3.5 text-[#FF5C00]" />
-          <span>gonnng.com/u/{activeCreator.name.toLowerCase().replace(/\s+/g, '')}</span>
-        </div>
       </div>
 
       {/* Creator Profile First Tile */}
@@ -101,7 +119,7 @@ export default function HomeCreatorProfileView({
         <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5 min-w-0 w-full">
           <div className={`w-28 h-28 sm:w-20 sm:h-20 rounded-full flex items-center justify-center font-display font-bold shadow-lg border-4 relative overflow-hidden shrink-0 mx-auto sm:mx-0 ${
             isHeaderMutual 
-              ? 'border-[#FF5C00] shadow-[0_0_20px_rgba(255,92,0,0.4)]' 
+              ? 'border-[#F59E0B] shadow-[0_0_20px_rgba(255,92,0,0.4)]' 
               : amIFollowingHeader 
               ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]' 
               : 'border-white/20'
@@ -137,13 +155,24 @@ export default function HomeCreatorProfileView({
                     });
                   }
                 }}
-                className="p-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow cursor-pointer shrink-0"
+                className="p-1.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow cursor-pointer shrink-0"
                 title="Share Profile"
               >
-                <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                <MessageSquareShare className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
+              {!isSelf && onOpenMessageDrawer && (
+                <button
+                  type="button"
+                  id="creator-profile-message-btn"
+                  onClick={() => onOpenMessageDrawer(activeCreator)}
+                  className="p-1.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow cursor-pointer shrink-0"
+                  title={`Message ${activeCreator.name}`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                </button>
+              )}
             </div>
-            <p className="text-xs font-mono text-[#FF5C00] truncate">
+            <p className="text-xs font-mono text-[#F59E0B] truncate">
               @{activeCreator.name.toLowerCase().replace(/\s+/g, '')}
             </p>
           </div>
@@ -155,7 +184,7 @@ export default function HomeCreatorProfileView({
             "{activeCreator.bio && activeCreator.bio.trim() !== '' ? activeCreator.bio : ""}"
           </p>
           <div className="text-[11px] font-mono text-white/60 pt-2 border-t border-white/10 flex items-center gap-1.5">
-            <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
+            <Goal className="w-3.5 h-3.5 text-[#F59E0B]" />
             <span>Current Goal: <strong className="text-white font-sans">{activeCreator.goals && activeCreator.goals.trim() !== '' ? activeCreator.goals : ""}</strong></span>
           </div>
         </div>
@@ -171,7 +200,7 @@ export default function HomeCreatorProfileView({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className="hover:text-[#FF5C00] transition-colors cursor-pointer text-left flex items-center gap-1"
+              className="hover:text-[#F59E0B] transition-colors cursor-pointer text-left flex items-center gap-1"
             >
               <strong className="text-white font-sans text-sm">{followersList.length || activeCreator.followersCount || 0}</strong> Followers
             </button>
@@ -183,7 +212,7 @@ export default function HomeCreatorProfileView({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className="hover:text-[#FF5C00] transition-colors cursor-pointer text-left flex items-center gap-1"
+              className="hover:text-[#F59E0B] transition-colors cursor-pointer text-left flex items-center gap-1"
             >
               <strong className="text-white font-sans text-sm">{followingList.length || activeCreator.followingCount || 0}</strong> Following
             </button>
@@ -195,17 +224,17 @@ export default function HomeCreatorProfileView({
               onClick={() => onToggleFollow(activeCreator.id)}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow ${
                 isHeaderMutual
-                  ? 'bg-[#FF5C00]/20 hover:bg-red-500/20 text-[#FF5C00] hover:text-red-400 border border-[#FF5C00]/40 hover:border-red-500/30'
+                  ? 'bg-[#F59E0B]/20 hover:bg-red-500/20 text-[#F59E0B] hover:text-red-400 border border-[#F59E0B]/40 hover:border-red-500/30'
                   : amIFollowingHeader
                   ? 'bg-white/10 text-white border border-white/20 hover:bg-red-500/20 hover:text-red-400'
                   : doesHeaderUserFollowMe
-                  ? 'bg-[#FF5C00] text-black font-black hover:bg-[#FF751A]'
-                  : 'bg-[#FF5C00] text-black font-black hover:bg-[#FF751A]'
+                  ? 'bg-[#F59E0B] text-black font-black hover:bg-[#FF751A]'
+                  : 'bg-[#F59E0B] text-black font-black hover:bg-[#FF751A]'
               }`}
             >
               {isHeaderMutual ? (
                 <>
-                  <CircleDotDashed className="w-4 h-4 text-[#FF5C00]" /> In Circle
+                  <CircleDotDashed className="w-4 h-4 text-[#F59E0B]" /> In Circle
                 </>
               ) : amIFollowingHeader ? (
                 <>
@@ -227,25 +256,18 @@ export default function HomeCreatorProfileView({
 
       {/* User's Individual Posts Feed */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-white/10 px-2 sm:px-0">
-          <h3 className="text-sm font-display font-bold text-white flex items-center gap-2">
-            <span>Posts by {activeCreator.name}</span>
-            <span className="text-xs font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] px-2.5 py-0.5 rounded-full">
-              {userPosts.length} POSTS
-            </span>
-          </h3>
-        </div>
-
         <Feed 
           posts={userPosts}
-          currentUserId={activeCreator.id}
-          currentUser={activeCreator}
+          currentUserId={currentUserId}
+          currentUser={currentUser}
           creators={allCreators}
-          filter="private"
+          filter="creator"
+          isEmbedded={true}
           onUpdatePostGong={onUpdatePostGong}
           onAddComment={onAddComment}
           onToggleCommentHeart={onToggleCommentHeart}
           onOpenShareDrawer={onOpenShareDrawer}
+          onOpenCreatorProfile={onOpenCreatorProfile}
         />
       </div>
 
@@ -271,7 +293,7 @@ export default function HomeCreatorProfileView({
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'followers'
-                        ? 'bg-[#FF5C00] text-black shadow'
+                        ? 'bg-[#F59E0B] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -285,7 +307,7 @@ export default function HomeCreatorProfileView({
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'following'
-                        ? 'bg-[#FF5C00] text-black shadow'
+                        ? 'bg-[#F59E0B] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -311,7 +333,7 @@ export default function HomeCreatorProfileView({
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
                   placeholder={`Search ${modalTab}...`}
-                  className="w-full pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#FF5C00]"
+                  className="w-full pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#F59E0B]"
                 />
                 {userSearchQuery && (
                   <button
@@ -351,13 +373,13 @@ export default function HomeCreatorProfileView({
                               src={getPublicMediaUrl('Gonnng', item.avatarUrl.trim())}
                               alt={item.name}
                               className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
-                                amIFollowingItem ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
+                                amIFollowingItem ? 'ring-2 ring-[#F59E0B] ring-offset-1 ring-offset-[#141414]' : ''
                               }`}
                               referrerPolicy="no-referrer"
                             />
                           ) : (
                             <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/10 shrink-0 ${
-                              amIFollowingItem ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
+                              amIFollowingItem ? 'ring-2 ring-[#F59E0B] ring-offset-1 ring-offset-[#141414]' : ''
                             }`}>
                               <User className="w-5 h-5 text-white/70" />
                             </div>
@@ -371,7 +393,7 @@ export default function HomeCreatorProfileView({
                                 </span>
                               )}
                               {!isMe && isItemMutual && (
-                                <span className="text-[9px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30 px-1.5 py-0.2 rounded-full">
+                                <span className="text-[9px] font-mono font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30 px-1.5 py-0.2 rounded-full">
                                   In Circle
                                 </span>
                               )}
@@ -393,17 +415,17 @@ export default function HomeCreatorProfileView({
                             onClick={() => onToggleFollow(item.id)}
                             className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
                               isItemMutual
-                                ? 'bg-[#FF5C00]/20 hover:bg-red-500/20 text-[#FF5C00] hover:text-red-400 border border-[#FF5C00]/40 hover:border-red-500/30'
+                                ? 'bg-[#F59E0B]/20 hover:bg-red-500/20 text-[#F59E0B] hover:text-red-400 border border-[#F59E0B]/40 hover:border-red-500/30'
                                 : amIFollowingItem
                                 ? 'bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 border border-white/10'
                                 : doesItemFollowMe
-                                ? 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
-                                : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                                ? 'bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                                : 'bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black shadow-sm'
                             }`}
                           >
                             {isItemMutual ? (
                               <>
-                                <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" /> Circle
+                                <CircleDotDashed className="w-3 h-3 text-[#F59E0B]" /> Circle
                               </>
                             ) : amIFollowingItem ? (
                               <>
