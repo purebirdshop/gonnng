@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { authenticateSession } from '../lib/sessions';
-import { emailService } from '../emailService';
+import { authenticateSession } from '../lib/sessions.js';
+import { emailService } from '../emailService.js';
 
 const router = Router();
 
