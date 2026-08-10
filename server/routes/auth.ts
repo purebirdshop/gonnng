@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type CookieOptions } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { supabase, formatMediaUrl } from '../lib/supabase';
+import { supabase, formatMediaUrl } from '../lib/supabase.js';
 import {
   type UserSession,
   type ServerSession,
@@ -10,8 +10,8 @@ import {
   getOrRestoreSession,
   userSessions,
   DEFAULT_SESSION_DURATION_MS
-} from '../lib/sessions';
-import { emailService } from '../emailService';
+} from '../lib/sessions.js';
+import { emailService } from '../emailService.js';
 
 const router = Router();
 

@@ -1,11 +1,11 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
-import { setupSwagger } from './swagger';
-import { ensureAuthColumnsExist, SESSION_SECRET } from './lib/sessions';
-import authRoutes from './routes/auth';
-import messageRoutes from './routes/messages';
-import mediaRoutes from './routes/media';
-import miscRoutes from './routes/misc';
+import { setupSwagger } from './swagger.js';
+import { ensureAuthColumnsExist, SESSION_SECRET } from './lib/sessions.js';
+import authRoutes from './routes/auth.js';
+import messageRoutes from './routes/messages.js';
+import mediaRoutes from './routes/media.js';
+import miscRoutes from './routes/misc.js';
 
 /**
  * Builds and configures the Express app shared by both the local dev server

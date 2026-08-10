@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
-import { supabase, normalizeDataUrl, normalizeStorageUrl } from '../lib/supabase';
+import { supabase, normalizeDataUrl, normalizeStorageUrl } from '../lib/supabase.js';
 
 const router = Router();
 const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } });

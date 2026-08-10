@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { supabase, formatMediaUrl } from './supabase';
+import { supabase, formatMediaUrl } from './supabase.js';
 
 export interface UserSession {
   id: string;

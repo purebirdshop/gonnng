@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import type { Express } from 'express';
-import { createApp } from '../server/app';
+import { createApp } from '../server/app.js';
 
 // Vercel recycles containers between invocations but keeps warm ones alive
 // for a short window, so we cache the built app across invocations on the
