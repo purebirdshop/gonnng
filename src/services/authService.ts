@@ -1,6 +1,4 @@
 /// <reference types="vite/client" />
-import { Creator } from '../types';
-import { uploadService } from './uploadService';
 
 export interface UserSession {
   id: string; // Internal System ID
@@ -10,65 +8,28 @@ export interface UserSession {
   name: string;
   avatarUrl?: string;
   isOnboarded?: boolean;
+  allowedEnvironments?: string[];
 }
 
 const AUTH_KEY = 'gonnng_auth_session';
 
 export const isAuthFeatureEnabled = (): boolean => {
-  // Defaults to true if VITE_ENABLE_AUTH is not explicitly 'false'
   return import.meta.env.VITE_ENABLE_AUTH !== 'false';
 };
 
-export const DEMO_ACCOUNTS: Record<string, UserSession> = {
-  'test@gonnng.com': {
-    id: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-    publicId: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-    username: 'gyro_gearloose',
-    email: 'test@gonnng.com',
-    name: 'Gyro Gearloose',
-    isOnboarded: true
-  },
-  'qa@gonnng.com': {
-    id: '546bf5b4-28cb-4501-a1a0-c2f57c98f1a0',
-    publicId: '546bf5b4-28cb-4501-a1a0-c2f57c98f1a0',
-    username: 'darkwing_duck',
-    email: 'qa@gonnng.com',
-    name: 'Darkwing Duck',
-    isOnboarded: true
-  },
-  'creator@gonnng.com': {
-    id: '0dfeeb75-c15d-4825-9d94-0b6d66c7bb01',
-    publicId: '0dfeeb75-c15d-4825-9d94-0b6d66c7bb01',
-    username: 'scrooge_mcduck',
-    email: 'creator@gonnng.com',
-    name: 'Scrooge Mcduck',
-    isOnboarded: true
-  },
-  'dev@gonnng.com': {
-    id: '5a44d547-08db-4702-92b3-2d0f8c13a301',
-    publicId: '5a44d547-08db-4702-92b3-2d0f8c13a301',
-    username: 'mario',
-    email: 'dev@gonnng.com',
-    name: 'Mario',
-    isOnboarded: true
-  },
-  'product@gonnng.com': {
-    id: 'f0f68338-8933-48d8-8f1d-9eb3aaf4f902',
-    publicId: 'f0f68338-8933-48d8-8f1d-9eb3aaf4f902',
-    username: 'luigi',
-    email: 'product@gonnng.com',
-    name: 'Luigi',
-    isOnboarded: true
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text || !text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.error('Received non-JSON response from server:', text.slice(0, 200));
+    throw new Error(`Server returned non-JSON response (${res.status}).`);
   }
-};
-
-export const DEMO_USER: UserSession = DEMO_ACCOUNTS['test@gonnng.com'];
+}
 
 export const authService = {
   getCurrentSession(): UserSession | null {
-    if (!isAuthFeatureEnabled()) {
-      return DEMO_USER; // Bypassed if auth feature flag is disabled
-    }
     try {
       const stored = localStorage.getItem(AUTH_KEY);
       return stored ? JSON.parse(stored) : null;
@@ -77,145 +38,178 @@ export const authService = {
     }
   },
 
-  // Verify server session cookie on app initialization (FR-101, FR-104)
+  // Verify server session cookie on app initialization
   async checkServerSession(): Promise<UserSession | null> {
     try {
       const res = await fetch('/api/auth/me', {
         headers: { 'Accept': 'application/json' }
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         if (data.authenticated && data.user) {
           localStorage.setItem(AUTH_KEY, JSON.stringify(data.user));
           return data.user;
+        } else if (data && data.authenticated === false) {
+          localStorage.removeItem(AUTH_KEY);
+          return null;
         }
       }
     } catch (err) {
-      console.warn('Server session check fallback:', err);
+      console.warn('Server session check error:', err);
     }
     return this.getCurrentSession();
   },
 
-  // Login user and establish HttpOnly secure cookie
-  login(email: string, pass: string, rememberMe = true): { success: boolean; user?: UserSession; error?: string } {
-    const cleanEmail = email.trim().toLowerCase();
-    let targetSession: UserSession | null = null;
-    let authError: string | null = null;
-    
-    // Check against predefined test accounts
-    if (DEMO_ACCOUNTS[cleanEmail]) {
-      if (pass === 'test1234') {
-        targetSession = DEMO_ACCOUNTS[cleanEmail];
-      } else {
-        authError = 'Incorrect password. Try "test1234" for the test account.';
-      }
-    } else {
-      // Check registered users in local storage
-      try {
-        const registeredStr = localStorage.getItem('gonnng_registered_users');
-        if (registeredStr) {
-          const registered = JSON.parse(registeredStr);
-          const match = registered.find((u: any) => u.email.toLowerCase() === cleanEmail);
-          if (match) {
-            if (match.password === pass) {
-              targetSession = {
-                id: match.id,
-                publicId: match.publicId,
-                username: match.username || match.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
-                email: match.email,
-                name: match.name,
-                avatarUrl: match.avatarUrl,
-                isOnboarded: match.isOnboarded ?? false
-              };
-            } else {
-              authError = 'Incorrect password. Try "test1234" for the test account.';
-            }
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    if (!targetSession && !authError) {
-      authError = 'Account not found. Valid test logins: qa@gonnng.com, creator@gonnng.com, dev@gonnng.com, product@gonnng.com, test@gonnng.com (password: test1234).';
-    }
-
-    if (targetSession) {
-      localStorage.setItem(AUTH_KEY, JSON.stringify(targetSession));
-
-      // Asynchronously trigger server login to issue HttpOnly gonnng_session cookie
-      fetch('/api/auth/login', {
+  // Login user with email and password via backend API
+  async login(email: string, pass: string, rememberMe = true): Promise<{ success: boolean; user?: UserSession; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetSession.email,
-          rememberMe,
-          customUser: targetSession
-        })
-      }).then(r => r.json()).then(data => {
-        console.log('✅ [Auth Cookie Established]: gonnng_session set for', data.user?.email);
-      }).catch(err => {
-        console.warn('Backend cookie setup warning:', err);
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email, password: pass, rememberMe })
       });
 
-      return { success: true, user: targetSession };
-    }
-
-    return { success: false, error: authError || 'Authentication failed' };
-  },
-
-  async register(name: string, email: string, pass: string, rememberMe = true): Promise<{ success: boolean; user?: UserSession; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanUsername = name.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    
-    try {
-      const registeredStr = localStorage.getItem('gonnng_registered_users');
-      const registered = registeredStr ? JSON.parse(registeredStr) : [];
-      
-      if (registered.some((u: any) => u.email.toLowerCase() === cleanEmail) || DEMO_ACCOUNTS[cleanEmail]) {
-        return { success: false, error: 'An account with this email already exists.' };
+      let data: any = {};
+      try {
+        data = await parseJsonResponse(res);
+      } catch {
+        if (res.status === 403) {
+          return { success: false, error: 'Access denied: You are not authorized to access this environment.' };
+        }
+        return { success: false, error: 'Invalid email address or password.' };
       }
 
-      const newUser = {
-        id: `usr_int_${Date.now()}`,
-        publicId: Math.random().toString(36).substring(2, 11).toUpperCase(),
-        username: cleanUsername,
-        name,
-        email: cleanEmail,
-        password: pass,
-        avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400`,
-        isOnboarded: false
-      };
+      if (res.ok && data.success && data.user) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(data.user));
+        return { success: true, user: data.user };
+      } else {
+        const defaultMsg = res.status === 403
+          ? 'Access denied: You are not authorized to access this environment.'
+          : 'Invalid email address or password.';
+        return { success: false, error: data.error || defaultMsg };
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      return { success: false, error: 'Invalid email address or password.' };
+    }
+  },
 
-      registered.push(newUser);
-      localStorage.setItem('gonnng_registered_users', JSON.stringify(registered));
-
-      const session: UserSession = {
-        id: newUser.id,
-        publicId: newUser.publicId,
-        username: newUser.username,
-        email: newUser.email,
-        name: newUser.name,
-        avatarUrl: newUser.avatarUrl,
-        isOnboarded: false
-      };
-      localStorage.setItem(AUTH_KEY, JSON.stringify(session));
-
-      // Asynchronously trigger server login to set secure HttpOnly authentication cookie
-      fetch('/api/auth/login', {
+  // Check username availability
+  async checkUsernameAvailability(username: string): Promise<boolean> {
+    if (!username || !username.trim()) return false;
+    try {
+      const res = await fetch('/api/auth/check-username', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: session.email,
-          rememberMe,
-          customUser: session
-        })
-      }).catch(() => {});
-
-      return { success: true, user: session };
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ username: username.trim() })
+      });
+      if (res.ok) {
+        const data = await parseJsonResponse(res);
+        return Boolean(data.available);
+      }
     } catch (e) {
-      return { success: false, error: 'Failed to complete registration.' };
+      console.warn('Check username network warning:', e);
+    }
+    return true;
+  },
+
+  // Check email availability
+  async checkEmailAvailability(email: string): Promise<boolean> {
+    if (!email || !email.trim()) return false;
+    try {
+      const res = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      if (res.ok) {
+        const data = await parseJsonResponse(res);
+        return Boolean(data.available);
+      }
+    } catch (e) {
+      console.warn('Check email network warning:', e);
+    }
+    return true;
+  },
+
+  // Register user via backend database API
+  async register(
+    name: string,
+    email: string,
+    pass: string,
+    username?: string,
+    about?: string,
+    interests?: string[],
+    rememberMe = true
+  ): Promise<{ success: boolean; user?: UserSession; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ name, email, password: pass, username, about, interests, rememberMe })
+      });
+
+      let data: any = {};
+      try {
+        data = await parseJsonResponse(res);
+      } catch {
+        if (res.status === 403) {
+          return { success: false, error: 'Access denied: You are not authorized to access this environment.' };
+        }
+        return { success: false, error: 'Registration failed. Please check your details.' };
+      }
+
+      if (res.ok && data.success && data.user) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(data.user));
+        return { success: true, user: data.user };
+      } else {
+        return { success: false, error: data.error || 'Registration failed.' };
+      }
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      return { success: false, error: 'Registration failed. Please check your connection.' };
+    }
+  },
+
+  // Request password reset email via Resend
+  async forgotPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (res.ok && data.success) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, error: data.error || 'Failed to request password reset.' };
+      }
+    } catch (err: any) {
+      console.error('Forgot password error:', err);
+      return { success: false, error: 'Network error processing password reset request.' };
+    }
+  },
+
+  // Reset password with token
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ token, newPassword })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (res.ok && data.success) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, error: data.error || 'Failed to reset password.' };
+      }
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      return { success: false, error: 'Network error resetting password.' };
     }
   },
 
@@ -227,10 +221,12 @@ export const authService = {
     }
   },
 
-  logout(): void {
+  async logout(): Promise<void> {
     localStorage.removeItem(AUTH_KEY);
-    fetch('/api/auth/logout', { method: 'POST' })
-      .then(() => console.log('✅ [Auth Cookie Cleared]: Logged out from backend session'))
-      .catch(() => {});
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.warn('Logout network notice:', err);
+    }
   }
 };

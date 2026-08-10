@@ -123,9 +123,11 @@ nav {
   color: #111827 !important;
 }
 
-/* Keep text black inside orange accent buttons */
-.bg-\[\#FF5C00\] .text-white,
-button.bg-\[\#FF5C00\] {
+/* Keep text black inside accent buttons */
+.bg-\[\#F59E0B\] .text-white,
+button.bg-\[\#F59E0B\],
+.bg-\[\#F59E0B\] .text-white,
+button.bg-\[\#F59E0B\] {
   color: #000000 !important;
 }
 
@@ -199,33 +201,7 @@ textarea::placeholder {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1) !important;
 }
 
-[id^="gong-continue-btn-"]:not(.bg-emerald-500) {
-  background-color: rgba(16, 185, 129, 0.1) !important;
-  color: #059669 !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
-}
 
-[id^="gong-refine-btn-"]:not(.bg-\[\#FF5C00\]) {
-  background-color: rgba(255, 92, 0, 0.1) !important;
-  color: #E65200 !important;
-  border-color: rgba(255, 92, 0, 0.3) !important;
-}
-
-[id^="gong-reconsider-btn-"]:not(.bg-red-500) {
-  background-color: rgba(239, 68, 68, 0.1) !important;
-  color: #DC2626 !important;
-  border-color: rgba(239, 68, 68, 0.3) !important;
-}
-
-[id^="comments-trigger-btn-"] {
-  background-color: #F3F4F6 !important;
-  color: #111827 !important;
-  border-color: #D1D5DB !important;
-}
-
-[id^="comments-trigger-btn-"] svg {
-  color: #111827 !important;
-}
 
 /* -------------------------------------------------------------
    2. Creation Station Modal Form (`CreateHub.tsx`)
@@ -268,16 +244,19 @@ textarea::placeholder {
   border-color: #E5E7EB !important;
 }
 
-#creation-station-modal #mode-focus-btn:not(.bg-\[\#FF5C00\]),
-#creation-station-modal #mode-project-btn:not(.bg-\[\#FF5C00\]),
-#creation-station-modal #mode-update-btn:not(.bg-\[\#FF5C00\]) {
+#creation-station-modal #mode-focus-btn:not(.bg-\[\#F59E0B\]):not(.bg-\[\#F59E0B\]),
+#creation-station-modal #mode-project-btn:not(.bg-\[\#F59E0B\]):not(.bg-\[\#F59E0B\]),
+#creation-station-modal #mode-update-btn:not(.bg-\[\#F59E0B\]):not(.bg-\[\#F59E0B\]) {
   color: #4B5563 !important;
 }
 
-#creation-station-modal #mode-focus-btn.bg-\[\#FF5C00\],
-#creation-station-modal #mode-project-btn.bg-\[\#FF5C00\],
-#creation-station-modal #mode-update-btn.bg-\[\#FF5C00\] {
-  background-color: #FF5C00 !important;
+#creation-station-modal #mode-focus-btn.bg-\[\#F59E0B\],
+#creation-station-modal #mode-project-btn.bg-\[\#F59E0B\],
+#creation-station-modal #mode-update-btn.bg-\[\#F59E0B\],
+#creation-station-modal #mode-focus-btn.bg-\[\#F59E0B\],
+#creation-station-modal #mode-project-btn.bg-\[\#F59E0B\],
+#creation-station-modal #mode-update-btn.bg-\[\#F59E0B\] {
+  background-color: #F59E0B !important;
   color: #000000 !important;
 }
 

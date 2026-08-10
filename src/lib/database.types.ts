@@ -21,28 +21,49 @@ export interface Database {
           id: string
           public_id: string
           username: string
+          first_name: string | null
+          last_name: string | null
           email: string
+          password_hash: string | null
+          avatar_storage_path: string | null
+          is_onboarded: boolean | null
+          email_verified: boolean | null
           about: string | null
           profile_visibility: ProfileVisibility
           created_at: string
+          updated_at?: string | null
         }
         Insert: {
           id?: string
           public_id: string
           username: string
+          first_name?: string | null
+          last_name?: string | null
           email: string
+          password_hash?: string | null
+          avatar_storage_path?: string | null
+          is_onboarded?: boolean | null
+          email_verified?: boolean | null
           about?: string | null
           profile_visibility?: ProfileVisibility
           created_at?: string
+          updated_at?: string | null
         }
         Update: {
           id?: string
           public_id?: string
           username?: string
+          first_name?: string | null
+          last_name?: string | null
           email?: string
+          password_hash?: string | null
+          avatar_storage_path?: string | null
+          is_onboarded?: boolean | null
+          email_verified?: boolean | null
           about?: string | null
           profile_visibility?: ProfileVisibility
           created_at?: string
+          updated_at?: string | null
         }
       }
       recipes: {
@@ -149,6 +170,7 @@ export interface Database {
           user_id: string
           recipe_id: string | null
           title: string
+          category?: string | null
           created_at: string
           updated_at: string
         }
@@ -157,6 +179,7 @@ export interface Database {
           user_id: string
           recipe_id?: string | null
           title: string
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -165,6 +188,7 @@ export interface Database {
           user_id?: string
           recipe_id?: string | null
           title?: string
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -372,6 +396,38 @@ export interface Database {
           permission_type?: PermissionType
           status?: PermissionStatus
           updated_at?: string
+        }
+      }
+      direct_messages: {
+        Row: {
+          id: string
+          sender_id: string
+          recipient_id: string
+          text: string
+          is_read: boolean
+          post_id: string | null
+          post_thumbnail: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sender_id: string
+          recipient_id: string
+          text: string
+          is_read?: boolean
+          post_id?: string | null
+          post_thumbnail?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          sender_id?: string
+          recipient_id?: string
+          text?: string
+          is_read?: boolean
+          post_id?: string | null
+          post_thumbnail?: string | null
+          created_at?: string
         }
       }
     }

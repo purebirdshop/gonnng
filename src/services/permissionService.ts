@@ -204,9 +204,9 @@ export const permissionService = {
 
   /**
    * Flow 1: Login / Cold Start
-   * On login and cold app open, checks each of the 3 permissions:
-   * - If no row or 'not_requested': call requestPermission(type) and upsert
-   * - If row exists ('granted' or 'denied'): call checkPermissionStatus(type) silently to sync out-of-band OS changes
+   * On login and cold app open, performs SILENT checks (checkPermissionStatus)
+   * or loads stored permission records.
+   * NEVER calls requestPermission(type) on cold start/login!
    */
   async onLoginOrColdStart(userId: string): Promise<Record<PermissionType, PermissionStatus>> {
     const types: PermissionType[] = ['camera', 'microphone', 'file_access'];
@@ -218,20 +218,17 @@ export const permissionService = {
 
     for (const type of types) {
       const stored = await this.getStoredPermission(userId, type);
+      const liveStatus = await this.checkPermissionStatus(type);
 
-      if (!stored || stored === 'not_requested') {
-        // Trigger OS dialog prompt
-        const freshStatus = await this.requestPermission(type);
-        await this.upsertPermission(userId, type, freshStatus);
-        results[type] = freshStatus;
-      } else {
-        // Do NOT call requestPermission again. Run silent check to sync out-of-band changes
-        const liveStatus = await this.checkPermissionStatus(type);
-        const finalStatus = liveStatus !== 'not_requested' ? liveStatus : stored;
-        if (finalStatus !== stored) {
-          await this.upsertPermission(userId, type, finalStatus);
-        }
+      if (stored && stored !== 'not_requested') {
+        const finalStatus = (liveStatus === 'granted' || liveStatus === 'denied') ? liveStatus : stored;
         results[type] = finalStatus;
+      } else if (liveStatus !== 'not_requested') {
+        results[type] = liveStatus;
+        await this.upsertPermission(userId, type, liveStatus);
+      } else {
+        // Leave as 'not_requested'. Do NOT trigger OS getUserMedia prompt on cold start!
+        results[type] = 'not_requested';
       }
     }
 

@@ -23,8 +23,28 @@ export type PostFeedbackRow = Database['public']['Tables']['post_feedback']['Row
 export type CommentRow = Database['public']['Tables']['comments']['Row'];
 export type FollowRow = Database['public']['Tables']['follows']['Row'];
 export type CircleRow = Database['public']['Views']['circles']['Row'];
+export type DirectMessageRow = Database['public']['Tables']['direct_messages']['Row'];
 
 // Domain Types for UI
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  recipientId?: string;
+  text: string;
+  timestamp: string;
+  createdAt?: number;
+  isRead: boolean;
+  status?: 'pending' | 'accepted';
+  postThumbnail?: string;
+  postId?: string;
+}
+
+export interface MessageThread {
+  creator: Creator;
+  messages: DirectMessage[];
+  lastUpdated: number;
+  unreadCount: number;
+}
 export interface Task {
   id: string;
   title: string;
@@ -58,7 +78,7 @@ export interface Recipe {
   authorId: string;
   authorName: string;
   authorUsername?: string;
-  category: 'Humorous' | 'Practical' | 'Creative' | 'Educational' | 'Strategy';
+  category: string;
   tags: string[];
   phases: RecipePhase[];
   visibility?: RecipeVisibility;
@@ -78,9 +98,11 @@ export interface Recipe {
 export interface Project {
   id: string;
   publicId?: string;
+  userId?: string;
   title: string;
-  recipeId: string;
-  recipeTitle: string;
+  recipeId?: string;
+  recipeTitle?: string;
+  category?: string;
   phases: Phase[];
   createdAt: string;
   completedAt?: string;
@@ -111,6 +133,7 @@ export interface Creator {
   avatarUrl: string;
   avatarBucket?: string;
   avatarPath?: string;
+  avatarStoragePath?: string;
   bio: string;
   goals: string;
   privacyDefault: ProfileVisibility;
@@ -121,6 +144,7 @@ export interface Creator {
   isFollowing?: boolean;
   followsYou?: boolean;
   isInCircle?: boolean;
+  allowedEnvironments?: string[];
 }
 
 export interface PostComment {

@@ -59,19 +59,19 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md">
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 10 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 10 }}
           transition={{ duration: 0.2 }}
-          className="bg-gray-900 border border-gray-800 text-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] space-y-5"
+          className="bg-gray-900 border border-gray-800 text-white rounded-none sm:rounded-3xl p-6 w-full h-full sm:h-auto max-w-none sm:max-w-2xl shadow-2xl flex flex-col max-h-full sm:max-h-[90vh] space-y-5"
           id="cookie-preferences-modal"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-800 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#FF5C00]/20 border border-[#FF5C00]/40 flex items-center justify-center text-[#FF5C00]">
+              <div className="w-10 h-10 rounded-2xl bg-[#F59E0B]/20 border border-[#F59E0B]/40 flex items-center justify-center text-[#F59E0B]">
                 <Cookie className="w-5 h-5" />
               </div>
               <div>
@@ -97,7 +97,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
               onClick={() => setActiveTab('categories')}
               className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'categories'
-                  ? 'bg-[#FF5C00] text-black shadow'
+                  ? 'bg-[#F59E0B] text-black shadow'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -111,7 +111,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
               onClick={() => setActiveTab('directory')}
               className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'directory'
-                  ? 'bg-[#FF5C00] text-black shadow'
+                  ? 'bg-[#F59E0B] text-black shadow'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -135,7 +135,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                       </span>
                     </div>
                     <p className="text-xs text-gray-300 leading-relaxed font-sans">
-                      Enables core website functionality, security protections, session cookies (<code className="text-[#FF5C00]">gonnng_session</code>), and stores your privacy choices. Cannot be disabled.
+                      Enables core website functionality, security protections, session cookies (<code className="text-[#F59E0B]">gonnng_session</code>), and stores your privacy choices. Cannot be disabled.
                     </p>
                   </div>
 
@@ -167,7 +167,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                       className="sr-only peer"
                       id="toggle-cookie-analytics"
                     />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF5C00]"></div>
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F59E0B]"></div>
                   </label>
                 </div>
 
@@ -191,7 +191,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                       className="sr-only peer"
                       id="toggle-cookie-marketing"
                     />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF5C00]"></div>
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F59E0B]"></div>
                   </label>
                 </div>
 
@@ -215,7 +215,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                       className="sr-only peer"
                       id="toggle-cookie-user-prefs"
                     />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF5C00]"></div>
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F59E0B]"></div>
                   </label>
                 </div>
               </div>
@@ -236,7 +236,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                       className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2 hover:border-white/20 transition-all text-xs"
                     >
                       <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
-                        <code className="font-mono font-bold text-[#FF5C00] text-sm">{item.name}</code>
+                        <code className="font-mono font-bold text-[#F59E0B] text-sm">{item.name}</code>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                           item.category === 'Strictly Necessary'
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -296,7 +296,7 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                 type="button"
                 id="cookie-modal-accept-all-btn"
                 onClick={handleAcceptAllClick}
-                className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-mono font-bold text-black bg-[#FF5C00] hover:bg-[#FF751A] shadow-lg shadow-[#FF5C00]/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-mono font-bold text-black bg-[#F59E0B] hover:bg-[#FF751A] shadow-lg shadow-[#F59E0B]/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
                 <span>Accept All Cookies</span>

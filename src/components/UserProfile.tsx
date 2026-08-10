@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Creator, FeedPost } from '../types';
+import { Creator, FeedPost, Project, Recipe } from '../types';
+import PostTile from './PostTile';
 import { getFollowersOfUser, getFollowingOfUser, getCircleOfUser, isFollowingUser, isFollowedByUser, isUserInCircle } from '../utils/followUtils';
-import { User, Shield, Users, Save, Globe, Lock, Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Camera, Image as ImageIcon, Disc3, Pencil, Octagon, ArrowUpRight, MessageSquare, CircleDotDashed, Album, Cookie } from 'lucide-react';
+import { User, Shield, Users, Save, Globe, Lock, Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Camera, Image as ImageIcon, Disc3, Pencil, Octagon, ArrowUpRight, MessageSquare, CircleDotDashed, Album, Cookie, MessageSquareShare } from 'lucide-react';
 import Feed from './Feed';
 import FileUploadZone from './FileUploadZone';
 import { UploadedFile, uploadService, getPublicMediaUrl } from '../services/uploadService';
@@ -47,6 +48,10 @@ interface UserProfileProps {
   onClearSuperimposedPost?: () => void;
   onOpenShareDrawer?: (post: FeedPost) => void;
   autoOpenCommentsPostId?: string | null;
+  projects?: Project[];
+  recipes?: Recipe[];
+  onStartProject?: () => void;
+  onCreateRecipe?: () => void;
 }
 
 export default function UserProfile({ 
@@ -71,15 +76,30 @@ export default function UserProfile({
   superimposedPost,
   onClearSuperimposedPost,
   onOpenShareDrawer,
-  autoOpenCommentsPostId
+  autoOpenCommentsPostId,
+  projects = [],
+  recipes = [],
+  onStartProject,
+  onCreateRecipe
 }: UserProfileProps) {
   const [name, setName] = useState(currentUser.name);
   const [bio, setBio] = useState(currentUser.bio);
   const [goals, setGoals] = useState(currentUser.goals);
-  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser.privacyDefault);
+  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser.privacyDefault || 'public');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  // Sync profile form state when currentUser or settings drawer state changes
+  React.useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.name || '');
+      setBio(currentUser.bio || '');
+      setGoals(currentUser.goals || '');
+      setPrivacy(currentUser.privacyDefault || 'public');
+      setAvatarUrl(currentUser.avatarUrl || '');
+    }
+  }, [currentUser, isSettingsDrawerOpen]);
 
   // Device permissions table state
   const [detailedPermissions, setDetailedPermissions] = useState<Record<PermissionType, PermissionStatus>>({
@@ -167,6 +187,21 @@ export default function UserProfile({
   const [showUserListModal, setShowUserListModal] = useState(false);
   const [modalTab, setModalTab] = useState<'circle' | 'followers' | 'following'>('circle');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [modalSnapshotIds, setModalSnapshotIds] = useState<string[] | null>(null);
+
+  // Snapshot list when modal opens or tab changes so unfollowed users stay in list for safety/re-following
+  React.useEffect(() => {
+    if (showUserListModal) {
+      const list = modalTab === 'circle' 
+        ? getCircleOfUser(currentUser, allCreators)
+        : modalTab === 'following'
+        ? getFollowingOfUser(currentUser, allCreators)
+        : getFollowersOfUser(currentUser, allCreators);
+      setModalSnapshotIds(list.map(c => c.id));
+    } else {
+      setModalSnapshotIds(null);
+    }
+  }, [showUserListModal, modalTab]);
 
   // Comment Modal State for superimposed post
   const [commentModalPost, setCommentModalPost] = useState<FeedPost | null>(null);
@@ -189,6 +224,7 @@ export default function UserProfile({
     e.preventDefault();
     setIsSaving(true);
     let finalAvatarUrl = avatarUrl;
+    let finalAvatarPath = currentUser.avatarPath || currentUser.avatarStoragePath || '';
 
     try {
       if (selectedAvatarFile) {
@@ -196,6 +232,7 @@ export default function UserProfile({
         try {
           const uploaded = await uploadService.uploadAvatar(selectedAvatarFile);
           finalAvatarUrl = uploaded.publicUrl || uploaded.url || finalAvatarUrl;
+          finalAvatarPath = uploaded.path;
           setAvatarUrl(finalAvatarUrl);
         } catch (uploadErr) {
           console.error('Failed to upload avatar during configuration save:', uploadErr);
@@ -211,7 +248,9 @@ export default function UserProfile({
         bio,
         goals,
         privacyDefault: privacy,
-        avatarUrl: finalAvatarUrl
+        avatarUrl: finalAvatarUrl,
+        avatarPath: finalAvatarPath,
+        avatarStoragePath: finalAvatarPath
       });
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 3000);
@@ -235,7 +274,11 @@ export default function UserProfile({
   const followingList = getFollowingOfUser(currentUser, allCreators);
   const circleList = getCircleOfUser(currentUser, allCreators);
 
-  const currentTabList = modalTab === 'circle' ? circleList : modalTab === 'following' ? followingList : followersList;
+  const liveTabList = modalTab === 'circle' ? circleList : modalTab === 'following' ? followingList : followersList;
+
+  const currentTabList = (showUserListModal && modalSnapshotIds !== null)
+    ? modalSnapshotIds.map(id => allCreators.find(c => c.id === id)).filter((c): c is Creator => Boolean(c))
+    : liveTabList;
 
   const displayedModalCreators = currentTabList.filter(c => {
     if (!userSearchQuery.trim()) return true;
@@ -246,24 +289,24 @@ export default function UserProfile({
 
   return (
     <div 
-      className="max-w-4xl mx-auto text-white px-2 sm:px-4 md:px-0 w-full min-w-0 h-[calc(100vh-130px)] sm:h-auto overflow-y-scroll sm:overflow-visible snap-y snap-mandatory scroll-smooth sm:scroll-auto no-scrollbar space-y-0 sm:space-y-6" 
+      className="max-w-4xl mx-auto text-white px-0 w-full min-w-0 h-[calc(100vh-130px)] sm:h-auto overflow-y-scroll sm:overflow-visible snap-y snap-mandatory scroll-smooth sm:scroll-auto no-scrollbar space-y-0 sm:space-y-6" 
       id="profile-scroll-container"
     >
       {/* Superimposed Post Modal Overlay from Updates / Shared Messages */}
       {superimposedPost && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-0 sm:p-6 overflow-y-auto bg-gray-900/40 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#FF5C00] space-y-4 my-auto relative bg-white text-gray-900"
+            className="w-full h-full sm:h-auto max-w-none sm:max-w-2xl max-h-full sm:max-h-[90vh] overflow-y-auto rounded-none sm:rounded-3xl p-4 sm:p-6 shadow-2xl border-2 border-[#F59E0B] space-y-4 my-auto relative bg-white text-gray-900"
             id="superimposed-post-container"
           >
             {/* Header Badge & Icon-only Close Action */}
-            <div className="flex items-center justify-between pb-2 border-b border-[#FF5C00]/30 bg-[#FF5C00]/15 p-2.5 rounded-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-[#F59E0B]/30 bg-[#F59E0B]/15 p-2.5 rounded-xl">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#FF5C00] animate-pulse" />
-                <span className="text-xs font-mono font-black text-[#FF5C00] uppercase tracking-wider">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] animate-pulse" />
+                <span className="text-xs font-mono font-black text-[#F59E0B] uppercase tracking-wider">
                   LINKED UPDATE POST
                 </span>
                 <span className="text-[10px] font-mono text-gray-500 hidden sm:inline">
@@ -279,170 +322,34 @@ export default function UserProfile({
                   title="Close Post Modal"
                   aria-label="Close Post Modal"
                 >
-                  <X className="w-4 h-4 text-[#FF5C00]" />
+                  <X className="w-4 h-4 text-[#F59E0B]" />
                 </button>
               )}
             </div>
 
-            {/* Embedded Post Matching Standard Structure: Image, Votes Cluster + Comments Link, Poster, Title, Description */}
-            <div className="p-3 sm:p-4 rounded-xl space-y-3 border bg-white border-gray-200 text-gray-900 shadow-md">
-              
-              {/* 1. Image with Share Button & Bottom Overlay (Votes Cluster + Comments Count) */}
-              <div className="relative w-full rounded-xl overflow-hidden border shadow-lg border-gray-200 bg-gray-100">
-                <img 
-                  src={superimposedPost.image || 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800'} 
-                  alt={superimposedPost.title} 
-                  className="w-full max-h-80 sm:max-h-96 object-cover" 
-                  referrerPolicy="no-referrer"
-                />
-
-                {/* Upper Right Corner Share Button */}
-                {onOpenShareDrawer && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenShareDrawer(superimposedPost)}
-                    className="absolute top-2 right-2 p-2 rounded-xl transition-all cursor-pointer z-30 border shadow-lg flex items-center justify-center bg-white/95 hover:bg-[#FF5C00] text-gray-800 hover:text-black border-gray-300"
-                    title="Share post & copy permalink"
-                  >
-                    <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-                )}
-
-                {/* Votes Cluster + Comments Link overlay at bottom of image */}
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between p-1.5 sm:p-2 rounded-xl border shadow-2xl z-10 gap-1 bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
-                  <div className="flex items-center gap-1 sm:gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onUpdatePostGong(superimposedPost.id, 'continue')}
-                      className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
-                        superimposedPost.gongs?.userVoted === 'continue'
-                          ? 'bg-emerald-500 text-black font-black shadow-md'
-                          : 'bg-white/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
-                      }`}
-                      title="Keep going / Continue"
-                    >
-                      <Disc3 className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                      <span className="text-[10px] sm:text-[11px]">{superimposedPost.gongs?.continue || 0}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onUpdatePostGong(superimposedPost.id, 'refine')}
-                      className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
-                        superimposedPost.gongs?.userVoted === 'refine'
-                          ? 'bg-[#FF5C00] text-black font-black shadow-md'
-                          : 'bg-white/10 text-[#FF5C00] hover:bg-[#FF5C00]/20 border border-[#FF5C00]/30'
-                      }`}
-                      title="Needs work / Refine"
-                    >
-                      <Pencil className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                      <span className="text-[10px] sm:text-[11px]">{superimposedPost.gongs?.refine || 0}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onUpdatePostGong(superimposedPost.id, 'reconsider')}
-                      className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
-                        superimposedPost.gongs?.userVoted === 'reconsider'
-                          ? 'bg-red-500 text-white font-black shadow-md'
-                          : 'bg-white/10 text-red-400 hover:bg-red-500/20 border border-red-500/30'
-                      }`}
-                      title="Stop / Reconsider"
-                    >
-                      <Octagon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                      <span className="text-[10px] sm:text-[11px]">{superimposedPost.gongs?.reconsider || 0}</span>
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    id="superimposed-post-comments-btn"
-                    onClick={() => setCommentModalPost(superimposedPost)}
-                    className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold font-mono bg-white/15 hover:bg-[#FF5C00] hover:text-black text-white border border-white/20 shadow-md transition-all cursor-pointer"
-                    title="View and add comments"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-[10px] sm:text-[11px]">{superimposedPost.comments?.length || 0}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 2. Poster / Metadata Bar */}
-              <div className="flex justify-between items-center text-xs px-1 pt-1">
-                <div 
-                  onClick={() => onOpenCreatorProfile?.(superimposedPost.userId || superimposedPost.userName)}
-                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all group"
-                >
-                  <img 
-                    src={superimposedPost.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} 
-                    alt={superimposedPost.userName} 
-                    className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover border border-white/20 shrink-0"
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="font-bold group-hover:underline text-gray-900">
-                    {superimposedPost.userName}
-                  </span>
-                  <span className="text-[10px] font-mono text-gray-500">• {superimposedPost.timeString}</span>
-                </div>
-
-                <div className="flex items-center gap-1 border px-2 py-0.5 rounded-md text-[10px] font-mono bg-gray-100 border-gray-200 text-gray-700">
-                  {superimposedPost.privacy === 'public' && (
-                    <>
-                      <Globe className="w-3 h-3 text-[#FF5C00]" />
-                      <span className="uppercase">Public</span>
-                    </>
-                  )}
-                  {superimposedPost.privacy === 'internal' && (
-                    <>
-                      <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" />
-                      <span className="uppercase">Circle</span>
-                    </>
-                  )}
-                  {superimposedPost.privacy === 'private' && (
-                    <>
-                      <Album className="w-3 h-3 text-[#FF5C00]" />
-                      <span className="uppercase">Private</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* 3. Title */}
-              <h3 className="text-base font-display font-bold px-1 break-words text-gray-900">
-                {superimposedPost.title}
-              </h3>
-
-              {/* 4. Full Description */}
-              <div className="p-3 sm:p-4 rounded-xl space-y-2 border bg-white border-gray-200 text-gray-900">
-                <p className="text-xs sm:text-sm font-sans leading-relaxed whitespace-pre-wrap break-words">
-                  {superimposedPost.content}
-                </p>
-                {superimposedPost.hashtags && (
-                  <p className="text-[#FF5C00] font-mono text-xs font-bold break-words pt-1">
-                    {Array.isArray(superimposedPost.hashtags)
-                      ? superimposedPost.hashtags.map(tag => tag.startsWith('#') ? tag : `#${tag}`).join(' ')
-                      : superimposedPost.hashtags}
-                  </p>
-                )}
-                {superimposedPost.attachedName && (
-                  <div className="text-[11px] font-mono text-[#FF5C00] pt-1">
-                    📂 Attached: {superimposedPost.attachedName}
-                  </div>
-                )}
-              </div>
-
-            </div>
+            <PostTile
+              post={superimposedPost}
+              currentUser={currentUser}
+              allCreators={allCreators}
+              onUpdatePostGong={onUpdatePostGong}
+              onOpenComments={(p) => setCommentModalPost(p)}
+              onOpenShareDrawer={onOpenShareDrawer}
+              onOpenCreatorProfile={onOpenCreatorProfile}
+              onSelectPostDetails={(p) => setCommentModalPost(p)}
+              isSuperimposed={true}
+              onClearSuperimposedPost={onClearSuperimposedPost}
+            />
           </motion.div>
         </div>
       )}
 
       {/* Header Visual Panel - Full Screen First Tile on Mobile for Sticky Scroll */}
       <div 
-        className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto shrink-0 flex flex-col justify-between border p-5 sm:p-6 relative mb-0 sm:mb-6 rounded-none bg-white border-gray-200 text-gray-900 shadow-sm"
+        className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto shrink-0 flex flex-col justify-between border px-0 pt-3 pb-[18px] relative mb-0 rounded-none bg-white border-gray-200 text-gray-900 shadow-sm"
         id="profile-first-tile"
       >
         {/* Top Section */}
-        <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 min-w-0 w-full">
+        <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 min-w-0 w-full pl-4 pb-3">
           <div className="w-28 h-28 sm:w-20 sm:h-20 rounded-full flex items-center justify-center font-display font-bold shadow-lg border-4 relative overflow-hidden shrink-0 mx-auto sm:mx-0 bg-gray-200 border-gray-300 text-gray-800">
             {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
               <img src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -475,10 +382,10 @@ export default function UserProfile({
                     });
                   }
                 }}
-                className="p-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow cursor-pointer shrink-0"
+                className="p-1.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black rounded-xl transition-all shadow cursor-pointer shrink-0"
                 title="Share Profile"
               >
-                <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                <MessageSquareShare className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
             <p className="text-xs font-mono truncate text-gray-600">
@@ -488,21 +395,23 @@ export default function UserProfile({
         </div>
 
         {/* Middle Section: Bio & Goal */}
-        <div className="my-auto py-4 space-y-3 border p-4 rounded-2xl bg-gray-50 border-gray-200 text-gray-800">
+        <div 
+          onClick={() => setIsSettingsDrawerOpen(true)}
+          className="my-auto py-4 space-y-3 border p-4 mx-3 mb-3 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 cursor-pointer hover:bg-gray-100/80 transition-colors"
+          title="Click to edit profile bio and goals"
+        >
           <p className="text-xs leading-relaxed italic text-gray-800">
-            "{currentUser.bio || 'Creative architect building process blueprints and execution sequence algorithms.'}"
+            "{currentUser.bio && currentUser.bio.trim() !== '' ? currentUser.bio : ""}"
           </p>
-          {currentUser.goals && (
-            <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
-              <Goal className="w-3.5 h-3.5 text-[#FF5C00]" />
-              <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals}</strong></span>
-            </div>
-          )}
+          <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
+            <Goal className="w-3.5 h-3.5 text-[#F59E0B]" />
+            <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals && currentUser.goals.trim() !== '' ? currentUser.goals : ""}</strong></span>
+          </div>
         </div>
 
         {/* Bottom Section: Followers/Following/Circle Stats & Privacy */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t w-full border-gray-200">
-          <div className="flex items-center justify-center sm:justify-start gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 px-3 border-t w-full border-gray-200">
+          <div className="flex items-center justify-center sm:justify-start gap-3 w-full sm:w-auto px-0">
             <button
               type="button"
               id="profile-circle-btn"
@@ -511,10 +420,10 @@ export default function UserProfile({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              className="text-[10px] leading-[10px] font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Click to view My Circle"
             >
-              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{circleList.length}</strong> MY CIRCLE
+              <strong className="font-sans text-sm group-hover:text-[#F59E0B] transition-colors text-gray-900">{circleList.length}</strong> MY CIRCLE
             </button>
             <button
               type="button"
@@ -524,10 +433,10 @@ export default function UserProfile({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              className="text-[10px] leading-[10px] font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Click to view Followers"
             >
-              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{followersList.length}</strong> FOLLOWERS
+              <strong className="font-sans text-sm group-hover:text-[#F59E0B] transition-colors text-gray-900">{followersList.length}</strong> FOLLOWERS
             </button>
             <button
               type="button"
@@ -537,17 +446,17 @@ export default function UserProfile({
                 setUserSearchQuery('');
                 setShowUserListModal(true);
               }}
-              className="text-xs font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              className="text-[10px] leading-[10px] font-mono transition-all cursor-pointer group flex items-center gap-1.5 px-3.5 py-2 rounded-xl border active:scale-95 bg-gray-100 border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Click to view Following"
             >
-              <strong className="font-sans text-sm group-hover:text-[#FF5C00] transition-colors text-gray-900">{followingList.length}</strong> FOLLOWING
+              <strong className="font-sans text-sm group-hover:text-[#F59E0B] transition-colors text-gray-900">{followingList.length}</strong> FOLLOWING
             </button>
           </div>
 
           <div className="flex items-center gap-2 border px-3 py-2 rounded-xl bg-gray-50 border-gray-200 text-gray-700">
-            <Shield className="w-3.5 h-3.5 text-[#FF5C00]" />
+            <Shield className="w-3.5 h-3.5 text-[#F59E0B]" />
             <span className="text-[10px] font-mono uppercase">
-              Privacy: <strong className="text-[#FF5C00] font-sans">{privacy}</strong>
+              <strong className="text-[#F59E0B] font-sans">{privacy}</strong>
             </span>
           </div>
         </div>
@@ -560,6 +469,8 @@ export default function UserProfile({
           currentUserId={currentUser.id}
           currentUser={currentUser}
           creators={allCreators}
+          projects={projects}
+          recipes={recipes}
           filter="private"
           isEmbedded={true}
           onUpdatePostGong={onUpdatePostGong}
@@ -567,18 +478,20 @@ export default function UserProfile({
           onToggleCommentHeart={onToggleCommentHeart}
           onOpenCreatorProfile={onOpenCreatorProfile}
           onOpenShareDrawer={onOpenShareDrawer}
+          onStartProject={onStartProject}
+          onCreateRecipe={onCreateRecipe}
         />
       </div>
       {/* Followers & Following User List Modal */}
       <AnimatePresence>
         {showUserListModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[85vh] space-y-4 border bg-white border-gray-200 text-gray-900"
+              className="rounded-none sm:rounded-3xl p-5 sm:p-6 w-full h-full sm:h-auto max-w-none sm:max-w-md shadow-2xl flex flex-col max-h-full sm:max-h-[85vh] space-y-4 border bg-white border-gray-200 text-gray-900"
             >
               {/* Modal Header with Tabs */}
               <div className="flex justify-between items-center border-b border-white/10 pb-3">
@@ -592,7 +505,7 @@ export default function UserProfile({
                     }}
                     className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'circle'
-                        ? 'bg-[#FF5C00] text-black shadow'
+                        ? 'bg-[#F59E0B] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -607,7 +520,7 @@ export default function UserProfile({
                     }}
                     className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'followers'
-                        ? 'bg-[#FF5C00] text-black shadow'
+                        ? 'bg-[#F59E0B] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -622,7 +535,7 @@ export default function UserProfile({
                     }}
                     className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       modalTab === 'following'
-                        ? 'bg-[#FF5C00] text-black shadow'
+                        ? 'bg-[#F59E0B] text-black shadow'
                         : 'text-white/60 hover:text-white'
                     }`}
                   >
@@ -648,7 +561,7 @@ export default function UserProfile({
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
                   placeholder={`Search ${modalTab}...`}
-                  className="w-full pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#FF5C00]"
+                  className="w-full pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#F59E0B]"
                 />
                 {userSearchQuery && (
                   <button
@@ -687,7 +600,7 @@ export default function UserProfile({
                             src={getPublicMediaUrl('Gonnng', creator.avatarUrl)}
                             alt={creator.name}
                             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-white/10 shrink-0 ${
-                              amIFollowing ? 'ring-2 ring-[#FF5C00] ring-offset-1 ring-offset-[#141414]' : ''
+                              amIFollowing ? 'ring-2 ring-[#F59E0B] ring-offset-1 ring-offset-[#141414]' : ''
                             }`}
                             referrerPolicy="no-referrer"
                           />
@@ -700,7 +613,7 @@ export default function UserProfile({
                                 </span>
                               )}
                               {!isMe && isMutualCircle && (
-                                <span className="text-[9px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30 px-1.5 py-0.2 rounded-full">
+                                <span className="text-[9px] font-mono font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30 px-1.5 py-0.2 rounded-full">
                                   In Circle
                                 </span>
                               )}
@@ -722,17 +635,17 @@ export default function UserProfile({
                             onClick={() => onToggleFollowCreator(creator.id)}
                             className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
                               isMutualCircle
-                                ? 'bg-[#FF5C00]/20 hover:bg-red-500/20 text-[#FF5C00] hover:text-red-400 border border-[#FF5C00]/40 hover:border-red-500/30'
+                                ? 'bg-[#F59E0B]/20 hover:bg-red-500/20 text-[#F59E0B] hover:text-red-400 border border-[#F59E0B]/40 hover:border-red-500/30'
                                 : amIFollowing
                                 ? 'bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 border border-white/10 hover:border-red-500/30'
                                 : doesUserFollowMe
-                                ? 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
-                                : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                                ? 'bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black shadow-sm'
+                                : 'bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black shadow-sm'
                             }`}
                           >
                             {isMutualCircle ? (
                               <>
-                                <CircleDotDashed className="w-3 h-3 text-[#FF5C00]" /> Circle
+                                <CircleDotDashed className="w-3 h-3 text-[#F59E0B]" /> Circle
                               </>
                             ) : amIFollowing ? (
                               <>
@@ -800,7 +713,7 @@ export default function UserProfile({
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-gray-200">
                   <h3 className="text-lg font-display font-bold text-gray-900 flex items-center gap-2">
-                    <User className="w-5 h-5 text-[#FF5C00]" /> Profile Settings
+                    <User className="w-5 h-5 text-[#F59E0B]" /> Profile Settings
                   </h3>
                   <button
                     type="button"
@@ -814,13 +727,13 @@ export default function UserProfile({
                 <form onSubmit={handleSave} className="space-y-6">
                   {/* Space at top of drawer for updating Profile Image */}
                   <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3.5">
-                    <label className="block text-xs font-mono text-[#FF5C00] uppercase font-bold tracking-wider flex items-center gap-1.5">
-                      <Camera className="w-4 h-4 text-[#FF5C00]" /> Update Profile Picture
+                    <label className="block text-xs font-mono text-[#F59E0B] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-[#F59E0B]" /> Update Profile Picture
                     </label>
 
                     <div className="flex items-center gap-4">
                       <div className="relative group shrink-0">
-                        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#FF5C00] flex items-center justify-center font-display font-bold text-2xl shadow-md bg-gray-200 text-gray-800">
+                        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#F59E0B] flex items-center justify-center font-display font-bold text-2xl shadow-md bg-gray-200 text-gray-800">
                           {avatarUrl && avatarUrl.trim() !== '' ? (
                             <img src={getPublicMediaUrl('Gonnng', avatarUrl.trim())} alt={name} className="w-full h-full object-cover" />
                           ) : (
@@ -847,7 +760,7 @@ export default function UserProfile({
                         <div className="flex items-center gap-2">
                           <label 
                             htmlFor="avatar-file-input"
-                            className="px-3 py-1.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm"
+                            className="px-3 py-1.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm"
                           >
                             <Upload className="w-3.5 h-3.5" />
                             {selectedAvatarFile ? 'Photo Selected ✓' : isUploadingAvatar ? 'Uploading...' : 'Choose File'}
@@ -868,11 +781,11 @@ export default function UserProfile({
                         
                         <div>
                           <input
-                            type="url"
+                            type="text"
                             value={avatarUrl}
                             onChange={(e) => setAvatarUrl(e.target.value)}
-                            placeholder="Or paste image URL (https://...)"
-                            className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs font-mono text-white/80 focus:outline-none focus:border-[#FF5C00]"
+                            placeholder="Or paste image URL or path (/media/...)"
+                            className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs font-mono text-white/80 focus:outline-none focus:border-[#F59E0B]"
                           />
                         </div>
                       </div>
@@ -887,7 +800,7 @@ export default function UserProfile({
                         id="drawer-profile-name-input"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] font-sans font-medium text-white"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#F59E0B] font-sans font-medium text-white"
                         required
                       />
                     </div>
@@ -899,8 +812,8 @@ export default function UserProfile({
                         id="drawer-profile-bio-textarea"
                         onChange={(e) => setBio(e.target.value)}
                         rows={3}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] font-sans text-white/80 leading-relaxed"
-                        placeholder="Tell us what you make (paintings, sandwiches, tech, startups)..."
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#F59E0B] font-sans text-white/80 leading-relaxed"
+                        placeholder="click here to enter"
                       />
                     </div>
 
@@ -913,8 +826,8 @@ export default function UserProfile({
                         value={goals}
                         id="drawer-profile-goals-input"
                         onChange={(e) => setGoals(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#FF5C00] font-sans text-white font-medium"
-                        placeholder="e.g. Host an exhibition in 10 weeks, paint sunset over bay"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-[#F59E0B] font-sans text-white font-medium"
+                        placeholder="click here to enter"
                       />
                     </div>
                   </div>
@@ -931,11 +844,11 @@ export default function UserProfile({
                         onClick={() => setPrivacy('public')}
                         className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center gap-3 sm:gap-4 min-w-0 w-full ${
                           privacy === 'public'
-                            ? 'bg-white/10 border-[#FF5C00] text-[#FF5C00] shadow-md'
+                            ? 'bg-white/10 border-[#F59E0B] text-[#F59E0B] shadow-md'
                             : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20'
                         }`}
                       >
-                        <Globe className={`w-5 h-5 shrink-0 ${privacy === 'public' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
+                        <Globe className={`w-5 h-5 shrink-0 ${privacy === 'public' ? 'text-[#F59E0B]' : 'text-white/40'}`} />
                         <div className="text-left min-w-0 flex-1">
                           <span className="text-xs font-sans font-bold block text-white">Public</span>
                           <span className="text-[10px] font-mono text-white/50 block break-words">Global Feed - viewable by everyone in the community</span>
@@ -947,11 +860,11 @@ export default function UserProfile({
                         onClick={() => setPrivacy('internal')}
                         className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center gap-3 sm:gap-4 min-w-0 w-full ${
                           privacy === 'internal'
-                            ? 'bg-white/10 border-[#FF5C00] text-[#FF5C00] shadow-md'
+                            ? 'bg-white/10 border-[#F59E0B] text-[#F59E0B] shadow-md'
                             : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20'
                         }`}
                       >
-                        <CircleDotDashed className={`w-5 h-5 shrink-0 ${privacy === 'internal' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
+                        <CircleDotDashed className={`w-5 h-5 shrink-0 ${privacy === 'internal' ? 'text-[#F59E0B]' : 'text-white/40'}`} />
                         <div className="text-left min-w-0 flex-1">
                           <span className="text-xs font-sans font-bold block text-white">Internal</span>
                           <span className="text-[10px] font-mono text-white/50 block break-words">Circle Only - shared only with your followers & circle members</span>
@@ -963,11 +876,11 @@ export default function UserProfile({
                         onClick={() => setPrivacy('private')}
                         className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center gap-3 sm:gap-4 min-w-0 w-full ${
                           privacy === 'private'
-                            ? 'bg-white/10 border-[#FF5C00] text-[#FF5C00] shadow-md'
+                            ? 'bg-white/10 border-[#F59E0B] text-[#F59E0B] shadow-md'
                             : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20'
                         }`}
                       >
-                        <Album className={`w-5 h-5 shrink-0 ${privacy === 'private' ? 'text-[#FF5C00]' : 'text-white/40'}`} />
+                        <Album className={`w-5 h-5 shrink-0 ${privacy === 'private' ? 'text-[#F59E0B]' : 'text-white/40'}`} />
                         <div className="text-left min-w-0 flex-1">
                           <span className="text-xs font-sans font-bold block text-white">Private</span>
                           <span className="text-[10px] font-mono text-white/50 block break-words">Personal Log - strictly private, only you can see and track this</span>
@@ -977,10 +890,10 @@ export default function UserProfile({
                   </div>
 
                   {/* Device & Hardware Permissions Management */}
-                  <div id="permissions-section" className="space-y-3 pt-3 border-t border-white/10 w-full min-w-0 bg-[#FF5C00]/5 p-4 rounded-2xl border border-[#FF5C00]/20">
+                  <div id="permissions-section" className="space-y-3 pt-3 border-t border-white/10 w-full min-w-0 bg-[#F59E0B]/5 p-4 rounded-2xl border border-[#F59E0B]/20">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-mono font-bold text-[#FF5C00] uppercase tracking-wider flex items-center gap-1.5">
-                        <Camera className="w-3.5 h-3.5 text-[#FF5C00]" /> Device Permissions
+                      <h4 className="text-xs font-mono font-bold text-[#F59E0B] uppercase tracking-wider flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-[#F59E0B]" /> Device Permissions
                       </h4>
                       <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                         Active
@@ -995,7 +908,7 @@ export default function UserProfile({
                       {/* Camera Toggle */}
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
                         <div className="flex items-center gap-2.5">
-                          <Camera className="w-4 h-4 text-[#FF5C00]" />
+                          <Camera className="w-4 h-4 text-[#F59E0B]" />
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-white block">Camera Access</span>
@@ -1017,7 +930,7 @@ export default function UserProfile({
                           id="toggle-camera-permission-btn"
                           onClick={() => handleTogglePermission('camera')}
                           className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                            detailedPermissions.camera === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                            detailedPermissions.camera === 'granted' ? 'bg-[#F59E0B]' : 'bg-white/20'
                           }`}
                         >
                           <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
@@ -1029,7 +942,7 @@ export default function UserProfile({
                       {/* Microphone Toggle */}
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
                         <div className="flex items-center gap-2.5">
-                          <Disc3 className="w-4 h-4 text-[#FF5C00]" />
+                          <Disc3 className="w-4 h-4 text-[#F59E0B]" />
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-white block">Microphone Access</span>
@@ -1051,7 +964,7 @@ export default function UserProfile({
                           id="toggle-microphone-permission-btn"
                           onClick={() => handleTogglePermission('microphone')}
                           className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                            detailedPermissions.microphone === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                            detailedPermissions.microphone === 'granted' ? 'bg-[#F59E0B]' : 'bg-white/20'
                           }`}
                         >
                           <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
@@ -1063,7 +976,7 @@ export default function UserProfile({
                       {/* Files Access Toggle */}
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
                         <div className="flex items-center gap-2.5">
-                          <File className="w-4 h-4 text-[#FF5C00]" />
+                          <File className="w-4 h-4 text-[#F59E0B]" />
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-white block">Device File Access</span>
@@ -1085,7 +998,7 @@ export default function UserProfile({
                           id="toggle-files-permission-btn"
                           onClick={() => handleTogglePermission('file_access')}
                           className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                            detailedPermissions.file_access === 'granted' ? 'bg-[#FF5C00]' : 'bg-white/20'
+                            detailedPermissions.file_access === 'granted' ? 'bg-[#F59E0B]' : 'bg-white/20'
                           }`}
                         >
                           <span className={`w-4 h-4 rounded-full bg-black absolute top-1 transition-transform ${
@@ -1100,7 +1013,7 @@ export default function UserProfile({
                   <div className="space-y-3 pt-3 border-t border-white/10 w-full min-w-0">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-mono font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
-                        <Upload className="w-3.5 h-3.5 text-[#FF5C00]" /> User File Vault & Uploads
+                        <Upload className="w-3.5 h-3.5 text-[#F59E0B]" /> User File Vault & Uploads
                       </h4>
                       <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                         Feature Flagged
@@ -1133,7 +1046,7 @@ export default function UserProfile({
                       {/* Tutorial Sandbox Shortcut Block */}
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2.5 w-full min-w-0">
                         <div className="flex justify-between items-center">
-                          <h5 className="text-xs font-mono font-bold text-[#FF5C00] uppercase">Tutorial Sandbox</h5>
+                          <h5 className="text-xs font-mono font-bold text-[#F59E0B] uppercase">Tutorial Sandbox</h5>
                         </div>
                         <p className="text-xs text-white/60 leading-relaxed font-sans">
                           Review the Gonnng "Sum of parts" philosophy by resetting the universal Sandwich tutorial playground.
@@ -1145,7 +1058,7 @@ export default function UserProfile({
                             setShowTutorial(true);
                             setIsSettingsDrawerOpen(false);
                           }}
-                          className="text-xs font-bold text-[#FF5C00] underline hover:text-[#FF751A] cursor-pointer text-left pt-1 block"
+                          className="text-xs font-bold text-[#F59E0B] underline hover:text-[#FF751A] cursor-pointer text-left pt-1 block"
                         >
                           Launch Tutorial Engine →
                         </button>
@@ -1153,14 +1066,14 @@ export default function UserProfile({
 
                       {/* Account Level Block */}
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2.5 w-full min-w-0">
-                        <h5 className="text-xs font-mono font-bold text-[#FF5C00] uppercase flex items-center gap-1.5">
-                          <BookOpen className="w-3.5 h-3.5 text-[#FF5C00]" /> Account Level
+                        <h5 className="text-xs font-mono font-bold text-[#F59E0B] uppercase flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-[#F59E0B]" /> Account Level
                         </h5>
                         <div className="flex items-center gap-2">
-                          <div className="flex gap-0.5 text-[#FF5C00]">
-                            <Star className="w-3.5 h-3.5 fill-[#FF5C00] text-[#FF5C00]" />
-                            <Star className="w-3.5 h-3.5 fill-[#FF5C00] text-[#FF5C00]" />
-                            <Star className="w-3.5 h-3.5 fill-[#FF5C00] text-[#FF5C00]" />
+                          <div className="flex gap-0.5 text-[#F59E0B]">
+                            <Star className="w-3.5 h-3.5 fill-[#F59E0B] text-[#F59E0B]" />
+                            <Star className="w-3.5 h-3.5 fill-[#F59E0B] text-[#F59E0B]" />
+                            <Star className="w-3.5 h-3.5 fill-[#F59E0B] text-[#F59E0B]" />
                           </div>
                           <span className="text-xs font-sans font-bold text-white">Gonnng Master level 3</span>
                         </div>
@@ -1174,7 +1087,7 @@ export default function UserProfile({
                               onOpenPhilosophy();
                               setIsSettingsDrawerOpen(false);
                             }}
-                            className="w-full mt-2 py-2 bg-[#FF5C00]/10 hover:bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/20 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            className="w-full mt-2 py-2 bg-[#F59E0B]/10 hover:bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/20 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             🔔 Feedback Manual
                           </button>
@@ -1183,8 +1096,8 @@ export default function UserProfile({
 
                       {/* Privacy & Cookie Preferences Block */}
                       <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2.5 w-full min-w-0">
-                        <h5 className="text-xs font-mono font-bold text-[#FF5C00] uppercase flex items-center gap-1.5">
-                          <Cookie className="w-3.5 h-3.5 text-[#FF5C00]" /> Privacy & Cookie Preferences
+                        <h5 className="text-xs font-mono font-bold text-[#F59E0B] uppercase flex items-center gap-1.5">
+                          <Cookie className="w-3.5 h-3.5 text-[#F59E0B]" /> Privacy & Cookie Preferences
                         </h5>
                         <p className="text-xs text-white/60 leading-relaxed font-sans">
                           Manage your visitor cookie consent, tracking settings, and governance choices.
@@ -1199,7 +1112,7 @@ export default function UserProfile({
                             }}
                             className="w-full mt-2 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/15 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
                           >
-                            <Cookie className="w-4 h-4 text-[#FF5C00]" /> Manage Cookie Preferences
+                            <Cookie className="w-4 h-4 text-[#F59E0B]" /> Manage Cookie Preferences
                           </button>
                         )}
                       </div>
@@ -1218,7 +1131,7 @@ export default function UserProfile({
                       type="submit"
                       id="drawer-save-profile-btn"
                       disabled={isSaving}
-                      className="w-full justify-center px-6 py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="w-full justify-center px-6 py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isSaving ? (
                         <>
@@ -1261,16 +1174,16 @@ export default function UserProfile({
       {/* Comments Modal for Superimposed or Profile Post */}
       <AnimatePresence>
         {commentModalPost && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-gray-900/40 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="w-full max-w-lg max-h-[85vh] rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
+              className="w-full h-full sm:h-auto max-w-none sm:max-w-lg max-h-full sm:max-h-[85vh] rounded-none sm:rounded-3xl p-4 sm:p-6 flex flex-col justify-between shadow-2xl border bg-white border-gray-200 text-gray-900"
             >
               <div className="flex justify-between items-center pb-3 border-b border-gray-200">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-[#FF5C00]" />
+                  <MessageSquare className="w-5 h-5 text-[#F59E0B]" />
                   <h3 className="text-base font-display font-bold truncate">
                     Comments on "{commentModalPost.title}"
                   </h3>
@@ -1300,23 +1213,28 @@ export default function UserProfile({
                   // 1. Reply to my comment: my comment + reply at top
                   // 2. Comment on my post: new comments at top
                   // 3. Otherwise: order of most recent
-                  const sortedComments = [...allComments].sort((a, b) => {
+                  const sortedComments = [...allComments].filter(Boolean).sort((a, b) => {
+                    if (!a || !b) return 0;
+                    const aUid = a.userId || (a as any).user_id;
+                    const bUid = b.userId || (b as any).user_id;
+                    const postAuthorUid = commentModalPost?.userId || (commentModalPost as any)?.user_id;
+
                     const aIsMyCommentOrReplyToMe = 
-                      (a.userId === currentUser.id && allComments.some(c => c.parentId === a.id || c.replyToUser === currentUser.name)) ||
+                      (aUid === currentUser.id && allComments.some(c => c && (c.parentId === a.id || c.replyToUser === currentUser.name))) ||
                       a.replyToUser === currentUser.name ||
-                      a.content.toLowerCase().includes(`@${currentUser.name?.toLowerCase()}`);
+                      (a.content && a.content.toLowerCase().includes(`@${currentUser.name?.toLowerCase()}`));
 
                     const bIsMyCommentOrReplyToMe = 
-                      (b.userId === currentUser.id && allComments.some(c => c.parentId === b.id || c.replyToUser === currentUser.name)) ||
+                      (bUid === currentUser.id && allComments.some(c => c && (c.parentId === b.id || c.replyToUser === currentUser.name))) ||
                       b.replyToUser === currentUser.name ||
-                      b.content.toLowerCase().includes(`@${currentUser.name?.toLowerCase()}`);
+                      (b.content && b.content.toLowerCase().includes(`@${currentUser.name?.toLowerCase()}`));
 
                     if (aIsMyCommentOrReplyToMe && !bIsMyCommentOrReplyToMe) return -1;
                     if (!aIsMyCommentOrReplyToMe && bIsMyCommentOrReplyToMe) return 1;
 
-                    if (commentModalPost.userId === currentUser.id) {
-                      const aIsOther = a.userId !== currentUser.id;
-                      const bIsOther = b.userId !== currentUser.id;
+                    if (postAuthorUid === currentUser.id) {
+                      const aIsOther = aUid !== currentUser.id;
+                      const bIsOther = bUid !== currentUser.id;
                       if (aIsOther && !bIsOther) return -1;
                       if (!aIsOther && bIsOther) return 1;
                     }
@@ -1328,10 +1246,10 @@ export default function UserProfile({
                     <div key={c.id} className="p-3 border rounded-2xl space-y-1.5 bg-gray-50 border-gray-200 text-gray-900">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          <img src={c.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
+                          <img src={c.userAvatar} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
                           <span className="text-xs font-bold">{c.userName}</span>
                           {c.replyToUser && (
-                            <span className="text-[10px] font-mono text-[#FF5C00]">
+                            <span className="text-[10px] font-mono text-[#F59E0B]">
                               replying to @{c.replyToUser}
                             </span>
                           )}
@@ -1359,7 +1277,7 @@ export default function UserProfile({
                         <button
                           type="button"
                           onClick={() => setReplyingToComment({ id: c.id, userName: c.userName })}
-                          className="text-[10px] font-mono text-[#FF5C00] hover:underline cursor-pointer"
+                          className="text-[10px] font-mono text-[#F59E0B] hover:underline cursor-pointer"
                         >
                           Reply
                         </button>
@@ -1371,7 +1289,7 @@ export default function UserProfile({
 
               {/* Replying banner indicator */}
               {replyingToComment && (
-                <div className="flex items-center justify-between px-3 py-1.5 bg-[#FF5C00]/10 border border-[#FF5C00]/30 rounded-xl mb-2 text-xs text-[#FF5C00] font-mono">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl mb-2 text-xs text-[#F59E0B] font-mono">
                   <span>Replying to @{replyingToComment.userName}</span>
                   <button type="button" onClick={() => setReplyingToComment(null)} className="hover:text-gray-900">
                     <X className="w-3.5 h-3.5" />
@@ -1416,12 +1334,12 @@ export default function UserProfile({
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
                   placeholder="Add constructive comment..."
-                  className="flex-1 px-3.5 py-2 border rounded-xl text-xs focus:outline-none focus:border-[#FF5C00] bg-gray-100 border-gray-300 text-gray-900"
+                  className="flex-1 px-3.5 py-2 border rounded-xl text-xs focus:outline-none focus:border-[#F59E0B] bg-gray-100 border-gray-300 text-gray-900"
                 />
                 <button
                   type="submit"
                   disabled={!commentInput.trim()}
-                  className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] disabled:opacity-40 text-black font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  className="px-4 py-2 bg-[#F59E0B] hover:bg-[#FF751A] disabled:opacity-40 text-black font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   Send
                 </button>
@@ -1434,12 +1352,12 @@ export default function UserProfile({
       {/* Device OS Settings Guidance Modal */}
       <AnimatePresence>
         {permissionGuidanceModal?.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="w-full max-w-md rounded-3xl p-6 bg-slate-900 border border-white/10 shadow-2xl space-y-4 text-white relative"
+              className="w-full h-full sm:h-auto max-w-none sm:max-w-md max-h-full sm:max-h-[85vh] rounded-none sm:rounded-3xl p-6 bg-slate-900 border border-white/10 shadow-2xl space-y-4 text-white relative overflow-y-auto"
             >
               <button
                 type="button"
@@ -1450,11 +1368,11 @@ export default function UserProfile({
               </button>
 
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
-                  <Shield className="w-5 h-5 text-[#FF5C00]" />
+                <div className="w-10 h-10 rounded-2xl bg-[#F59E0B]/15 border border-[#F59E0B]/30 flex items-center justify-center text-[#F59E0B]">
+                  <Shield className="w-5 h-5 text-[#F59E0B]" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider block">
+                  <span className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider block">
                     OS Permission Management
                   </span>
                   <h3 className="text-base font-bold text-white">
@@ -1477,7 +1395,7 @@ export default function UserProfile({
                     }
                     setPermissionGuidanceModal(null);
                   }}
-                  className="w-full py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
                 >
                   Got It
                 </button>

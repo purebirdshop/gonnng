@@ -55,7 +55,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,92,0,0.15),transparent)]"></div>
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <span className="bg-[#FF5C00] text-black font-mono text-xs uppercase px-2.5 py-1 rounded-full font-bold tracking-wider">
+              <span className="bg-[#F59E0B] text-black font-mono text-xs uppercase px-2.5 py-1 rounded-full font-bold tracking-wider">
                 Tutorial Recipe
               </span>
               <h1 className="text-3xl md:text-4xl font-display font-bold mt-2 tracking-tight uppercase italic">
@@ -66,8 +66,8 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
               </p>
             </div>
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3">
-              <div className="relative w-12 h-12 flex items-center justify-center rounded-full bg-[#FF5C00]/10 border border-[#FF5C00]/20">
-                <span className="text-[#FF5C00] font-mono font-bold text-lg">{totalProgress}%</span>
+              <div className="relative w-12 h-12 flex items-center justify-center rounded-full bg-[#F59E0B]/10 border border-[#F59E0B]/20">
+                <span className="text-[#F59E0B] font-mono font-bold text-lg">{totalProgress}%</span>
               </div>
               <div>
                 <div className="text-xs text-white/40 font-mono">PROJECT COMPLETION</div>
@@ -99,7 +99,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                     </p>
                     <p className="text-white/80 leading-relaxed text-sm font-semibold">
                       To understand Gonnng, we will build a universal masterpiece:
-                      <span className="text-[#FF5C00] block text-lg font-display font-bold mt-1 uppercase italic">The Ultimate BLT Sandwich.</span>
+                      <span className="text-[#F59E0B] block text-lg font-display font-bold mt-1 uppercase italic">The Ultimate BLT Sandwich.</span>
                     </p>
                     <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex gap-3">
                       <HelpCircle className="text-white/40 shrink-0 w-5 h-5 mt-0.5" />
@@ -110,7 +110,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                   </div>
                   
                   <div className="bg-[#0A0A0A] rounded-2xl p-6 border border-white/10 flex flex-col justify-center items-center text-center space-y-4 relative">
-                    <div className="w-20 h-20 bg-[#FF5C00]/15 rounded-full flex items-center justify-center text-3xl border border-[#FF5C00]/20">
+                    <div className="w-20 h-20 bg-[#F59E0B]/15 rounded-full flex items-center justify-center text-3xl border border-[#F59E0B]/20">
                       🥪
                     </div>
                     <div className="space-y-1">
@@ -123,7 +123,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                     <button
                       id="instantiate-recipe-btn"
                       onClick={() => setStep(1)}
-                      className="w-full py-3 px-4 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3 px-4 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                     >
                       Start Recipe <ArrowRight className="w-4 h-4" />
                     </button>
@@ -239,7 +239,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                       onClick={() => setStep(2)}
                       className={`w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                         getPhaseProgress(0) === 100
-                          ? 'bg-[#FF5C00] text-black hover:bg-[#FF751A] font-black shadow-md cursor-pointer'
+                          ? 'bg-[#F59E0B] text-black hover:bg-[#FF751A] font-black shadow-md cursor-pointer'
                           : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                       }`}
                     >
@@ -301,7 +301,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                   <div className="bg-[#0A0A0A] rounded-2xl p-6 border border-white/10 flex flex-col justify-between items-center min-h-[300px]">
                     <div className="text-center">
                       <h3 className="font-display font-semibold text-white text-sm">Active Layer Stack</h3>
-                      <p className="text-xs text-[#FF5C00] font-mono font-bold">Golden Brown Sourdough Toast</p>
+                      <p className="text-xs text-[#F59E0B] font-mono font-bold">Golden Brown Sourdough Toast</p>
                     </div>
 
                     <div className="relative w-48 h-48 flex items-center justify-center">
@@ -333,7 +333,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                       onClick={() => setStep(3)}
                       className={`w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                         getPhaseProgress(1) === 100
-                          ? 'bg-[#FF5C00] text-black hover:bg-[#FF751A] font-black shadow-md cursor-pointer'
+                          ? 'bg-[#F59E0B] text-black hover:bg-[#FF751A] font-black shadow-md cursor-pointer'
                           : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                       }`}
                     >
@@ -414,7 +414,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                       onClick={() => setStep(4)}
                       className={`w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                         getPhaseProgress(2) === 100
-                          ? 'bg-[#FF5C00] text-black hover:bg-[#FF751A] font-black shadow-lg cursor-pointer'
+                          ? 'bg-[#F59E0B] text-black hover:bg-[#FF751A] font-black shadow-lg cursor-pointer'
                           : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                       }`}
                     >
@@ -433,7 +433,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                 className="text-center py-12 px-6 space-y-6"
                 id="tutorial-complete-slide"
               >
-                <div className="inline-flex items-center justify-center w-24 h-24 bg-[#FF5C00]/15 rounded-full text-white shadow-inner border border-[#FF5C00]/20">
+                <div className="inline-flex items-center justify-center w-24 h-24 bg-[#F59E0B]/15 rounded-full text-white shadow-inner border border-[#F59E0B]/20">
                   <span className="text-5xl animate-bounce">🔔</span>
                 </div>
                 
@@ -457,12 +457,12 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                   </div>
                   <div className="bg-[#0A0A0A] p-3 rounded-xl border border-white/10 text-center">
                     <div className="text-xs text-white/40 font-mono uppercase">Gong Awarded</div>
-                    <div className="text-lg font-bold font-display text-[#FF5C00]">+1</div>
+                    <div className="text-lg font-bold font-display text-[#F59E0B]">+1</div>
                   </div>
                 </div>
 
                 <div className="bg-white/5 border border-white/10 text-white/80 rounded-2xl p-4 max-w-lg mx-auto text-xs text-left leading-relaxed">
-                  <strong className="text-[#FF5C00]">The Gonnng Philosophy Checklist:</strong>
+                  <strong className="text-[#F59E0B]">The Gonnng Philosophy Checklist:</strong>
                   <ul className="list-disc list-inside mt-1 space-y-1 text-white/60">
                     <li>You break larger ambitions into discrete segments (Phases).</li>
                     <li>You keep actions binary, short, and achievable (Tasks).</li>
@@ -474,7 +474,7 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                 <button
                   id="start-creating-app-btn"
                   onClick={onCompleteTutorial}
-                  className="px-8 py-4 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 mx-auto text-sm cursor-pointer"
+                  className="px-8 py-4 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 mx-auto text-sm cursor-pointer"
                 >
                   Enter the Creator Sandbox <Play className="w-4 h-4 fill-black" />
                 </button>

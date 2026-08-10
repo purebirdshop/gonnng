@@ -123,7 +123,7 @@ export const SupportPage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search articles (e.g. 'How do I create a Recipe?')"
-            className="w-full bg-white border border-gray-300 shadow-sm rounded-2xl pl-12 pr-4 py-3.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#FF5C00] transition-colors"
+            className="w-full bg-white border border-gray-300 shadow-sm rounded-2xl pl-12 pr-4 py-3.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#F59E0B] transition-colors"
           />
         </div>
       </div>
@@ -139,7 +139,7 @@ export const SupportPage: React.FC = () => {
               onClick={() => setSelectedCategory(cat.name)}
               className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-2 cursor-pointer ${
                 isActive
-                  ? 'bg-[#FF5C00] text-black border-[#FF5C00] font-bold shadow-md shadow-[#FF5C00]/20'
+                  ? 'bg-[#F59E0B] text-black border-[#F59E0B] font-bold shadow-md shadow-[#F59E0B]/20'
                   : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:text-gray-900 shadow-sm'
               }`}
             >
@@ -155,7 +155,7 @@ export const SupportPage: React.FC = () => {
         <h2 className="text-lg font-mono font-bold text-gray-900 uppercase tracking-wider flex items-center justify-between">
           <span>Knowledge Articles ({filteredArticles.length})</span>
           {selectedCategory !== 'All Categories' && (
-            <button onClick={() => setSelectedCategory('All Categories')} className="text-xs text-[#FF5C00] font-sans hover:underline cursor-pointer">
+            <button onClick={() => setSelectedCategory('All Categories')} className="text-xs text-[#F59E0B] font-sans hover:underline cursor-pointer">
               Clear Category Filter
             </button>
           )}
@@ -182,7 +182,7 @@ export const SupportPage: React.FC = () => {
                     className="w-full p-5 text-left flex items-center justify-between gap-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-[10px] font-mono font-bold bg-[#FF5C00]/20 text-[#FF5C00] px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-[10px] font-mono font-bold bg-[#F59E0B]/20 text-[#F59E0B] px-2 py-0.5 rounded-full shrink-0">
                         {art.category}
                       </span>
                       <h3 className="text-sm font-bold text-gray-900 truncate">{art.title}</h3>
@@ -234,7 +234,7 @@ export const SupportPage: React.FC = () => {
       <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8 space-y-6">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-[#FF5C00]" />
+            <MessageSquare className="w-5 h-5 text-[#F59E0B]" />
             <span>Still need help? Submit a Support Ticket</span>
           </h2>
           <p className="text-xs text-gray-600 mt-1">Our customer support team typically responds within 2-4 hours.</p>
@@ -257,7 +257,7 @@ export const SupportPage: React.FC = () => {
                   value={ticketForm.email}
                   onChange={(e) => setTicketForm({ ...ticketForm, email: e.target.value })}
                   placeholder="creator@example.com"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 />
               </div>
 
@@ -266,7 +266,7 @@ export const SupportPage: React.FC = () => {
                 <select
                   value={ticketForm.category}
                   onChange={(e) => setTicketForm({ ...ticketForm, category: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 >
                   <option value="Getting Started">Getting Started</option>
                   <option value="Account Management">Account Management</option>
@@ -281,7 +281,7 @@ export const SupportPage: React.FC = () => {
                 <select
                   value={ticketForm.device}
                   onChange={(e) => setTicketForm({ ...ticketForm, device: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
                 >
                   <option value="Web App">Web Workspace (Desktop)</option>
                   <option value="iOS App">iOS App (iPhone/iPad)</option>
@@ -298,13 +298,13 @@ export const SupportPage: React.FC = () => {
                 value={ticketForm.description}
                 onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })}
                 placeholder="Describe what happened and any steps to reproduce..."
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
               ></textarea>
             </div>
 
             <button
               type="submit"
-              className="bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black px-6 py-3 rounded-xl text-xs font-bold shadow-md shadow-[#FF5C00]/20 flex items-center gap-2 hover:scale-[1.02] transition-all cursor-pointer"
+              className="bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black px-6 py-3 rounded-xl text-xs font-bold shadow-md shadow-[#F59E0B]/20 flex items-center gap-2 hover:scale-[1.02] transition-all cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Submit Ticket</span>
