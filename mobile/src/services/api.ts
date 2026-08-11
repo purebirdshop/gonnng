@@ -2,7 +2,8 @@ import { UserSession, ProjectItem, FeedPost } from '../types';
 
 // Default backend URL pointing to the Gonnng REST API
 // In production, update this to your deployed API domain URL
-let API_BASE_URL = 'https://ais-dev-w7pyuadwxq5gwkpazt2wgu-566264457486.us-west2.run.app';
+// let API_BASE_URL = 'https://ais-dev-w7pyuadwxq5gwkpazt2wgu-566264457486.us-west2.run.app';
+let API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 export const setApiBaseUrl = (url: string) => {
   API_BASE_URL = url.endsWith('/') ? url.slice(0, -1) : url;
@@ -22,6 +23,8 @@ export const mobileApi = {
 
   async login(email: string, password: string): Promise<{ success: boolean; user?: UserSession; error?: string }> {
     try {
+      console.log('API_BASE_URL:', API_BASE_URL);
+
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

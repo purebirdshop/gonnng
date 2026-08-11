@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+logs
+.expo/
+.expo
+.env
+.env.local
+.env.*.local

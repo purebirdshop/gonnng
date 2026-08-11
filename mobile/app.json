@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF5C00"
     },
@@ -17,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        // "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FF5C00"
       },
       "package": "app.gonnng.mobile"
