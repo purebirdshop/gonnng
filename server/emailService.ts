@@ -1,6 +1,6 @@
 import { EmailOptions } from '../src/services/emailService';
 
-const appUrl = process.env.APP_URL || 'http://localhost:3000';
+const appUrl = process.env.APP_URL || process.env.VITE_APP_URL || 'http://localhost:3000';
 
 export interface SendEmailOptions {
   to: string;
