@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getApiUrl } from '../lib/apiConfig';
 import {
   Creator,
   FeedPost,
@@ -1779,7 +1780,7 @@ export const dataService = {
     };
 
     try {
-      const res = await fetch(`/api/messages/${encodeURIComponent(currentUserId)}`);
+      const res = await fetch(getApiUrl(`/api/messages/${encodeURIComponent(currentUserId)}`), { credentials: 'include' });
       if (res.ok) {
         const body = await res.json();
         if (body.success && Array.isArray(body.messages)) {
@@ -1861,9 +1862,10 @@ export const dataService = {
     const cleanedText = String(text || '').trim().slice(0, 1400);
 
     try {
-      const res = await fetch('/api/messages', {
+      const res = await fetch(getApiUrl('/api/messages'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           senderId,
           recipientId,
@@ -1954,9 +1956,10 @@ export const dataService = {
 
   async acceptMessageRequest(currentUserId: string, partnerId: string): Promise<void> {
     try {
-      await fetch('/api/messages/accept', {
+      await fetch(getApiUrl('/api/messages/accept'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ currentUserId, partnerId })
       });
     } catch {
@@ -1990,9 +1993,10 @@ export const dataService = {
 
   async declineMessageRequest(currentUserId: string, partnerId: string): Promise<void> {
     try {
-      await fetch('/api/messages/decline', {
+      await fetch(getApiUrl('/api/messages/decline'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ currentUserId, partnerId })
       });
     } catch {
@@ -2023,9 +2027,10 @@ export const dataService = {
 
   async markDirectMessagesAsRead(currentUserId: string, partnerId: string): Promise<void> {
     try {
-      await fetch('/api/messages/read', {
+      await fetch(getApiUrl('/api/messages/read'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ currentUserId, partnerId })
       });
     } catch {

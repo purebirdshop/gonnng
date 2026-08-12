@@ -401,12 +401,12 @@ export const PostTile: React.FC<PostTileProps> = ({
         </h3>
 
         {/* Description + Feedback split into two columns beneath the title */}
-        <div className="flex items-end justify-between gap-3 w-full pt-0.5">
+        <div className="flex items-start justify-between gap-3 w-full pt-0.5">
           
           {/* Left Column: Description text clamped to 3 lines with an ellipsis */}
           <div 
             onClick={() => onSelectPostDetails && onSelectPostDetails(post)}
-            className="flex-1 min-w-0 space-y-1 cursor-pointer"
+            className="flex-1 min-w-0 space-y-1 cursor-pointer self-start"
           >
             <p className="text-xs sm:text-sm font-sans leading-relaxed line-clamp-3 text-gray-200 whitespace-pre-wrap break-words drop-shadow-sm">
               {post.content}
@@ -426,7 +426,7 @@ export const PostTile: React.FC<PostTileProps> = ({
           </div>
 
           {/* Right Column: Feedback / Comment Cluster (3 reactions + comment count) — No border, no gap */}
-          <div className="shrink-0 flex items-center gap-0 p-1 rounded-2xl bg-[#111827]/70 backdrop-blur-md shadow-xl border-0">
+          <div className="shrink-0 flex items-center gap-0 p-1 rounded-[20px] bg-[#111827]/70 backdrop-blur-md shadow-xl border-0 self-start">
             {/* 1. Perfect — You've got it! (Gonnng Gold primary #F59E0B, bg-transparent unvoted, swap to Shady Crust dark #18181B on gold when voted) */}
             <button
               id={`gong-continue-btn-${post.id}`}
@@ -435,7 +435,8 @@ export const PostTile: React.FC<PostTileProps> = ({
                 e.stopPropagation();
                 onUpdatePostGong(post.id, 'continue');
               }}
-              className={`flex flex-col items-center justify-center min-w-[36px] sm:min-w-[40px] px-2 py-1 rounded-xl transition-all cursor-pointer m-0 border-0 ${
+              style={{ width: '40px', height: '40px', borderRadius: '17.18px' }}
+              className={`flex flex-col items-center justify-center shrink-0 w-[40px] h-[40px] rounded-[17.18px] transition-all cursor-pointer m-0 border-0 ${
                 post.gongs?.userVoted === 'continue'
                   ? 'bg-[#F59E0B] text-[#18181B] font-black shadow-md scale-105'
                   : 'bg-transparent text-[#F59E0B] hover:bg-[#F59E0B]/15'
@@ -456,7 +457,8 @@ export const PostTile: React.FC<PostTileProps> = ({
                 e.stopPropagation();
                 onUpdatePostGong(post.id, 'refine');
               }}
-              className={`flex flex-col items-center justify-center min-w-[36px] sm:min-w-[40px] px-2 py-1 rounded-xl transition-all cursor-pointer m-0 border-0 ${
+              style={{ width: '40px', height: '40px', borderRadius: '17.18px' }}
+              className={`flex flex-col items-center justify-center shrink-0 w-[40px] h-[40px] rounded-[17.18px] transition-all cursor-pointer m-0 border-0 ${
                 post.gongs?.userVoted === 'refine'
                   ? 'bg-[#99F6E4] text-[#18181B] font-black shadow-md scale-105'
                   : 'bg-transparent text-[#99F6E4] hover:bg-[#99F6E4]/15'
@@ -477,7 +479,8 @@ export const PostTile: React.FC<PostTileProps> = ({
                 e.stopPropagation();
                 onUpdatePostGong(post.id, 'reconsider');
               }}
-              className={`flex flex-col items-center justify-center min-w-[36px] sm:min-w-[40px] px-2 py-1 rounded-xl transition-all cursor-pointer m-0 border-0 ${
+              style={{ width: '40px', height: '40px', borderRadius: '17.18px' }}
+              className={`flex flex-col items-center justify-center shrink-0 w-[40px] h-[40px] rounded-[17.18px] transition-all cursor-pointer m-0 border-0 ${
                 post.gongs?.userVoted === 'reconsider'
                   ? 'bg-[#FF9A84] text-[#18181B] font-black shadow-md scale-105'
                   : 'bg-transparent text-[#FF9A84] hover:bg-[#FF9A84]/15'
@@ -498,7 +501,8 @@ export const PostTile: React.FC<PostTileProps> = ({
                 e.stopPropagation();
                 onOpenComments(post);
               }}
-              className="flex flex-col items-center justify-center min-w-[36px] sm:min-w-[40px] px-2 py-1 rounded-xl transition-all cursor-pointer m-0 border-0 bg-transparent text-[#FFFDF2] hover:bg-[#FFFDF2] hover:text-[#18181B] active:bg-[#FFFDF2] active:text-[#18181B] shadow-none"
+              style={{ width: '40px', height: '40px', borderRadius: '17.18px' }}
+              className="flex flex-col items-center justify-center shrink-0 w-[40px] h-[40px] rounded-[17.18px] transition-all cursor-pointer m-0 border-0 bg-transparent text-[#FFFDF2] hover:bg-[#FFFDF2] hover:text-[#18181B] active:bg-[#FFFDF2] active:text-[#18181B] shadow-none"
               title="View & add comments"
             >
               <MessageSquare className="w-3.5 h-3.5 shrink-0" />

@@ -210,8 +210,9 @@ export default function App() {
 
     const root = parts[0];
 
-    if (['download', 'support', 'contact', 'privacy', 'terms', 'login'].includes(root)) {
-      return { viewMode: 'website', websiteTab: root, activeTab: 'profile' };
+    if (['features', 'download', 'support', 'contact', 'privacy', 'terms', 'login'].includes(root)) {
+      const tab = root === 'download' ? 'features' : root;
+      return { viewMode: 'website', websiteTab: tab, activeTab: 'profile' };
     }
 
     if (root === 'circle') {
@@ -325,7 +326,8 @@ export default function App() {
     } else {
       switch (webTab) {
         case 'home': return '/';
-        case 'download': return '/download';
+        case 'features': return '/features';
+        case 'download': return '/features';
         case 'support': return '/support';
         case 'contact': return '/contact';
         case 'privacy': return '/privacy';
@@ -423,7 +425,7 @@ export default function App() {
     if (viewMode === 'website') {
       trackAnalyticsEvent('Page View', { page: websiteTab });
       if (websiteTab === 'home') trackAnalyticsEvent('Landing Page Visit');
-      if (websiteTab === 'download') trackAnalyticsEvent('Download Page Visit');
+      if (websiteTab === 'features' || websiteTab === 'download') trackAnalyticsEvent('Features Page Visit');
       if (websiteTab === 'login') trackAnalyticsEvent('Account Creation Click');
     }
   }, [viewMode, websiteTab, trackAnalyticsEvent]);
@@ -1636,7 +1638,7 @@ export default function App() {
           {websiteTab === 'home' && (
             <HomePage onNavigate={handleNavigateWebsite} onOpenWorkspace={handleOpenWorkspace} recipes={recipes} />
           )}
-          {websiteTab === 'download' && (
+          {(websiteTab === 'features' || websiteTab === 'download') && (
             <DownloadPage onOpenWorkspace={handleOpenWorkspace} />
           )}
           {websiteTab === 'support' && (
@@ -1706,33 +1708,24 @@ export default function App() {
           
           {/* Logo Brand Area */}
           <div 
-            onClick={() => handleTabChange(activeTab)}
+            onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              document.getElementById('profile-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+              const feedContainer = document.getElementById('feed-root')?.querySelector('.overflow-y-scroll');
+              if (feedContainer) {
+                feedContainer.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
             className="flex items-center cursor-pointer group shrink-0"
-            title="Click to return to top"
+            title="Get things done, and be noisy about it!"
           >
             {/* Mobile & Tablet Layout Logo (Gonnng G Icon) */}
-            <div 
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowTutorial(true);
-                localStorage.removeItem('gonnng_tutorial_done');
-              }}
-              className="lg:hidden flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform"
-              title="Click to reset tutorial"
-            >
+            <div className="lg:hidden flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform">
               <GonnngGIcon className="w-8 h-8 text-[#F59E0B]" />
             </div>
 
             {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
-            <div 
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowTutorial(true);
-                localStorage.removeItem('gonnng_tutorial_done');
-              }}
-              className="hidden lg:flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform"
-              title="Click to reset tutorial"
-            >
+            <div className="hidden lg:flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform">
               <GonnngGLogo />
             </div>
           </div>

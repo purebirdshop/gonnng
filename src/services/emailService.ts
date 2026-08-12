@@ -1,3 +1,5 @@
+import { getApiUrl } from '../lib/apiConfig';
+
 /**
  * Email Service integrated with Resend (https://resend.com)
  * Handles transactional and authentication emails for Gonnng.
@@ -21,12 +23,13 @@ export const emailService = {
    */
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; id?: string; error?: string }> {
     try {
-      const response = await fetch('/api/email/send', {
+      const response = await fetch(getApiUrl('/api/email/send'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(options),
       });
 

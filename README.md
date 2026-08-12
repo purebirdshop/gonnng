@@ -143,6 +143,57 @@ For full QA specifications and test case matrices, see `/quality/README.md` and 
 
 ---
 
+## 📱 Native Mobile App Integration (Capacitor for iOS & Android)
+
+Gonnng uses **Capacitor** to wrap the web application in a native iOS and Android shell with native device API integration.
+
+### 1. Capacitor Prerequisites
+Ensure you have the required native platform developer tools installed on your computer:
+- **iOS**: macOS with Xcode 15+ and CocoaPods installed.
+- **Android**: Android Studio with Android SDK (API 33+).
+
+### 2. Capacitor Commands & Scripts
+The following npm scripts manage mobile builds:
+
+```bash
+# 1. Build the web dist assets and sync them into iOS & Android projects
+npm run cap:build
+
+# 2. Sync web assets and plugins to native platforms
+npm run cap:sync
+
+# 3. Open iOS project in Xcode
+npm run cap:open:ios
+
+# 4. Open Android project in Android Studio
+npm run cap:open:android
+```
+
+### 3. Adding Platforms (First-Time Setup)
+If adding iOS or Android native projects for the first time on a new machine:
+
+```bash
+# Add iOS platform folder
+npx cap add ios
+
+# Add Android platform folder
+npx cap add android
+
+# Copy web build & sync native dependencies
+npx cap sync
+```
+
+### 4. Configuration & Native Plugins
+- **Config File**: `/capacitor.config.json` sets `appId` (`com.gonnng.app`), `appName` (`Gonnng`), dark status bar, and keyboard behavior.
+- **Installed Native Plugins**:
+  - `@capacitor/core`: Native runtime bridge.
+  - `@capacitor/status-bar`: Configures dark/light system status bars.
+  - `@capacitor/keyboard`: Handles keyboard resize and focus styling.
+  - `@capacitor/haptics`: Tactile vibration feedback for buttons and Gong celebrations.
+  - `@capacitor/app`: App lifecycle, hardware back button handling, and deep links.
+
+---
+
 ## 📁 Directory Structure
 
 ```text

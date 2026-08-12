@@ -210,7 +210,7 @@ export async function ensureAuthColumnsExist(): Promise<void> {
     if (error) {
       console.warn('⚠️ Supabase users table query warning:', error.message);
     } else {
-      console.log('✅ Supabase connected & users table verified.');
+      console.log('📀 Supabase connected & users table verified.');
     }
   } catch (err) {
     console.error('Error verifying database connection:', err);

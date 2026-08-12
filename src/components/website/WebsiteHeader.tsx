@@ -23,8 +23,12 @@ export const WebsiteHeader: React.FC<WebsiteHeaderProps> = ({
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 relative">
         {/* Brand Logo */}
         <button 
-          onClick={() => onNavigate('home')} 
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (currentTab !== 'home') onNavigate('home');
+          }} 
           className="flex items-center group text-left focus:outline-none cursor-pointer"
+          title="Get things done, and be noisy about it!"
         >
           {/* Mobile & Tablet Layout Logo (Gonnng G Icon) */}
           <div className="lg:hidden flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -50,14 +54,14 @@ export const WebsiteHeader: React.FC<WebsiteHeaderProps> = ({
             Home
           </button>
           <button
-            onClick={() => onNavigate('download')}
+            onClick={() => onNavigate('features')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-              currentTab === 'download'
+              currentTab === 'features' || currentTab === 'download'
                 ? 'bg-[#F59E0B] text-black font-bold shadow-md'
                 : 'text-gray-700 hover:text-gray-900 hover:bg-gray-200/80'
             }`}
           >
-            Web App
+            Features
           </button>
           <button
             onClick={() => onNavigate('support')}
@@ -129,10 +133,10 @@ export const WebsiteHeader: React.FC<WebsiteHeaderProps> = ({
           Home
         </button>
         <button 
-          onClick={() => onNavigate('download')} 
-          className={`px-2 py-1 cursor-pointer ${currentTab === 'download' ? 'text-[#F59E0B] font-bold' : ''}`}
+          onClick={() => onNavigate('features')} 
+          className={`px-2 py-1 cursor-pointer ${currentTab === 'features' || currentTab === 'download' ? 'text-[#F59E0B] font-bold' : ''}`}
         >
-          Download
+          Features
         </button>
         <button 
           onClick={() => onNavigate('support')} 

@@ -93,8 +93,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenWorkspace,
               </span>
             </h1>
 
-            <div className="text-base sm:text-lg text-gray-700 leading-relaxed font-sans max-w-2xl flex flex-wrap items-center gap-y-2 pt-2">
-              <span className="text-lg sm:text-xl font-black uppercase tracking-wider text-gray-900 mr-2">I WANT TO</span>
+            <div className="text-base sm:text-lg text-gray-700 leading-relaxed font-sans max-w-2xl flex flex-col sm:flex-row sm:items-center items-start gap-1.5 sm:gap-2 pt-2">
+              <span className="text-lg sm:text-xl font-black uppercase tracking-wider text-gray-900 sm:mr-2">I WANT TO</span>
               <span className="inline-flex items-center overflow-hidden py-1 align-middle relative">
                 <AnimatePresence mode="wait">
                   <motion.span
@@ -324,7 +324,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenWorkspace,
               Launch Web App
             </button>
             <button
-              onClick={() => onNavigate('download')}
+              onClick={() => onNavigate('features')}
               className="bg-white text-gray-900 border border-gray-300 px-6 py-3.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all cursor-pointer shadow-sm"
             >
               Explore Web Features

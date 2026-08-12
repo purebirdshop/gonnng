@@ -2,6 +2,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { authService, UserSession } from './authService';
 import { MediaType, PostMediaRow } from '../types';
+import { getApiUrl } from '../lib/apiConfig';
 
 export interface UploadedMediaResult {
   id: string;
@@ -223,8 +224,9 @@ export const uploadService = {
       formData.append('bucket', storageBucket);
       formData.append('path', storagePath);
 
-      const res = await fetch('/api/storage/upload', {
+      const res = await fetch(getApiUrl('/api/storage/upload'), {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 
@@ -353,8 +355,9 @@ export const uploadService = {
       formData.append('bucket', storageBucket);
       formData.append('path', storagePath);
 
-      const res = await fetch('/api/storage/upload', {
+      const res = await fetch(getApiUrl('/api/storage/upload'), {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 

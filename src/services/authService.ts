@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { getApiUrl } from '../lib/apiConfig';
 
 export interface UserSession {
   id: string; // Internal System ID
@@ -41,8 +42,9 @@ export const authService = {
   // Verify server session cookie on app initialization
   async checkServerSession(): Promise<UserSession | null> {
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Accept': 'application/json' }
+      const res = await fetch(getApiUrl('/api/auth/me'), {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'include'
       });
       if (res.ok) {
         const data = await parseJsonResponse(res);
@@ -63,9 +65,10 @@ export const authService = {
   // Login user with email and password via backend API
   async login(email: string, pass: string, rememberMe = true): Promise<{ success: boolean; user?: UserSession; error?: string }> {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password: pass, rememberMe })
       });
 
@@ -98,9 +101,10 @@ export const authService = {
   async checkUsernameAvailability(username: string): Promise<boolean> {
     if (!username || !username.trim()) return false;
     try {
-      const res = await fetch('/api/auth/check-username', {
+      const res = await fetch(getApiUrl('/api/auth/check-username'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ username: username.trim() })
       });
       if (res.ok) {
@@ -117,9 +121,10 @@ export const authService = {
   async checkEmailAvailability(email: string): Promise<boolean> {
     if (!email || !email.trim()) return false;
     try {
-      const res = await fetch('/api/auth/check-email', {
+      const res = await fetch(getApiUrl('/api/auth/check-email'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: email.trim() })
       });
       if (res.ok) {
@@ -143,9 +148,10 @@ export const authService = {
     rememberMe = true
   ): Promise<{ success: boolean; user?: UserSession; error?: string }> {
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(getApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, email, password: pass, username, about, interests, rememberMe })
       });
 
@@ -174,9 +180,10 @@ export const authService = {
   // Request password reset email via Resend
   async forgotPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch(getApiUrl('/api/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email })
       });
 
@@ -195,9 +202,10 @@ export const authService = {
   // Reset password with token
   async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch(getApiUrl('/api/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ token, newPassword })
       });
 
@@ -224,7 +232,7 @@ export const authService = {
   async logout(): Promise<void> {
     localStorage.removeItem(AUTH_KEY);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch(getApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
     } catch (err) {
       console.warn('Logout network notice:', err);
     }
