@@ -24,8 +24,19 @@ async function parseJsonResponse(res: Response): Promise<any> {
   try {
     return JSON.parse(text);
   } catch {
-    console.error('Received non-JSON response from server:', text.slice(0, 200));
-    throw new Error(`Server returned non-JSON response (${res.status}).`);
+    // Gracefully handle non-JSON / HTML error pages (e.g. 403 Forbidden or 404 HTML from proxies)
+    if (!res.ok) {
+      return {
+        success: false,
+        authenticated: false,
+        error: res.status === 403
+          ? 'Access denied: You are not authorized to access this resource.'
+          : res.status === 404
+          ? 'API endpoint not found.'
+          : `Server error (${res.status}).`
+      };
+    }
+    return { success: false, error: `Invalid response format from server (${res.status}).` };
   }
 }
 

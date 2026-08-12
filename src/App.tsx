@@ -85,6 +85,15 @@ const DEFAULT_USER: Creator = {
   followingCount: 0
 };
 
+export const isRestrictedPath = (pathname: string): boolean => {
+  if (!pathname) return false;
+  const path = pathname.toLowerCase().replace(/\/$/, '') || '/';
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length === 0) return false;
+  const root = parts[0];
+  return root === 'process' || root === 'updates' || root === 'circle' || root === 'library' || root === 'sand';
+};
+
 export default function App() {
   // Global States loaded from LocalStorage if present
   const [recipes, setRecipes] = useState<Recipe[]>(() => {
@@ -338,12 +347,20 @@ export default function App() {
     }
   };
 
-  const initialRoute = parsePath(window.location.pathname);
+  const initialSession = authService.getCurrentSession();
+  const rawInitialPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isInitialRestricted = isRestrictedPath(rawInitialPath) && !initialSession;
+
+  if (isInitialRestricted && typeof window !== 'undefined') {
+    window.history.replaceState({}, '', '/login');
+  }
+
+  const initialRoute = parsePath(isInitialRestricted ? '/login' : rawInitialPath);
 
   // Local UI controller states
   const [viewMode, setViewMode] = useState<'website' | 'workspace'>(initialRoute.viewMode);
   const [websiteTab, setWebsiteTab] = useState<string>(initialRoute.websiteTab);
-  const [authSession, setAuthSession] = useState<UserSession | null>(() => authService.getCurrentSession());
+  const [authSession, setAuthSession] = useState<UserSession | null>(initialSession);
 
   // Cookie Consent Infrastructure
   const {
@@ -365,6 +382,15 @@ export default function App() {
     authService.checkServerSession().then((user) => {
       if (user) {
         setAuthSession(user);
+      } else {
+        setAuthSession(null);
+        if (typeof window !== 'undefined' && isRestrictedPath(window.location.pathname)) {
+          if (window.location.pathname !== '/login') {
+            window.history.replaceState({}, '', '/login');
+          }
+          setViewMode('website');
+          setWebsiteTab('login');
+        }
       }
     });
   }, []);
@@ -634,13 +660,9 @@ export default function App() {
     },
     push: boolean = true
   ) => {
-    const targetViewMode = newViewMode ?? viewMode;
-    const targetWebsiteTab = newWebsiteTab ?? websiteTab;
-    const targetActiveTab = newActiveTab ?? activeTab;
-
-    setViewMode(targetViewMode);
-    if (newWebsiteTab !== undefined) setWebsiteTab(targetWebsiteTab);
-    if (newActiveTab !== undefined) setActiveTab(targetActiveTab);
+    let targetViewMode = newViewMode ?? viewMode;
+    let targetWebsiteTab = newWebsiteTab ?? websiteTab;
+    let targetActiveTab = newActiveTab ?? activeTab;
 
     const effUpdatesCat = subState?.updatesCategory !== undefined ? subState.updatesCategory : updatesCategory;
     const effUpdatesUser = subState?.updatesChatUser !== undefined ? subState.updatesChatUser : updatesChatUser;
@@ -649,7 +671,7 @@ export default function App() {
     const effPostId = subState?.postId !== undefined ? subState.postId : (homeSuperimposedPostId || profileSuperimposedPostId);
     const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : selectedRecipeModal?.id;
 
-    const targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab, {
+    let targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab, {
       updatesCategory: effUpdatesCat,
       updatesChatUser: effUpdatesUser,
       processTab: effProcessTab,
@@ -658,6 +680,17 @@ export default function App() {
       recipeId: effRecipeId
     });
 
+    const currentSession = authSession || authService.getCurrentSession();
+    if (!currentSession && isRestrictedPath(targetPath)) {
+      targetViewMode = 'website';
+      targetWebsiteTab = 'login';
+      targetPath = '/login';
+    }
+
+    setViewMode(targetViewMode);
+    if (newWebsiteTab !== undefined || targetPath === '/login') setWebsiteTab(targetWebsiteTab);
+    if (newActiveTab !== undefined) setActiveTab(targetActiveTab);
+
     if (push && typeof window !== 'undefined' && window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
@@ -665,7 +698,19 @@ export default function App() {
 
   useEffect(() => {
     const syncFromRoute = () => {
-      const route = parsePath(window.location.pathname);
+      const currentPath = window.location.pathname;
+      const currentSession = authSession || authService.getCurrentSession();
+
+      if (!currentSession && isRestrictedPath(currentPath)) {
+        if (currentPath !== '/login') {
+          window.history.replaceState({}, '', '/login');
+        }
+        setViewMode('website');
+        setWebsiteTab('login');
+        return;
+      }
+
+      const route = parsePath(currentPath);
       setViewMode(route.viewMode);
       setWebsiteTab(route.websiteTab);
       setActiveTab(route.activeTab);
@@ -721,7 +766,7 @@ export default function App() {
 
     window.addEventListener('popstate', syncFromRoute);
     return () => window.removeEventListener('popstate', syncFromRoute);
-  }, [creators, currentUser, recipes]);
+  }, [authSession, creators, currentUser, recipes]);
 
   const handleLoginSuccess = (user: UserSession) => {
     setAuthSession(user);
