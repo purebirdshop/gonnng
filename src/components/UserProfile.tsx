@@ -454,6 +454,9 @@ export default function UserProfile({
           </div>
 
           <div className="flex items-center gap-2 border px-3 py-2 rounded-xl bg-gray-50 border-gray-200 text-gray-700">
+            <span className="text-[10px] font-mono">
+              Default
+            </span>
             <Shield className="w-3.5 h-3.5 text-[#F59E0B]" />
             <span className="text-[10px] font-mono uppercase">
               <strong className="text-[#F59E0B] font-sans">{privacy}</strong>

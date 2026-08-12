@@ -712,13 +712,6 @@ export default function UpdatesView({
 
                 {/* 4. DIRECT CONVERSATIONS (ORDERED BY MOST RECENT ACTIVITY) */}
                 <div className="pt-4 border-t border-gray-200 space-y-3">
-                  <div className="flex items-center justify-between pb-1">
-                    <h4 className="text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 text-gray-500">
-                      <MessageSquare className="w-3.5 h-3.5 text-[#F59E0B]" /> Direct Conversations
-                    </h4>
-                    <span className="text-[10px] font-mono text-gray-400">{sortedThreads.length} Active</span>
-                  </div>
-
                   {sortedThreads.length > 0 ? (
                     sortedThreads.map(thread => {
                       const lastMsg = thread.messages[thread.messages.length - 1];
