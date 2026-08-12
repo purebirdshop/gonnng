@@ -7,7 +7,7 @@
     },
     {
       "source": "/media/:path*",
-      "destination":"/media/:path*"
+      "destination":"https://zhzoermudtvrzawfqxpe.storage.supabase.co/storage/v1/object/public/media/:path*"
     },
     {
       "source": "/(.*)",
