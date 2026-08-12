@@ -7,11 +7,11 @@
     },
     {
       "source": "/media/:userId/avatar/:filename",
-      "destination": "https://<your-project-ref>.supabase.co/storage/v1/object/public/Gonnng/:userId/avatar/:filename"
+      "destination": "https://zhzoermudtvrzawfqxpe.supabase.co/storage/v1/object/public/Gonnng/:userId/avatar/:filename"
     },
     {
       "source": "/media/:path*",
-      "destination": "https://<your-project-ref>.supabase.co/storage/v1/object/public/post-media/:path*"
+      "destination": "https://zhzoermudtvrzawfqxpe.supabase.co/storage/v1/object/public/post-media/:path*"
     },
     {
       "source": "/(.*)",
