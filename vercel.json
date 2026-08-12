@@ -6,6 +6,10 @@
       "destination": "/api/index"
     },
     {
+      "source": "/media/:path*",
+      "destination":"/media/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
