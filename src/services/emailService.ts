@@ -33,11 +33,16 @@ export const emailService = {
         body: JSON.stringify(options),
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
       if (response.ok && data?.success) {
         return { success: true, id: data.id };
       }
-      return { success: false, error: data?.error || 'Email transmission error' };
+      return { success: false, error: data?.error || (response.status === 403 ? 'Access denied (403 Forbidden)' : 'Email transmission error') };
     } catch (err: any) {
       console.warn('[Email Service Proxy Warning]:', err);
       // Return optimistic response so user workflow continues uninterrupted
