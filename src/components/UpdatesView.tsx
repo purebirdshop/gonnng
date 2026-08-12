@@ -1,38 +1,27 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
+import { resolveImageUrl } from '../lib/apiConfig';
 import { dataService } from '../services/dataService';
 import { isFollowingUser, isUserInCircle } from '../utils/followUtils';
 import { 
   Bell, 
   UserPlus, 
   Info, 
-  MessageSquare, 
   ArrowLeft, 
   ChevronRight, 
   ChevronDown,
   ChevronUp,
   ChevronLeft,
   Send, 
-  Check, 
-  CheckCheck, 
-  Sparkles, 
   Disc3, 
   Pencil, 
   Octagon, 
-  ShieldCheck, 
   UserCheck, 
-  MessageCircle,
-  ShieldAlert,
-  Lock,
-  Clock,
-  ExternalLink,
   Link,
   ArrowUpRight,
   Bookmark,
-  GitFork,
-  User,
-  X
+  GitFork
 } from 'lucide-react';
 
 function resolveCreatorAvatar(
@@ -45,7 +34,7 @@ function resolveCreatorAvatar(
   const isRealAvatar = (url?: string) => Boolean(url && url.trim() !== '' && !url.includes('ui-avatars.com'));
 
   if (isRealAvatar(explicitUrl)) {
-    return explicitUrl!.trim();
+    return resolveImageUrl(explicitUrl!.trim());
   }
 
   const cleanName = name?.trim().toLowerCase();
@@ -56,7 +45,7 @@ function resolveCreatorAvatar(
       (cleanName && currentUser.name?.trim().toLowerCase() === cleanName) ||
       (cleanName && currentUser.username?.trim().toLowerCase() === cleanName);
     if (isUserMatch && isRealAvatar(currentUser.avatarUrl)) {
-      return currentUser.avatarUrl!.trim();
+      return resolveImageUrl(currentUser.avatarUrl!.trim());
     }
   }
 
@@ -67,12 +56,12 @@ function resolveCreatorAvatar(
       (cleanName && c.username?.trim().toLowerCase() === cleanName)
     );
     if (match && isRealAvatar(match.avatarUrl)) {
-      return match.avatarUrl!.trim();
+      return resolveImageUrl(match.avatarUrl!.trim());
     }
   }
 
   if (explicitUrl && explicitUrl.trim() !== '') {
-    return explicitUrl.trim();
+    return resolveImageUrl(explicitUrl.trim());
   }
 
   const displayName = name || 'User';

@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { getApiUrl } from '../lib/apiConfig';
+import { getApiUrl, resolveImageUrl } from '../lib/apiConfig';
 import {
   Creator,
   FeedPost,
