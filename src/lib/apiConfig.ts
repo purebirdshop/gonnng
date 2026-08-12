@@ -1,12 +1,5 @@
 /// <reference types="vite/client" />
 
-/**
- * Returns the fully qualified API URL for backend endpoint requests.
- * When running inside a native Capacitor shell (iOS/Android), relative requests
- * like `/api/auth/login` resolve to `capacitor://localhost/api/auth/login` which hits
- * the local webview static bundle instead of the remote server.
- * This helper resolves those endpoints to the actual backend server (e.g. https://gonnng.com/api/auth/login).
- */
 export function getApiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
@@ -25,4 +18,17 @@ export function getApiUrl(path: string): string {
   }
 
   return cleanPath;
+}
+
+/**
+ * Resolves an image/media URL (avatar, post media, recipe cover, etc.) to an absolute URL
+ * when running on native Capacitor or when a relative path is provided.
+ */
+export function resolveImageUrl(url: string | undefined | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  return getApiUrl(trimmed);
 }

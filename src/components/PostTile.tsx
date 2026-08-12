@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react';
 import { FeedPost, Creator } from '../types';
+import { resolveImageUrl } from '../lib/apiConfig';
 
 export interface PostTileProps {
   post: FeedPost;
@@ -101,11 +102,13 @@ export const PostTile: React.FC<PostTileProps> = ({
   };
 
   const getUserAvatar = (userId?: string, fallbackAvatar?: string) => {
+    let url = '';
     if (userId) {
       const found = allCreators.find(c => c.id === userId || c.name === userId);
-      if (found && found.avatarUrl) return found.avatarUrl;
+      if (found && found.avatarUrl) url = found.avatarUrl;
     }
-    return fallbackAvatar || '';
+    if (!url) url = fallbackAvatar || '';
+    return resolveImageUrl(url);
   };
 
   const isUserFollowed = (userId?: string, fallbackName?: string) => {
@@ -117,12 +120,14 @@ export const PostTile: React.FC<PostTileProps> = ({
   };
 
   const postImages = React.useMemo(() => {
-    if (post.images && post.images.length > 0) return post.images;
-    if (post.media && post.media.length > 0) {
-      return post.media.map(m => m.resolvedUrl || m.previewUrl || '').filter(Boolean);
-    }
-    if (post.image) return [post.image];
-    return ['https://images.unsplash.com/photo-1612178537253-bccd437b730e?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'];
+    let list: string[] = [];
+    if (post.images && post.images.length > 0) list = post.images;
+    else if (post.media && post.media.length > 0) {
+      list = post.media.map(m => m.resolvedUrl || m.previewUrl || '').filter(Boolean);
+    } else if (post.image) list = [post.image];
+    else list = ['https://images.unsplash.com/photo-1612178537253-bccd437b730e?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'];
+
+    return list.map(url => resolveImageUrl(url));
   }, [post]);
 
   const displayImage = postImages[currentImgIndex] || postImages[0];

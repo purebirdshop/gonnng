@@ -2,7 +2,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { authService, UserSession } from './authService';
 import { MediaType, PostMediaRow } from '../types';
-import { getApiUrl } from '../lib/apiConfig';
+import { getApiUrl, resolveImageUrl } from '../lib/apiConfig';
 
 export interface UploadedMediaResult {
   id: string;
@@ -124,7 +124,7 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
     relativePath = relativePath.substring(6).replace(/^\/+/, '');
   }
 
-  return `${mediaBase}/${relativePath}`;
+  return resolveImageUrl(`${mediaBase}/${relativePath}`);
 };
 
 export const uploadService = {
