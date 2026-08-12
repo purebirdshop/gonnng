@@ -16,6 +16,29 @@ import miscRoutes from './routes/misc.js';
 export async function createApp(): Promise<Express> {
   const app = express();
 
+  // --- CORS MIDDLEWARE FOR NATIVE MOBILE (CAPACITOR) & CROSS-ORIGIN FETCH ---
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+
+    // Dynamically echo allowed origin (required for credentials: 'include')
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie');
+
+    // Instantly answer CORS preflight OPTIONS requests with 200 OK
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    next();
+  });
+
   app.use(express.json());
   app.use(cookieParser(SESSION_SECRET));
 
