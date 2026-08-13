@@ -1,62 +1,10 @@
-# ##############################################################################
-# NODE.JS BOILERPLATE .GITIGNORE
-# ##############################################################################
-
-# Dependencies
 node_modules/
-jspm_packages/
-web_modules/
-
-# Build and Output Directories
-dist/
 build/
-out/
-.next/
-.nuxt/
-.docusaurus/
-.cache/
-
-# Debug and Logs
-# Logs can grow large and contain sensitive system paths
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# Environment Variables & Secrets
-# NEVER commit these to version control to prevent security leaks
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.pem
-
-# Diagnostic Reports and Coverage
+dist/
 coverage/
-.nyc_output/
-*.pid
-*.seed
-*.pid.lock
-
-# TypeScript Artifacts
-# Uncomment if you want to ignore build info but keep the TS config
-# *.tsbuildinfo
-
-# Optional: Lockfiles
-# Keep these if you want consistent builds across team environments
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
-
-# ##############################################################################
-# SYSTEM AND IDE ARTIFACTS (Optional but recommended)
-# ##############################################################################
-
-# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
+*.log
+.env*
+!.env.example
+logs
+ios

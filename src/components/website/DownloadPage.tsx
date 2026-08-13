@@ -10,7 +10,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
     <div className="max-w-7xl mx-auto px-4 lg:px-8 py-12 space-y-16 text-gray-900">
       {/* HEADER */}
       <div className="text-center space-y-4 max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 bg-[#FF5C00]/10 border border-[#FF5C00]/30 px-3 py-1 rounded-full text-xs font-mono font-bold text-[#FF5C00]">
+        <div className="inline-flex items-center gap-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 px-3 py-1 rounded-full text-xs font-mono font-bold text-[#F59E0B]">
           <Globe className="w-3.5 h-3.5" />
           <span>Web App First Platform</span>
         </div>
@@ -25,13 +25,13 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
       {/* PLATFORM SELECTION */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* DESKTOP WEB CARD */}
-        <div className="bg-orange-50/50 border border-[#FF5C00]/40 rounded-2xl p-6 space-y-6 flex flex-col justify-between shadow-md">
+        <div className="bg-orange-50/50 border border-[#F59E0B]/40 rounded-2xl p-6 space-y-6 flex flex-col justify-between shadow-md">
           <div className="space-y-4">
-            <div className="w-12 h-12 rounded-xl bg-[#FF5C00]/20 text-[#FF5C00] flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-[#F59E0B]/20 text-[#F59E0B] flex items-center justify-center">
               <Monitor className="w-6 h-6" />
             </div>
             <div>
-              <div className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FF5C00] text-black mb-1">
+              <div className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#F59E0B] text-black mb-1">
                 AVAILABLE NOW
               </div>
               <h3 className="text-xl font-bold text-gray-900">Desktop Browser</h3>
@@ -56,7 +56,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
           <div className="space-y-2 pt-4 border-t border-gray-200">
             <button
               onClick={onOpenWorkspace}
-              className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#FF5C00]/25 hover:scale-105 transition-all cursor-pointer"
+              className="w-full bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#F59E0B]/25 hover:scale-105 transition-all cursor-pointer"
             >
               <span>Launch Web Workspace</span>
               <ArrowRight className="w-4 h-4" />
@@ -66,7 +66,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
         </div>
 
         {/* MOBILE WEB CARD */}
-        <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-6 space-y-6 flex flex-col justify-between hover:border-[#FF5C00]/50 transition-colors">
+        <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-6 space-y-6 flex flex-col justify-between hover:border-[#F59E0B]/50 transition-colors">
           <div className="space-y-4">
             <div className="w-12 h-12 rounded-xl bg-gray-100 text-gray-900 flex items-center justify-center">
               <Smartphone className="w-6 h-6" />
@@ -100,7 +100,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
               className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-gray-300 shadow-sm"
             >
               <span>Open on Mobile Browser</span>
-              <ArrowRight className="w-4 h-4 text-[#FF5C00]" />
+              <ArrowRight className="w-4 h-4 text-[#F59E0B]" />
             </button>
             <span className="block text-[10px] text-center text-gray-500 font-mono">Works on iOS & Android Safari/Chrome</span>
           </div>
@@ -147,7 +147,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
       {/* QUICK START GUIDE */}
       <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8 space-y-6">
         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-[#FF5C00]" />
+          <HelpCircle className="w-5 h-5 text-[#F59E0B]" />
           <span>Getting Started with the Web App</span>
         </h3>
 
@@ -174,21 +174,21 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ onOpenWorkspace }) =
         </div>
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-white/70 font-mono">
           <div>
-            <span className="block text-white/40 text-[10px]">WEB APP VERSION</span>
-            <span className="font-bold text-white">2.4.0 Live</span>
+            <span className="block text-white/40 text-[10px]">WEB APP</span>
+            <span className="font-bold text-white">V 2.4.0 Live</span>
           </div>
           <div>
-            <span className="block text-white/40 text-[10px]">ACCESSIBILITY</span>
-            <span className="font-bold text-white">Desktop, Tablet & Mobile</span>
+            <span className="block text-white/40 text-[10px]">AVAILABILITY</span>
+            <span className="font-bold text-white">Desktop, Tablet & Mobile, your choice!</span>
           </div>
           <div>
-            <span className="block text-white/40 text-[10px]">NATIVE APPS</span>
-            <span className="font-bold text-purple-400">Planned for Later</span>
+            <span className="block text-white/40 text-[10px]">NATIVE MOBILE APP</span>
+            <span className="font-bold text-purple-400">Coming soon...</span>
           </div>
-          <div>
-            <span className="block text-white/40 text-[10px]">SECURITY</span>
-            <span className="font-bold text-emerald-400">TLS 1.3 Encrypted</span>
-          </div>
+          // <div>
+          //   <span className="block text-white/40 text-[10px]">SECURITY</span>
+          //   <span className="font-bold text-emerald-400">TLS 1.3 Encrypted</span>
+          // </div>
         </div>
       </div>
     </div>

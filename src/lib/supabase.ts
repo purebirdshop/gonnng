@@ -9,10 +9,10 @@ function normalizeDataUrl(url?: string): string {
   return cleaned;
 }
 
-const rawDataUrl = process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL;
+const rawDataUrl = process.env.SUPABASE_DATA_URL || process.env.SUPABASE_URL || (import.meta.env ? import.meta.env.VITE_SUPABASE_URL : '') || '';
 const supabaseUrl = normalizeDataUrl(rawDataUrl);
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const enableSupabase = import.meta.env.VITE_ENABLE_SUPABASE !== 'false';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || (import.meta.env ? import.meta.env.VITE_SUPABASE_ANON_KEY : '') || '';
+const enableSupabase = process.env.VITE_ENABLE_SUPABASE !== 'false' && (import.meta.env ? import.meta.env.VITE_ENABLE_SUPABASE !== 'false' : true);
 
 export const isSupabaseConfigured = (): boolean => {
   return enableSupabase && Boolean(supabaseUrl) && Boolean(supabaseAnonKey);

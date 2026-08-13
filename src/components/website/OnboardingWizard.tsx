@@ -34,7 +34,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
     <div className="max-w-2xl mx-auto px-4 py-12 space-y-8 text-gray-900">
       {/* PROGRESS STEPPER */}
       <div className="flex items-center justify-between text-xs font-mono text-gray-500 border-b border-gray-200 pb-4">
-        <span className="flex items-center gap-1.5 text-[#FF5C00] font-bold">
+        <span className="flex items-center gap-1.5 text-[#F59E0B] font-bold">
           <Sparkles className="w-4 h-4" />
           <span>Creator Onboarding Setup</span>
         </span>
@@ -61,13 +61,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
                   onClick={() => setSelectedType(type.id)}
                   className={`p-4 rounded-2xl border text-left transition-all space-y-2 cursor-pointer ${
                     isSelected
-                      ? 'bg-orange-50 border-[#FF5C00] text-gray-900 shadow-sm'
+                      ? 'bg-orange-50 border-[#F59E0B] text-gray-900 shadow-sm'
                       : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 shadow-sm'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <Icon className={`w-5 h-5 ${isSelected ? 'text-[#FF5C00]' : 'text-gray-400'}`} />
-                    {isSelected && <Check className="w-4 h-4 text-[#FF5C00]" />}
+                    <Icon className={`w-5 h-5 ${isSelected ? 'text-[#F59E0B]' : 'text-gray-400'}`} />
+                    {isSelected && <Check className="w-4 h-4 text-[#F59E0B]" />}
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-gray-900">{type.label}</h3>
@@ -80,7 +80,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
 
           <button
             onClick={() => setStep(2)}
-            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3.5 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+            className="w-full bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black py-3.5 rounded-xl text-xs font-bold shadow-lg shadow-[#F59E0B]/20 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
           >
             <span>Continue to Goals</span>
             <ArrowRight className="w-4 h-4" />
@@ -105,7 +105,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
               value={mainGoal}
               onChange={(e) => setMainGoal(e.target.value)}
               placeholder="e.g. Paint 3 oil landscapes / Complete Sourdough Batch #5 / Launch portfolio"
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#FF5C00]"
+              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#F59E0B]"
             />
           </div>
 
@@ -118,7 +118,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
             </button>
             <button
               onClick={() => setStep(3)}
-              className="bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#FF5C00]/20 flex items-center justify-center gap-2 cursor-pointer"
+              className="bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black py-3 rounded-xl text-xs font-bold shadow-lg shadow-[#F59E0B]/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Next: Pick Blueprint</span>
               <ArrowRight className="w-4 h-4" />
@@ -142,7 +142,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
               onClick={() => setSelectedRecipe('recipe-sandwich')}
               className={`p-4 rounded-2xl border cursor-pointer transition-all ${
                 selectedRecipe === 'recipe-sandwich' 
-                  ? 'bg-orange-50 border-[#FF5C00] text-gray-900 shadow-sm' 
+                  ? 'bg-orange-50 border-[#F59E0B] text-gray-900 shadow-sm' 
                   : 'bg-white border-gray-200 text-gray-700 shadow-sm hover:bg-gray-50'
               }`}
             >
@@ -154,7 +154,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
               onClick={() => setSelectedRecipe('recipe-paint')}
               className={`p-4 rounded-2xl border cursor-pointer transition-all ${
                 selectedRecipe === 'recipe-paint' 
-                  ? 'bg-orange-50 border-[#FF5C00] text-gray-900 shadow-sm' 
+                  ? 'bg-orange-50 border-[#F59E0B] text-gray-900 shadow-sm' 
                   : 'bg-white border-gray-200 text-gray-700 shadow-sm hover:bg-gray-50'
               }`}
             >
@@ -165,7 +165,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
 
           <button
             onClick={handleFinish}
-            className="w-full bg-gradient-to-r from-[#FF5C00] to-[#FF8000] text-black py-3.5 rounded-xl text-xs font-bold shadow-xl shadow-[#FF5C00]/25 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
+            className="w-full bg-gradient-to-r from-[#F59E0B] to-[#FF8000] text-black py-3.5 rounded-xl text-xs font-bold shadow-xl shadow-[#F59E0B]/25 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Launch My Gonnng Workspace</span>

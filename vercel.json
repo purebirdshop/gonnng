@@ -1,0 +1,21 @@
+{
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/media/:userId/avatar/:filename",
+      "destination": "https://zhzoermudtvrzawfqxpe.supabase.co/storage/v1/object/public/Gonnng/:userId/avatar/:filename"
+    },
+    {
+      "source": "/media/:path*",
+      "destination": "https://zhzoermudtvrzawfqxpe.supabase.co/storage/v1/object/public/post-media/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

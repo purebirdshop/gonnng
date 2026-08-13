@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Recipe, Creator, FeedPost } from '../types';
+import { Recipe, Creator, FeedPost, Project } from '../types';
 import { 
   X, 
   Search, 
@@ -11,12 +11,18 @@ import {
   Users, 
   ShieldCheck, 
   BookmarkCheck,
-  Hash,
   BookOpen,
   FolderKanban,
-  PrinterCheck
+  PrinterCheck,
+  User,
+  Bookmark
 } from 'lucide-react';
 import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
+import RecipeDetailModal from './RecipeDetailModal';
+import { ProcessTile } from './SandEngine';
+import { searchCategories, getCategoryColor } from '../data/categoriesData';
+import { isUserInCircle } from '../utils/followUtils';
+import { IconOnlySubButton, IconWithLabelButton } from './DesignSystemTiles';
 
 interface SearchRecipesModalProps {
   onClose: () => void;
@@ -24,10 +30,19 @@ interface SearchRecipesModalProps {
   creators: Creator[];
   communityRecipes: Recipe[];
   posts?: FeedPost[];
+  projects?: Project[];
+  savedRecipeIds?: string[];
+  currentUser?: { id?: string; name?: string; avatarUrl?: string; avatar?: string };
   onSaveRecipe: (recipe: Recipe) => void;
   onForkRecipe: (recipe: Recipe) => void;
+  onToggleSaveRecipe?: (recipeId: string, recipeObj?: Recipe) => void;
   onToggleFollowCreator: (creatorId: string) => void;
   onToggleCircleCreator: (creatorId: string) => void;
+  onOpenCreatorProfile?: (creatorIdOrName: string) => void;
+  onSelectProject?: (project: Project) => void;
+  onEditProject?: (project: Project) => void;
+  onDeleteProject?: (projectId: string) => void;
+  initialCategory?: string;
 }
 
 export default function SearchRecipesModal({
@@ -36,19 +51,38 @@ export default function SearchRecipesModal({
   creators,
   communityRecipes,
   posts = [],
+  projects = [],
+  savedRecipeIds = [],
+  currentUser,
   onSaveRecipe,
   onForkRecipe,
+  onToggleSaveRecipe,
   onToggleFollowCreator,
   onToggleCircleCreator,
+  onOpenCreatorProfile,
+  onSelectProject,
+  onEditProject,
+  onDeleteProject,
+  initialCategory = 'All',
 }: SearchRecipesModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedCreator, setSelectedCreator] = useState<Creator | null>(null);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printableItem, setPrintableItem] = useState<PrintableItem | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedPreviewRecipe, setSelectedPreviewRecipe] = useState<Recipe | null>(null);
+  const [unbookmarkRecipeTarget, setUnbookmarkRecipeTarget] = useState<{ id: string; title: string } | null>(null);
 
-  const categories = ['All', 'Users', 'Hashtags', 'Recipes', 'Projects'];
+  React.useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  const categories = ['All', 'Users', 'Recipes', 'Projects'];
 
   const q = searchQuery.toLowerCase().trim();
 
@@ -62,16 +96,61 @@ export default function SearchRecipesModal({
     );
   });
 
-  // Filter Recipes
+  // Filter & Sort Recipes Alphabetically according to visibility rules:
+  // - Public: created by any user and marked public (or default)
+  // - Internal: created by users in my circle and marked internal
+  // - Private: ONLY visible to authenticated user who created it
+  const matchedCategoryNames = q ? searchCategories(q).map(m => m.category.name.toLowerCase()) : [];
+
   const filteredRecipes = communityRecipes.filter(recipe => {
+    const isAuthor = Boolean(
+      recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
+    );
+
+    const vis = (recipe.visibility as string) || 'public';
+
+    if (vis === 'private' && !isAuthor) {
+      return false;
+    }
+
+    if (vis === 'internal' && !isAuthor) {
+      const creator = creators.find(c => c.id === recipe.authorId || c.name.toLowerCase() === recipe.authorName?.toLowerCase());
+      const inCircle = creator
+        ? creator.isInCircle || (currentUser && isUserInCircle(currentUser as any, creator.id, creators))
+        : false;
+      if (!inCircle) return false;
+    }
+
     if (!q) return true;
+    const catLower = (recipe.category || '').toLowerCase();
+    const isCategoryMatch = catLower.includes(q) || matchedCategoryNames.includes(catLower);
+
     return (
       recipe.title.toLowerCase().includes(q) ||
       recipe.description.toLowerCase().includes(q) ||
       recipe.authorName.toLowerCase().includes(q) ||
-      recipe.tags.some(t => t.toLowerCase().includes(q))
+      isCategoryMatch ||
+      (recipe.tags || []).some(t => t.toLowerCase().includes(q))
     );
-  });
+  }).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+
+  // Filter Projects
+  const filteredProjects = projects.filter(project => {
+    if (!q) return true;
+    const catLower = (project.category || '').toLowerCase();
+    const recipeTitleLower = (project.recipeTitle || '').toLowerCase();
+    const titleLower = project.title.toLowerCase();
+
+    return (
+      titleLower.includes(q) ||
+      catLower.includes(q) ||
+      recipeTitleLower.includes(q) ||
+      (project.phases || []).some(ph =>
+        ph.title.toLowerCase().includes(q) ||
+        (ph.tasks || []).some(t => t.title.toLowerCase().includes(q))
+      )
+    );
+  }).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 
   // Filter Posts / Projects
   const filteredPosts = posts.filter(post => {
@@ -85,27 +164,21 @@ export default function SearchRecipesModal({
     );
   });
 
-  // Filter Hashtags
-  const hashtagPosts = posts.filter(p => {
-    if (!p.hashtags) return false;
-    const hstr = Array.isArray(p.hashtags) ? p.hashtags.join(' ') : p.hashtags;
-    if (!q) return hstr.length > 0;
-    return hstr.toLowerCase().includes(q.replace('#', ''));
-  });
-
-  const isAlreadySaved = (recipeTitle: string) => {
-    return recipes.some(r => r.title.toLowerCase() === recipeTitle.toLowerCase());
+  const isRecipeSavedInLib = (recipe: Recipe) => {
+    return (savedRecipeIds || []).includes(recipe.id);
   };
 
-  const handleSave = (recipe: Recipe) => {
-    if (isAlreadySaved(recipe.title)) {
-      setSuccessMessage(`"${recipe.title}" is already in your library.`);
+  const handleToggleBookmark = (recipe: Recipe) => {
+    const isSaved = isRecipeSavedInLib(recipe);
+    if (isSaved) {
+      setUnbookmarkRecipeTarget({ id: recipe.id, title: recipe.title });
+    } else {
+      if (onToggleSaveRecipe) {
+        onToggleSaveRecipe(recipe.id, recipe);
+      }
+      setSuccessMessage(`Saved "${recipe.title}" to your library!`);
       setTimeout(() => setSuccessMessage(null), 3000);
-      return;
     }
-    onSaveRecipe(recipe);
-    setSuccessMessage(`Successfully saved "${recipe.title}" to your library!`);
-    setTimeout(() => setSuccessMessage(null), 3500);
   };
 
   const handleFork = (recipe: Recipe) => {
@@ -113,54 +186,43 @@ export default function SearchRecipesModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="search-modal-root">
-      <div className="rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl border max-h-[90vh] flex flex-col bg-white text-gray-900 border-gray-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto bg-gray-900/40 backdrop-blur-sm" id="search-modal-root">
+      <div className="rounded-none sm:rounded-3xl w-full h-full sm:h-auto max-w-none sm:max-w-4xl overflow-hidden shadow-2xl border max-h-full sm:max-h-[90vh] flex flex-col bg-white text-gray-900 border-gray-200">
         
-        {/* Modal Header */}
-        <div className="p-5 flex justify-between items-center shrink-0 border-b bg-gray-50 border-gray-200">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#FF5C00] flex items-center justify-center text-black">
-              <Search className="w-4 h-4 font-black" />
+        {/* Modal Header in Deep Teal Light */}
+        <div className="p-4 sm:p-5 flex flex-col gap-3 shrink-0 border-b border-[#0D9488]/20 bg-[#99F6E4] text-gray-900">
+          {/* Top Row: Search Input + Close Button */}
+          <div className="flex items-center gap-3 w-full">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-3 w-4 h-4 text-[#0D9488]" />
+              <input
+                type="text"
+                id="search-recipes-query"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#0D9488]/30 rounded-xl text-xs sm:text-sm focus:outline-none focus:border-[#115E59] focus:ring-1 focus:ring-[#115E59] text-gray-900 placeholder-gray-500 shadow-sm"
+                placeholder="Search by user, recipe title, project, tag (#creative, #recipe)..."
+              />
             </div>
-            <div>
-              <h2 className="text-base font-display font-bold">Search Circle & Community</h2>
-              <p className="text-[10px] text-white/40 font-mono">Search users, recipes, project posts, and hashtags.</p>
-            </div>
-          </div>
-          <button 
-            id="close-search-btn"
-            onClick={onClose} 
-            className="p-1.5 hover:bg-white/5 rounded-xl transition-all cursor-pointer"
-          >
-            <X className="w-5 h-5 text-white/60 hover:text-white" />
-          </button>
-        </div>
-
-        {/* Search Input & Category Option Buttons */}
-        <div className="bg-black/30 p-4 shrink-0 border-b border-white/10 space-y-3">
-          <div className="relative w-full">
-            <Search className="absolute left-3.5 top-3 w-4 h-4 text-white/30" />
-            <input
-              type="text"
-              id="search-recipes-query"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-xl text-xs focus:outline-none focus:border-[#FF5C00] text-white placeholder-white/20"
-              placeholder="Search by user, recipe title, project, tag (#creative, #recipe)..."
+            <IconOnlySubButton
+              id="close-search-btn"
+              icon={X}
+              onClick={onClose}
+              title="Close Search Modal"
             />
           </div>
-          
-          {/* Options below the search text box */}
-          <div className="flex gap-2 overflow-x-auto pb-1">
+
+          {/* Options Row: All, Users, Recipes, Projects */}
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
             {categories.map(cat => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer shrink-0 border ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer shrink-0 border ${
                   selectedCategory === cat 
-                    ? 'bg-[#FF5C00] text-black border-[#FF5C00] shadow-sm font-black' 
-                    : 'bg-white/5 text-white/60 border-white/10 hover:text-white hover:bg-white/10'
+                    ? 'bg-[#115E59] text-white hover:text-white border-[#115E59] shadow-sm font-black' 
+                    : 'bg-white/70 text-[#115E59] border-[#0D9488]/20 hover:bg-white hover:text-gray-900'
                 }`}
               >
                 {cat}
@@ -184,7 +246,7 @@ export default function SearchRecipesModal({
             {/* 1. USERS SECTION */}
             {(selectedCategory === 'All' || selectedCategory === 'Users') && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#FF5C00] uppercase">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#F59E0B] uppercase">
                   <Users className="w-4 h-4" /> Users & Network ({filteredCreators.length})
                 </div>
                 {filteredCreators.length > 0 ? (
@@ -196,16 +258,22 @@ export default function SearchRecipesModal({
                         onClick={() => setSelectedCreator(creator)}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <img 
-                            src={creator.avatarUrl && creator.avatarUrl.trim() !== '' ? creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} 
-                            alt={creator.name} 
-                            className="w-10 h-10 rounded-full object-cover border border-white/20 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
+                          {creator.avatarUrl && creator.avatarUrl.trim() !== '' ? (
+                            <img 
+                              src={creator.avatarUrl.trim()} 
+                              alt={creator.name} 
+                              className="w-10 h-10 rounded-full object-cover border border-white/20 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
+                              <User className="w-5 h-5 text-white/70" />
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <h4 className="text-xs font-bold text-white truncate flex items-center gap-1">
                               {creator.name}
-                              {creator.isInCircle && <ShieldCheck className="w-3 h-3 text-[#FF5C00]" />}
+                              {creator.isInCircle && <ShieldCheck className="w-3 h-3 text-[#F59E0B]" />}
                             </h4>
                             <p className="text-[10px] font-mono text-white/40 truncate">{creator.email}</p>
                           </div>
@@ -217,7 +285,7 @@ export default function SearchRecipesModal({
                             onToggleFollowCreator(creator.id);
                           }}
                           className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all shrink-0 ${
-                            creator.isFollowing ? 'bg-white/10 text-white' : 'bg-[#FF5C00] text-black font-black'
+                            creator.isFollowing ? 'bg-white/10 text-white' : 'bg-[#F59E0B] text-black font-black'
                           }`}
                         >
                           {creator.isFollowing ? 'Following' : 'Follow'}
@@ -238,109 +306,64 @@ export default function SearchRecipesModal({
             {/* 2. RECIPES SECTION */}
             {(selectedCategory === 'All' || selectedCategory === 'Recipes') && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#FF5C00] uppercase">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#F59E0B] uppercase">
                   <BookOpen className="w-4 h-4" /> Recipes & Blueprints ({filteredRecipes.length})
                 </div>
                 {filteredRecipes.length > 0 ? (
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredRecipes.map(recipe => {
-                      const creator = creators.find(c => c.id === recipe.authorId);
-                      const saved = isAlreadySaved(recipe.title);
-                      
+                      const isSaved = isRecipeSavedInLib(recipe);
+                      const isAuthor = Boolean(
+                        recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
+                      );
+
                       return (
-                        <div 
-                          key={recipe.id} 
-                          className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all flex flex-col justify-between"
-                        >
-                          <div className="space-y-2.5">
-                            <div className="flex justify-between items-start">
-                              <span className="bg-white/10 text-white/60 font-mono text-[9px] uppercase px-1.5 py-0.5 rounded">
-                                {recipe.category}
-                              </span>
-                              
-                              <button
-                                onClick={() => {
-                                  if (creator) setSelectedCreator(creator);
-                                }}
-                                className="text-[10px] text-[#FF5C00] hover:underline font-mono"
-                              >
-                                @{recipe.authorName.split(' ')[0].toLowerCase()}
-                              </button>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <h4 className="text-xs font-bold text-white">{recipe.title}</h4>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setPrintableItem({
-                                      id: recipe.id,
-                                      type: 'recipe',
-                                      title: recipe.title,
-                                      description: recipe.description,
-                                      authorName: recipe.authorName,
-                                      category: recipe.category,
-                                      phases: recipe.phases,
-                                      tags: recipe.tags,
-                                      gongsCount: recipe.gongsCount,
-                                    });
-                                    setPrintModalOpen(true);
-                                  }}
-                                  className="p-1 bg-white/5 hover:bg-[#FF5C00] text-white/70 hover:text-black rounded-md transition-all cursor-pointer flex items-center justify-center border border-white/10 shrink-0"
-                                  title="Printable Copy"
-                                >
-                                  <PrinterCheck className="w-3.5 h-3.5 stroke-[2]" />
-                                </button>
-                              </div>
-                              <p className="text-xs text-white/50 line-clamp-2 leading-relaxed">{recipe.description}</p>
-                            </div>
-
-                            <div className="flex gap-1 pt-1 flex-wrap">
-                              {recipe.tags.map(tag => (
-                                <span key={tag} className="text-[8px] font-mono bg-white/5 text-white/40 px-1.5 py-0.5 rounded-full border border-white/10">
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="border-t border-white/5 pt-3 mt-3 flex gap-2">
-                            <button
-                              onClick={() => handleSave(recipe)}
-                              disabled={saved}
-                              className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                                saved 
-                                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
-                                  : 'bg-white/10 hover:bg-[#FF5C00] hover:text-black text-white'
-                              }`}
-                            >
-                              {saved ? (
-                                <>
-                                  <Check className="w-3 h-3" /> Saved
-                                </>
-                              ) : (
-                                <>
-                                  <Download className="w-3 h-3" /> Save
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              onClick={() => handleFork(recipe)}
-                              className="py-1.5 px-3 bg-[#FF5C00]/10 hover:bg-[#FF5C00]/20 border border-[#FF5C00]/25 text-[#FF5C00] rounded-xl text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                              title="Fork template"
-                            >
-                              <GitFork className="w-3 h-3" /> Fork
-                            </button>
-                          </div>
-                        </div>
+                        <ProcessTile
+                          key={recipe.id}
+                          type="recipe"
+                          id={recipe.id}
+                          title={recipe.title}
+                          category={recipe.category}
+                          authorName={recipe.authorName}
+                          authorId={recipe.authorId}
+                          phases={recipe.phases || []}
+                          description={recipe.description}
+                          forkedFrom={recipe.forkedFrom}
+                          tags={recipe.tags || []}
+                          isSaved={isSaved}
+                          isAuthor={isAuthor}
+                          onClickTile={() => setSelectedPreviewRecipe(recipe)}
+                          onOpenCreatorProfile={onOpenCreatorProfile}
+                          onToggleSaveRecipe={() => handleToggleBookmark(recipe)}
+                          onExploreRecipe={() => setSelectedPreviewRecipe(recipe)}
+                          onForkRecipe={() => handleFork(recipe)}
+                          onStartRecipe={() => {
+                            if (onSaveRecipe && !isSaved) {
+                              onSaveRecipe(recipe);
+                            }
+                            setSelectedPreviewRecipe(recipe);
+                          }}
+                          onPrint={() => {
+                            setPrintableItem({
+                              id: recipe.id,
+                              type: 'recipe',
+                              title: recipe.title,
+                              description: recipe.description,
+                              authorName: recipe.authorName,
+                              category: recipe.category,
+                              phases: recipe.phases,
+                              tags: recipe.tags,
+                              gongsCount: recipe.gongsCount,
+                            });
+                            setPrintModalOpen(true);
+                          }}
+                        />
                       );
                     })}
                   </div>
                 ) : (
-                  selectedCategory === 'Recipes' && (
-                    <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-xs text-white/40">
+                  (selectedCategory === 'Recipes' || selectedCategory === 'All') && (
+                    <div className="text-center py-8 border border-dashed border-gray-300 rounded-2xl text-xs text-gray-500 font-mono">
                       No recipes found matching query.
                     </div>
                   )
@@ -350,106 +373,131 @@ export default function SearchRecipesModal({
 
             {/* 3. PROJECTS SECTION */}
             {(selectedCategory === 'All' || selectedCategory === 'Projects') && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#FF5C00] uppercase">
-                  <FolderKanban className="w-4 h-4" /> Projects & Posts ({filteredPosts.length})
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#F59E0B] uppercase">
+                  <FolderKanban className="w-4 h-4" /> Projects ({filteredProjects.length})
                 </div>
-                {filteredPosts.length > 0 ? (
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {filteredPosts.map(post => (
-                      <div 
-                        key={post.id} 
-                        className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all flex flex-col justify-between"
-                      >
-                        <div className="space-y-2">
-                          {post.image && (
-                            <img 
-                              src={post.image} 
-                              alt={post.title} 
-                              className="w-full h-28 object-cover rounded-xl border border-white/10" 
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-                          <h4 className="text-xs font-bold text-white line-clamp-1">{post.title}</h4>
-                          <p className="text-[11px] text-white/60 line-clamp-2 leading-relaxed">{post.content}</p>
-                          <div className="flex items-center justify-between text-[10px] font-mono text-white/40 pt-1">
-                            <span>By {post.userName}</span>
-                            <span>{post.timeString}</span>
-                          </div>
-                        </div>
-                      </div>
+                {filteredProjects.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredProjects.map(project => (
+                      <ProcessTile
+                        key={project.id}
+                        type="project"
+                        id={project.id}
+                        title={project.title}
+                        category={project.category}
+                        recipeTitle={project.recipeTitle}
+                        createdAt={project.createdAt}
+                        phases={project.phases || []}
+                        isCompleted={project.isCompleted}
+                        onClickTile={() => {
+                          if (onSelectProject) {
+                            onSelectProject(project);
+                            onClose();
+                          }
+                        }}
+                        onEditProject={() => {
+                          if (onEditProject) {
+                            onEditProject(project);
+                            onClose();
+                          }
+                        }}
+                        onDeleteProject={() => {
+                          if (onDeleteProject) {
+                            onDeleteProject(project.id);
+                          }
+                        }}
+                        onPrint={() => {
+                          setPrintableItem({
+                            id: project.id,
+                            type: 'project',
+                            title: project.title,
+                            category: project.category,
+                            phases: project.phases as any,
+                          });
+                          setPrintModalOpen(true);
+                        }}
+                      />
                     ))}
                   </div>
                 ) : (
-                  selectedCategory === 'Projects' && (
-                    <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-xs text-white/40">
-                      No project posts found matching query.
+                  selectedCategory === 'Projects' && filteredPosts.length === 0 && (
+                    <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-xs text-white/40 font-mono">
+                      No projects found matching query.
                     </div>
                   )
+                )}
+
+                {/* Secondary: Community Posts & Updates matching query */}
+                {filteredPosts.length > 0 && (
+                  <div className="pt-2 space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-white/40 uppercase pt-2 border-t border-white/10">
+                      Community Posts & Updates ({filteredPosts.length})
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filteredPosts.map(post => (
+                        <div 
+                          key={post.id} 
+                          className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all flex flex-col justify-between"
+                        >
+                          <div className="space-y-2">
+                            {post.image && (
+                              <img 
+                                src={post.image} 
+                                alt={post.title} 
+                                className="w-full h-28 object-cover rounded-xl border border-white/10" 
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                            <h4 className="text-xs font-bold text-white line-clamp-1">{post.title}</h4>
+                            <p className="text-[11px] text-white/60 line-clamp-2 leading-relaxed">{post.content}</p>
+                            <div className="flex items-center justify-between text-[10px] font-mono text-white/40 pt-1">
+                              <span>By {post.userName}</span>
+                              <span>{post.timeString}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
 
-            {/* 4. HASHTAGS SECTION */}
-            {(selectedCategory === 'Hashtags') && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#FF5C00] uppercase">
-                  <Hash className="w-4 h-4" /> Hashtag Items ({hashtagPosts.length})
-                </div>
-                {hashtagPosts.length > 0 ? (
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {hashtagPosts.map(post => (
-                      <div 
-                        key={post.id} 
-                        className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all space-y-2"
-                      >
-                        <div className="flex items-center justify-between text-[#FF5C00] font-mono text-xs font-bold">
-                          <span>
-                            {Array.isArray(post.hashtags) 
-                              ? post.hashtags.map(t => t.startsWith('#') ? t : `#${t}`).join(' ')
-                              : post.hashtags}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-white">{post.title}</h4>
-                        <p className="text-xs text-white/60 line-clamp-2">{post.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-xs text-white/40">
-                    No posts or recipes found matching hashtags.
-                  </div>
-                )}
-              </div>
-            )}
+            {/* End of Search Results */}
 
           </div>
 
           {/* Right Column: Dynamic Creator Profile Overlay Panel */}
           {selectedCreator && (
             <div className="w-full lg:w-80 bg-black/60 border border-white/10 rounded-2xl p-6 space-y-6 shrink-0 h-fit">
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-center">
                 <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest font-bold">Creator Profile</span>
-                <button 
+                <IconOnlySubButton
+                  icon={X}
                   onClick={() => setSelectedCreator(null)}
-                  className="text-white/40 hover:text-white text-xs font-mono cursor-pointer"
-                >
-                  ✕ Close
-                </button>
+                  title="Close Preview"
+                />
               </div>
 
               <div className="text-center space-y-3">
-                <img 
-                  src={selectedCreator.avatarUrl && selectedCreator.avatarUrl.trim() !== '' ? selectedCreator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'} 
-                  alt={selectedCreator.name} 
-                  className="w-16 h-16 rounded-full object-cover mx-auto border-2 border-[#FF5C00]/40 shadow-md"
-                  referrerPolicy="no-referrer"
-                />
+                {selectedCreator.avatarUrl && selectedCreator.avatarUrl.trim() !== '' ? (
+                  <img 
+                    src={selectedCreator.avatarUrl.trim()} 
+                    alt={selectedCreator.name} 
+                    className="w-16 h-16 rounded-full object-cover mx-auto border-2 border-[#F59E0B]/40 shadow-md"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mx-auto border-2 border-[#F59E0B]/40 shadow-md">
+                    <User className="w-8 h-8 text-white/70" />
+                  </div>
+                )}
                 <div>
                   <h3 className="text-base font-bold text-white flex justify-center items-center gap-1.5">
                     {selectedCreator.name}
                     {selectedCreator.isInCircle && (
-                      <ShieldCheck className="w-4 h-4 text-[#FF5C00]" title="In your network circle" />
+                      <ShieldCheck className="w-4 h-4 text-[#F59E0B]" title="In your network circle" />
                     )}
                   </h3>
                   <p className="text-[10px] font-mono text-white/40">{selectedCreator.email}</p>
@@ -458,7 +506,7 @@ export default function SearchRecipesModal({
 
               <div className="grid grid-cols-2 gap-2 text-center border-y border-white/5 py-3">
                 <div>
-                  <div className="text-base font-bold font-mono text-[#FF5C00]">{selectedCreator.followersCount}</div>
+                  <div className="text-base font-bold font-mono text-[#F59E0B]">{selectedCreator.followersCount}</div>
                   <div className="text-[9px] font-mono text-white/40 uppercase">Followers</div>
                 </div>
                 <div>
@@ -470,45 +518,36 @@ export default function SearchRecipesModal({
               <div className="space-y-3">
                 <div className="space-y-1">
                   <h5 className="text-[10px] font-mono text-white/40 uppercase font-bold">Creator Bio</h5>
-                  <p className="text-xs text-white/80 font-sans leading-relaxed">{selectedCreator.bio}</p>
+                  <p className="text-xs text-white/80 font-sans leading-relaxed">
+                    {selectedCreator.bio && selectedCreator.bio.trim() !== '' ? selectedCreator.bio : ""}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <h5 className="text-[10px] font-mono text-white/40 uppercase font-bold">Focus Goals</h5>
-                  <p className="text-xs text-white/70 font-mono leading-relaxed">{selectedCreator.goals}</p>
+                  <p className="text-xs text-white/70 font-mono leading-relaxed">
+                    {selectedCreator.goals && selectedCreator.goals.trim() !== '' ? selectedCreator.goals : ""}
+                  </p>
                 </div>
               </div>
 
               <div className="space-y-2 pt-2">
-                <button
+                <IconWithLabelButton
+                  variant={selectedCreator.isFollowing ? "sub" : "primary"}
+                  icon={selectedCreator.isFollowing ? UserMinus : UserPlus}
+                  label={selectedCreator.isFollowing ? "UNFOLLOW" : "FOLLOW CREATOR"}
                   onClick={() => onToggleFollowCreator(selectedCreator.id)}
-                  className={`w-full py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    selectedCreator.isFollowing 
-                      ? 'bg-white/10 hover:bg-red-500 hover:text-white text-white border border-white/10' 
-                      : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black'
-                  }`}
-                >
-                  {selectedCreator.isFollowing ? (
-                    <>
-                      <UserMinus className="w-4 h-4" /> Unfollow
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-4 h-4" /> Follow Creator
-                    </>
-                  )}
-                </button>
+                  title="Toggle Follow Creator"
+                  className="w-full"
+                />
 
-                <button
+                <IconWithLabelButton
+                  variant="sub"
+                  icon={Users}
+                  label={selectedCreator.isInCircle ? "REMOVE FROM CIRCLE" : "INVITE TO CIRCLE"}
                   onClick={() => onToggleCircleCreator(selectedCreator.id)}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    selectedCreator.isInCircle 
-                      ? 'bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/30' 
-                      : 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
-                  }`}
-                >
-                  <Users className="w-4 h-4" />
-                  {selectedCreator.isInCircle ? 'Remove from Circle' : 'Invite to Circle'}
-                </button>
+                  title="Toggle Network Circle"
+                  className="w-full"
+                />
               </div>
             </div>
           )}
@@ -527,6 +566,89 @@ export default function SearchRecipesModal({
         onClose={() => setPrintModalOpen(false)}
         item={printableItem}
       />
+
+      {selectedPreviewRecipe && (
+        <RecipeDetailModal
+          recipe={selectedPreviewRecipe}
+          onClose={() => setSelectedPreviewRecipe(null)}
+          onStartRecipe={(rec) => {
+            onSaveRecipe(rec);
+            onClose();
+          }}
+          onForkRecipe={(rec) => {
+            onForkRecipe(rec);
+            onClose();
+          }}
+          onToggleSaveRecipe={(recId) => handleToggleBookmark(selectedPreviewRecipe)}
+          onOpenCreatorProfile={(id) => {
+            setSelectedPreviewRecipe(null);
+            onClose();
+            if (onOpenCreatorProfile) onOpenCreatorProfile(id);
+          }}
+          onPrintRecipe={(rec) => {
+            setPrintableItem({
+              id: rec.id,
+              type: 'recipe',
+              title: rec.title,
+              description: rec.description,
+              authorName: rec.authorName,
+              category: rec.category,
+              phases: rec.phases,
+              tags: rec.tags,
+              gongsCount: rec.gongsCount,
+            });
+            setPrintModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* Unbookmark Confirmation Modal */}
+      {unbookmarkRecipeTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#18181b] border border-white/15 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-white">
+            <div className="flex items-center gap-3 text-amber-500">
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                <Bookmark className="w-5 h-5 text-[#F59E0B]" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Remove Recipe from Library?</h3>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">Unbookmark Confirmation</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-300 leading-relaxed font-sans">
+              Are you sure you want to remove <strong className="text-white">"{unbookmarkRecipeTarget.title}"</strong> from your saved library?
+            </p>
+
+            <div className="flex justify-end items-center gap-2.5 pt-2 border-t border-white/10">
+              <button
+                type="button"
+                id="cancel-unbookmark-btn"
+                onClick={() => setUnbookmarkRecipeTarget(null)}
+                className="px-4 py-2 text-xs font-mono font-semibold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-unbookmark-btn"
+                onClick={() => {
+                  const targetId = unbookmarkRecipeTarget.id;
+                  if (onToggleSaveRecipe) {
+                    onToggleSaveRecipe(targetId);
+                  }
+                  setSuccessMessage(`Removed "${unbookmarkRecipeTarget.title}" from your saved library.`);
+                  setTimeout(() => setSuccessMessage(null), 3000);
+                  setUnbookmarkRecipeTarget(null);
+                }}
+                className="px-4 py-2 text-xs font-mono font-bold text-black bg-[#F59E0B] hover:bg-[#FF751A] rounded-xl transition-all cursor-pointer shadow-md"
+              >
+                Confirm Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

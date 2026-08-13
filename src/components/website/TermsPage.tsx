@@ -17,7 +17,7 @@ export const TermsPage: React.FC = () => {
       <div className="space-y-8 text-xs sm:text-sm leading-relaxed font-sans">
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-[#FF5C00]" />
+            <CheckSquare className="w-4 h-4 text-[#F59E0B]" />
             <span>1. Acceptance of Terms</span>
           </h2>
           <p>
@@ -27,7 +27,7 @@ export const TermsPage: React.FC = () => {
 
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Scale className="w-4 h-4 text-[#FF5C00]" />
+            <Scale className="w-4 h-4 text-[#F59E0B]" />
             <span>2. Account Responsibilities & Acceptable Usage</span>
           </h2>
           <p>
@@ -42,7 +42,7 @@ export const TermsPage: React.FC = () => {
 
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Copyright className="w-4 h-4 text-[#FF5C00]" />
+            <Copyright className="w-4 h-4 text-[#F59E0B]" />
             <span>3. Intellectual Property & User-Generated Content</span>
           </h2>
           <p>
@@ -52,7 +52,7 @@ export const TermsPage: React.FC = () => {
 
         <section className="space-y-2">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-[#FF5C00]" />
+            <AlertTriangle className="w-4 h-4 text-[#F59E0B]" />
             <span>4. Limitations of Liability & Termination</span>
           </h2>
           <p>

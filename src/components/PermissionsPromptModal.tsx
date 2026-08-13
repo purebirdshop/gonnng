@@ -83,7 +83,7 @@ export default function PermissionsPromptModal({
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="w-full max-w-md rounded-3xl p-6 shadow-2xl border space-y-5 relative bg-white border-slate-200 text-slate-900"
+        className="w-full max-w-md rounded-3xl p-6 shadow-2xl border space-y-5 relative bg-white border-slate-200 text-slate-900 flex flex-col justify-between max-h-[90vh] overflow-y-auto"
       >
         {onClose && (
           <button
@@ -97,11 +97,11 @@ export default function PermissionsPromptModal({
         )}
 
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00] shrink-0">
-            <ShieldCheck className="w-6 h-6 text-[#FF5C00]" />
+          <div className="w-12 h-12 rounded-2xl bg-[#F59E0B]/15 border border-[#F59E0B]/30 flex items-center justify-center text-[#F59E0B] shrink-0">
+            <ShieldCheck className="w-6 h-6 text-[#F59E0B]" />
           </div>
           <div>
-            <span className="text-[10px] font-mono font-bold text-[#FF5C00] uppercase tracking-wider block">
+            <span className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider block">
               Device Permissions
             </span>
             <h3 className="text-lg font-display font-bold text-slate-900">
@@ -118,7 +118,7 @@ export default function PermissionsPromptModal({
           {/* Camera Permission Toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <Camera className="w-4.5 h-4.5 text-[#FF5C00]" />
+              <Camera className="w-4.5 h-4.5 text-[#F59E0B]" />
               <span className="text-xs font-bold text-slate-800">Camera Access</span>
             </div>
             <button
@@ -126,7 +126,7 @@ export default function PermissionsPromptModal({
               id="toggle-camera-perm-btn"
               onClick={handleToggleCamera}
               className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                camera ? 'bg-[#FF5C00]' : 'bg-slate-300'
+                camera ? 'bg-[#F59E0B]' : 'bg-slate-300'
               }`}
             >
               <span className={`w-4.5 h-4.5 rounded-full bg-white shadow-md absolute top-0.75 transition-transform ${
@@ -138,7 +138,7 @@ export default function PermissionsPromptModal({
           {/* Microphone Permission Toggle */}
           <div className="flex items-center justify-between pt-3 border-t border-slate-200">
             <div className="flex items-center gap-2.5">
-              <Disc3 className="w-4.5 h-4.5 text-[#FF5C00]" />
+              <Disc3 className="w-4.5 h-4.5 text-[#F59E0B]" />
               <span className="text-xs font-bold text-slate-800">Microphone Access</span>
             </div>
             <button
@@ -146,7 +146,7 @@ export default function PermissionsPromptModal({
               id="toggle-microphone-perm-btn"
               onClick={handleToggleMicrophone}
               className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                microphone ? 'bg-[#FF5C00]' : 'bg-slate-300'
+                microphone ? 'bg-[#F59E0B]' : 'bg-slate-300'
               }`}
             >
               <span className={`w-4.5 h-4.5 rounded-full bg-white shadow-md absolute top-0.75 transition-transform ${
@@ -158,7 +158,7 @@ export default function PermissionsPromptModal({
           {/* Files Permission Toggle */}
           <div className="flex items-center justify-between pt-3 border-t border-slate-200">
             <div className="flex items-center gap-2.5">
-              <File className="w-4.5 h-4.5 text-[#FF5C00]" />
+              <File className="w-4.5 h-4.5 text-[#F59E0B]" />
               <span className="text-xs font-bold text-slate-800">Access Files on Device</span>
             </div>
             <button
@@ -166,7 +166,7 @@ export default function PermissionsPromptModal({
               id="toggle-files-perm-btn"
               onClick={handleToggleFiles}
               className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                files ? 'bg-[#FF5C00]' : 'bg-slate-300'
+                files ? 'bg-[#F59E0B]' : 'bg-slate-300'
               }`}
             >
               <span className={`w-4.5 h-4.5 rounded-full bg-white shadow-md absolute top-0.75 transition-transform ${
@@ -181,7 +181,7 @@ export default function PermissionsPromptModal({
             type="button"
             id="save-permissions-btn"
             onClick={handleSave}
-            className="w-full py-3 bg-[#FF5C00] hover:bg-[#FF751A] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
           >
             <Check className="w-4 h-4" /> Save & Apply Permissions
           </button>

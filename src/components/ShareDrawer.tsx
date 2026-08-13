@@ -22,6 +22,7 @@ interface ShareDrawerProps {
   followingUsers: Creator[];
   onSendMessage: (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => void;
   onOpenAuth: () => void;
+  onOpenMessageDrawer?: (user: Creator, initialSharedItem?: { text: string; postId?: string; postThumbnail?: string }) => void;
 }
 
 export default function ShareDrawer({
@@ -32,9 +33,20 @@ export default function ShareDrawer({
   followingUsers,
   onSendMessage,
   onOpenAuth,
+  onOpenMessageDrawer
 }: ShareDrawerProps) {
   const [copied, setCopied] = useState(false);
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    if (isOpen && post) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isOpen, Boolean(post)]);
 
   if (!isOpen || !post) return null;
 
@@ -88,7 +100,7 @@ export default function ShareDrawer({
           <div className="space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-gray-200">
               <div className="flex items-center gap-2">
-                <ArrowUpRight className="w-5 h-5 text-[#FF5C00]" />
+                <ArrowUpRight className="w-5 h-5 text-[#F59E0B]" />
                 <h3 className="text-sm font-display font-bold uppercase tracking-wider text-gray-900">Share Post</h3>
               </div>
               <button
@@ -120,7 +132,7 @@ export default function ShareDrawer({
             <div className="space-y-1.5">
               <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500">Unique Post Permalink</label>
               <div className="flex items-center gap-2 border p-2 rounded-xl bg-gray-100 border-gray-300 text-gray-900">
-                <Link className="w-4 h-4 text-[#FF5C00] shrink-0" />
+                <Link className="w-4 h-4 text-[#F59E0B] shrink-0" />
                 <span className="text-xs font-mono truncate flex-1 text-gray-800">{permalink}</span>
                 <button
                   type="button"
@@ -129,7 +141,7 @@ export default function ShareDrawer({
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     copied
                       ? 'bg-emerald-500 text-black font-black'
-                      : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold'
+                      : 'bg-[#F59E0B] hover:bg-[#FF751A] text-black font-bold'
                   }`}
                 >
                   {copied ? (
@@ -162,39 +174,54 @@ export default function ShareDrawer({
                           className="flex justify-between items-center p-2.5 border rounded-xl transition-all bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-900"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <img
-                              src={user.avatarUrl && user.avatarUrl.trim() !== '' ? user.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                              alt={user.name}
-                              className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
+                            {user.avatarUrl && user.avatarUrl.trim() !== '' ? (
+                              <img
+                                src={user.avatarUrl.trim()}
+                                alt={user.name}
+                                className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-200 shrink-0">
+                                <User className="w-4 h-4 text-gray-600" />
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <h5 className="text-xs font-bold truncate text-gray-900">{user.name}</h5>
                               <p className="text-[10px] font-mono truncate text-gray-500">@{user.name.toLowerCase().replace(/\s+/g, '')}</p>
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            id={`send-post-to-${user.id}`}
-                            onClick={() => handleSendToUser(user)}
-                            disabled={isSent}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
-                              isSent
-                                ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30'
-                                : 'bg-[#FF5C00] hover:bg-[#FF751A] text-black font-bold shadow'
-                            }`}
-                          >
+                          <div className="flex items-center gap-1.5 shrink-0">
                             {isSent ? (
                               <>
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Sent
+                                <span className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Sent
+                                </span>
+                                {onOpenMessageDrawer && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onOpenMessageDrawer(user);
+                                      onClose();
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-gray-200 hover:bg-gray-300 text-gray-800 transition-all cursor-pointer"
+                                  >
+                                    Chat
+                                  </button>
+                                )}
                               </>
                             ) : (
-                              <>
+                              <button
+                                type="button"
+                                id={`send-post-to-${user.id}`}
+                                onClick={() => handleSendToUser(user)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer bg-[#F59E0B] hover:bg-[#FF751A] text-black shadow"
+                              >
                                 <Send className="w-3.5 h-3.5" /> Send
-                              </>
+                              </button>
                             )}
-                          </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -219,7 +246,7 @@ export default function ShareDrawer({
                         onClose();
                         onOpenAuth();
                       }}
-                      className="px-4 py-2 bg-[#FF5C00] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl transition-all shadow flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs rounded-xl transition-all shadow flex items-center gap-1.5 cursor-pointer"
                     >
                       <LogIn className="w-3.5 h-3.5" /> Sign In
                     </button>

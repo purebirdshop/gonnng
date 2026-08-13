@@ -2,6 +2,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { authService, UserSession } from './authService';
 import { MediaType, PostMediaRow } from '../types';
+import { getApiUrl, resolveImageUrl } from '../lib/apiConfig';
 
 export interface UploadedMediaResult {
   id: string;
@@ -87,7 +88,6 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
 
   if (path.startsWith('http://') || path.startsWith('https://')) {
     if (!isSupabaseUrl) {
-      // Keep external third-party images (e.g. Unsplash) untouched
       return path;
     }
   }
@@ -95,12 +95,19 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
   // Extract relative storage object path
   let relativePath = path;
 
+  // Handle full HTTP URLs if passed
+  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+    try {
+      relativePath = new URL(relativePath).pathname;
+    } catch {
+      // ignore
+    }
+  }
+
   if (relativePath.includes('Gonnng/')) {
     relativePath = relativePath.split('Gonnng/').pop() || relativePath;
   } else if (relativePath.includes('post-media/')) {
     relativePath = relativePath.split('post-media/').pop() || relativePath;
-  } else if (relativePath.includes('/media/')) {
-    relativePath = relativePath.split('/media/').pop() || relativePath;
   } else if (relativePath.includes('/object/public/')) {
     const afterPublic = relativePath.split('/object/public/').pop() || '';
     const parts = afterPublic.split('/');
@@ -111,9 +118,13 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
     }
   }
 
+  // Strip leading slashes and any repetitive 'media/' or '/media/' prefixes
   relativePath = relativePath.replace(/^\/+/, '');
+  while (relativePath.startsWith('media/')) {
+    relativePath = relativePath.substring(6).replace(/^\/+/, '');
+  }
 
-  return `${mediaBase}/${relativePath}`;
+  return resolveImageUrl(`${mediaBase}/${relativePath}`);
 };
 
 export const uploadService = {
@@ -213,8 +224,9 @@ export const uploadService = {
       formData.append('bucket', storageBucket);
       formData.append('path', storagePath);
 
-      const res = await fetch('/api/storage/upload', {
+      const res = await fetch(getApiUrl('/api/storage/upload'), {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 
@@ -343,8 +355,9 @@ export const uploadService = {
       formData.append('bucket', storageBucket);
       formData.append('path', storagePath);
 
-      const res = await fetch('/api/storage/upload', {
+      const res = await fetch(getApiUrl('/api/storage/upload'), {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 

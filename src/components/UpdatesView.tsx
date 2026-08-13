@@ -1,33 +1,130 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
+import { resolveImageUrl } from '../lib/apiConfig';
+import { dataService } from '../services/dataService';
+import { isFollowingUser, isUserInCircle } from '../utils/followUtils';
 import { 
   Bell, 
   UserPlus, 
   Info, 
-  MessageSquare, 
   ArrowLeft, 
   ChevronRight, 
   ChevronDown,
   ChevronUp,
   ChevronLeft,
   Send, 
-  Check, 
-  CheckCheck, 
-  Sparkles, 
   Disc3, 
   Pencil, 
   Octagon, 
-  ShieldCheck, 
   UserCheck, 
-  MessageCircle,
-  Clock,
-  ExternalLink,
   Link,
   ArrowUpRight,
   Bookmark,
   GitFork
 } from 'lucide-react';
+
+function resolveCreatorAvatar(
+  name?: string,
+  id?: string,
+  explicitUrl?: string,
+  creators?: Creator[],
+  currentUser?: Creator
+): string {
+  const isRealAvatar = (url?: string) => Boolean(url && url.trim() !== '' && !url.includes('ui-avatars.com'));
+
+  if (isRealAvatar(explicitUrl)) {
+    return resolveImageUrl(explicitUrl!.trim());
+  }
+
+  const cleanName = name?.trim().toLowerCase();
+  const cleanId = id?.trim();
+
+  if (currentUser) {
+    const isUserMatch = (cleanId && currentUser.id === cleanId) ||
+      (cleanName && currentUser.name?.trim().toLowerCase() === cleanName) ||
+      (cleanName && currentUser.username?.trim().toLowerCase() === cleanName);
+    if (isUserMatch && isRealAvatar(currentUser.avatarUrl)) {
+      return resolveImageUrl(currentUser.avatarUrl!.trim());
+    }
+  }
+
+  if (creators && creators.length > 0) {
+    const match = creators.find(c => 
+      (cleanId && c.id === cleanId) ||
+      (cleanName && c.name?.trim().toLowerCase() === cleanName) ||
+      (cleanName && c.username?.trim().toLowerCase() === cleanName)
+    );
+    if (match && isRealAvatar(match.avatarUrl)) {
+      return resolveImageUrl(match.avatarUrl!.trim());
+    }
+  }
+
+  if (explicitUrl && explicitUrl.trim() !== '') {
+    return resolveImageUrl(explicitUrl.trim());
+  }
+
+  const displayName = name || 'User';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=F59E0B&color=fff`;
+}
+
+function InViewTile({
+  isRead,
+  onMarkRead,
+  children,
+  className,
+  onClick
+}: {
+  key?: React.Key;
+  isRead: boolean;
+  onMarkRead: () => void;
+  children: React.ReactNode;
+  className?: string;
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  const tileRef = React.useRef<HTMLDivElement | null>(null);
+  const onMarkReadRef = React.useRef(onMarkRead);
+
+  React.useEffect(() => {
+    onMarkReadRef.current = onMarkRead;
+  }, [onMarkRead]);
+
+  React.useEffect(() => {
+    if (isRead || !tileRef.current) return;
+
+    const element = tileRef.current;
+    if (typeof IntersectionObserver === 'undefined') {
+      onMarkReadRef.current();
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            onMarkReadRef.current();
+          }
+        });
+      },
+      {
+        threshold: 0.15
+      }
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.unobserve(element);
+      observer.disconnect();
+    };
+  }, [isRead]);
+
+  return (
+    <div ref={tileRef} className={className} onClick={onClick}>
+      {children}
+    </div>
+  );
+}
 
 export interface PostNotification {
   id: string;
@@ -70,6 +167,7 @@ export interface DirectMessage {
   text: string;
   timestamp: string;
   isRead: boolean;
+  status?: 'pending' | 'accepted';
   postThumbnail?: string;
   postId?: string;
 }
@@ -123,165 +221,10 @@ export default function UpdatesView({
   const baseTime = React.useMemo(() => Date.now(), []);
 
   // Default Post Notifications
-  const defaultPostNotifications = React.useMemo<PostNotification[]>(() => [
-    {
-      id: 'pnotif-1',
-      postId: 'post-user-1',
-      postTitle: 'My Custom Portfolio Framework Initiated',
-      postImage: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&q=80&w=800',
-      actorName: 'Bruce Wayne',
-      actorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
-      actionType: 'gong_continue',
-      timeString: '2m ago',
-      timestamp: baseTime - 2 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'pnotif-2',
-      postId: 'post-user-1',
-      recipeId: 'recipe-sandwich',
-      originalRecipeId: 'recipe-sandwich',
-      postTitle: 'Make a Sandwich Blueprint',
-      postImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
-      actorName: 'Clara Monet',
-      actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
-      actionType: 'recipe_save',
-      commentSnippet: 'Saved your recipe "Make a Sandwich" to her Process Library!',
-      timeString: '15m ago',
-      timestamp: baseTime - 15 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'pnotif-3',
-      postId: 'post-user-1',
-      recipeId: 'recipe-paint',
-      originalRecipeId: 'recipe-paint',
-      postTitle: 'Paint an Oil Canvas',
-      actorName: 'Ada Lovelace',
-      actorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-      actionType: 'recipe_fork',
-      commentSnippet: 'Forked your recipe "Paint an Oil Canvas" for her workspace!',
-      timeString: '40m ago',
-      timestamp: baseTime - 40 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'pnotif-4',
-      postId: 'post-viral-1',
-      postTitle: 'The Great Wave Off Kanagawa',
-      postImage: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800',
-      actorName: 'Hokusai Katsushika',
-      actorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120',
-      actionType: 'comment',
-      commentSnippet: 'The 3-phase structural breakdown is crisp. What font pairing are you considering for headers?',
-      timeString: '1h ago',
-      timestamp: baseTime - 60 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'pnotif-5',
-      postId: 'post-viral-2',
-      postTitle: 'Analytical Engine: Universal Algorithm',
-      actorName: 'Satoshi Nakamoto',
-      actorAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
-      actionType: 'comment',
-      commentSnippet: 'Replied to your comment: Pure cryptographic logic. Mechanical state machines proving truth...',
-      timeString: '3h ago',
-      timestamp: baseTime - 3 * 60 * 60 * 1000,
-      isRead: true
-    },
-    {
-      id: 'pnotif-6',
-      postId: 'post-viral-3',
-      postTitle: 'Mona Lisa Sfumato Glazing Sequence',
-      actorName: 'Quentin Tarantino',
-      actorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
-      actionType: 'gong_refine',
-      timeString: '5h ago',
-      timestamp: baseTime - 5 * 60 * 60 * 1000,
-      isRead: true
-    }
-  ], [baseTime]);
+  const defaultPostNotifications = React.useMemo<PostNotification[]>(() => [], []);
 
   // Default Follower Notifications
-  const defaultFollowerNotifications = React.useMemo<FollowerNotification[]>(() => [
-    {
-      id: 'fnotif-bruce',
-      creator: creators.find(c => c.id === 'creator-bruce') || {
-        id: 'creator-bruce',
-        name: 'Bruce Wayne',
-        username: 'brucewayne',
-        email: 'bruce@wayne.tech',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
-        bio: 'Architecting nocturnal surveillance and defense systems.',
-        goals: 'Modular armor design.',
-        privacyDefault: 'public',
-        followersCount: 5210,
-        followingCount: 12,
-        isFollowing: false
-      },
-      timeString: '10m ago',
-      timestamp: baseTime - 10 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'fnotif-ada',
-      creator: creators.find(c => c.id === 'creator-ada') || {
-        id: 'creator-ada',
-        name: 'Ada Lovelace',
-        username: 'adalovelace',
-        email: 'ada@analyticalengine.io',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120',
-        bio: 'Pioneer of algorithmic computing and analytical engines.',
-        goals: 'Bernoulli numbers computation.',
-        privacyDefault: 'public',
-        followersCount: 3890,
-        followingCount: 140,
-        isFollowing: true
-      },
-      timeString: '2h ago',
-      timestamp: baseTime - 2 * 60 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'fnotif-satoshi',
-      creator: creators.find(c => c.id === 'creator-satoshi') || {
-        id: 'creator-satoshi',
-        username: 'satoshinakamoto',
-        name: 'Satoshi Nakamoto',
-        email: 'satoshi@bitcoin.org',
-        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120',
-        bio: 'Cryptographic consensus and distributed state machine research.',
-        goals: 'Decentralized fault-tolerant consensus.',
-        privacyDefault: 'public',
-        followersCount: 9400,
-        followingCount: 3,
-        isFollowing: true
-      },
-      timeString: '5h ago',
-      timestamp: baseTime - 5 * 60 * 60 * 1000,
-      isRead: false
-    },
-    {
-      id: 'fnotif-clara',
-      creator: creators.find(c => c.id === 'creator-clara') || {
-        id: 'creator-clara',
-        username: 'claramonet',
-        name: 'Clara Monet',
-        email: 'clara@impressionism.art',
-        avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
-        bio: 'Impressionist painter mapping natural light cycles.',
-        goals: 'Exhibition of 10 water lily panels.',
-        privacyDefault: 'public',
-        followersCount: 1420,
-        followingCount: 45,
-        isFollowing: true
-      },
-      timeString: '1d ago',
-      timestamp: baseTime - 24 * 60 * 60 * 1000,
-      isRead: true
-    }
-  ], [baseTime, creators]);
+  const defaultFollowerNotifications = React.useMemo<FollowerNotification[]>(() => [], []);
 
   // Default App Info Notifications
   const defaultAppInfoNotifications = React.useMemo<AppInfoNotification[]>(() => [
@@ -334,14 +277,15 @@ export default function UpdatesView({
       try {
         const parsed: PostNotification[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const upgraded = parsed.map(item => {
+          const upgraded = parsed.filter(Boolean).map(item => {
+            if (!item) return item;
             if (item.postId === 'post-[#1]') return { ...item, postId: 'post-user-1' };
             if (item.postId === 'post-[#2]') return { ...item, postId: 'post-user-1', recipeId: 'recipe-sandwich' };
             if (item.postId === 'post-[#3]') return { ...item, postId: 'post-user-1', recipeId: 'recipe-paint' };
             if (item.postId === 'post-[#4]') return { ...item, postId: 'post-viral-2' };
             if (item.postId === 'post-[#5]') return { ...item, postId: 'post-viral-3' };
             return item;
-          });
+          }).filter(Boolean);
           return upgraded;
         }
       } catch (e) {}
@@ -367,6 +311,173 @@ export default function UpdatesView({
 
   const [expandedAppInfoId, setExpandedAppInfoId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState('');
+
+  // Track session unclicked unreads so tiles maintain "new" highlight when scrolled into view until clicked or view is re-opened
+  const [sessionUnclickedUnreadIds, setSessionUnclickedUnreadIds] = useState<Set<string>>(new Set());
+  const [userClickedIds, setUserClickedIds] = useState<Set<string>>(new Set());
+
+  // Internal category state fallback to guarantee responsive UI click handling
+  const [localCategory, setLocalCategory] = useState<null | 'updates' | 'followers' | 'appinfo'>(activeCategory);
+
+  React.useEffect(() => {
+    setLocalCategory(activeCategory);
+  }, [activeCategory]);
+
+  const effectiveCategory = localCategory !== undefined && localCategory !== null ? localCategory : activeCategory;
+
+  React.useEffect(() => {
+    setSessionUnclickedUnreadIds(new Set());
+    setUserClickedIds(new Set());
+  }, [effectiveCategory]);
+
+  // Derive notifications from post_feedback table / local storage for authenticated user
+  React.useEffect(() => {
+    try {
+      const storedFeedback = localStorage.getItem('gonnng_post_feedback');
+      if (storedFeedback) {
+        const feedbackList: any[] = JSON.parse(storedFeedback);
+        if (Array.isArray(feedbackList) && feedbackList.length > 0) {
+          const userPostIds = new Set(
+            posts
+              .filter(p => p && (p.userId === currentUser.id || (p as any).user_id === currentUser.id || p.userName === currentUser.name))
+              .map(p => p.id)
+          );
+          
+          const derivedNotifs: PostNotification[] = feedbackList
+            .filter(f => f && typeof f === 'object' && (userPostIds.size === 0 || userPostIds.has(f.postId || f.post_id)))
+            .map((f, idx) => {
+              const fUserId = f.userId || f.user_id;
+              const fPostId = f.postId || f.post_id;
+              const fType = f.feedbackType || f.feedback_type;
+              const actor = creators.find(c => c && (c.id === fUserId || c.publicId === fUserId || c.username === fUserId));
+              const post = posts.find(p => p && p.id === fPostId);
+              const actionType = fType === 'success' || fType === 'continue' ? 'gong_continue' : fType === 'promise' || fType === 'refine' ? 'gong_refine' : 'gong_reconsider';
+              const createdTs = f.createdAt || f.created_at ? new Date(f.createdAt || f.created_at).getTime() : Date.now() - idx * 60000;
+              const postImg = post?.media?.[0]?.resolvedUrl || post?.image || (post?.images && post.images[0]);
+              return {
+                id: `post-fb-${fPostId}-${fUserId}-${idx}`,
+                actorName: actor?.name || 'Community Member',
+                actorAvatar: actor?.avatarUrl || '',
+                actionType: actionType as any,
+                postTitle: post?.title || post?.description || 'Project Post',
+                postImage: postImg,
+                postId: fPostId,
+                timeString: 'Recently',
+                timestamp: createdTs,
+                isRead: false
+              };
+            });
+
+          if (derivedNotifs.length > 0) {
+            setPostNotifications(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newItems = derivedNotifs.filter(d => !existingIds.has(d.id));
+              if (newItems.length > 0) {
+                return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+              }
+              return prev;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error deriving post_feedback notifications:', e);
+    }
+  }, [currentUser, posts, creators]);
+
+  // Derive follower notifications from creators / followerIds for authenticated user
+  React.useEffect(() => {
+    if (currentUser && Array.isArray(creators)) {
+      const myFollowers = creators.filter(c => 
+        (currentUser.followerIds && currentUser.followerIds.includes(c.id)) ||
+        (c.followingIds && c.followingIds.includes(currentUser.id))
+      );
+
+      if (myFollowers.length > 0) {
+        const derivedFollowers: FollowerNotification[] = myFollowers.map((c, i) => ({
+          id: `follower-derived-${c.id}`,
+          creator: c,
+          timeString: 'Recently',
+          timestamp: Date.now() - i * 120000,
+          isRead: false
+        }));
+
+        setFollowerNotifications(prev => {
+          const existingCreatorIds = new Set(prev.map(p => p.creator.id));
+          const newItems = derivedFollowers.filter(d => !existingCreatorIds.has(d.creator.id));
+          if (newItems.length > 0) {
+            return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+          }
+          return prev;
+        });
+      }
+    }
+  }, [currentUser, creators]);
+
+  // Fetch server-driven notifications and user read states from database
+  React.useEffect(() => {
+    const uid = currentUser?.id || 'user-current';
+
+    dataService.getUserUpdateReads(uid).then(readsMap => {
+      // 1. App Updates
+      dataService.getAppUpdates().then(updates => {
+        if (updates && updates.length > 0) {
+          setAppInfoNotifications(updates.map(u => ({
+            ...u,
+            isRead: Boolean(readsMap[u.id])
+          })));
+        }
+      });
+
+      // 2. Post Notifications from database view
+      dataService.getPostNotifications(uid).then(dbNotifs => {
+        if (dbNotifs && dbNotifs.length > 0) {
+          const mapped: PostNotification[] = dbNotifs.map(n => ({
+            ...n,
+            isRead: Boolean(readsMap[n.id])
+          }));
+          setPostNotifications(prev => {
+            const serverIds = new Set(mapped.map(m => m.id));
+            const localOnly = prev.filter(p => !serverIds.has(p.id));
+            return [...mapped, ...localOnly].sort((a, b) => b.timestamp - a.timestamp);
+          });
+        }
+      });
+
+      // 3. Follower Notifications from database view
+      dataService.getFollowerNotifications(uid).then(dbFollowers => {
+        if (dbFollowers && dbFollowers.length > 0) {
+          const mapped: FollowerNotification[] = dbFollowers.map(f => {
+            const creatorMatch = creators.find(c => c.id === f.creatorId || c.name === f.actorName) || {
+              id: f.creatorId,
+              name: f.actorName,
+              username: f.actorName.toLowerCase().replace(/\s+/g, ''),
+              email: `${f.actorName.toLowerCase().replace(/\s+/g, '')}@gonnng.app`,
+              avatarUrl: f.actorAvatar,
+              bio: 'Creative member',
+              goals: '',
+              privacyDefault: 'public',
+              followersCount: 1,
+              followingCount: 0,
+              isFollowing: true
+            };
+            return {
+              id: f.id,
+              creator: creatorMatch,
+              timeString: f.timeString,
+              timestamp: f.timestamp,
+              isRead: Boolean(readsMap[f.id])
+            };
+          });
+          setFollowerNotifications(prev => {
+            const serverIds = new Set(mapped.map(m => m.id));
+            const localOnly = prev.filter(p => !serverIds.has(p.id));
+            return [...mapped, ...localOnly].sort((a, b) => b.timestamp - a.timestamp);
+          });
+        }
+      });
+    });
+  }, [currentUser?.id, creators]);
 
   // Auto mark chat thread as read when activeChatUser is opened
   const onMarkThreadAsReadRef = React.useRef(onMarkThreadAsRead);
@@ -412,12 +523,23 @@ export default function UpdatesView({
 
   // Open Category Handler
   const handleOpenCategory = (cat: 'updates' | 'followers' | 'appinfo') => {
+    setLocalCategory(cat);
     setActiveCategory(cat);
+    setActiveChatUser(null);
+  };
+
+  const handleBackToMain = () => {
+    setLocalCategory(null);
+    setActiveCategory(null);
     setActiveChatUser(null);
   };
 
   // Helper to mark an individual item as read when clicked
   const handleMarkItemRead = (type: 'post' | 'follower' | 'appinfo', id: string) => {
+    const uid = currentUser?.id || 'user-current';
+    const updateTypeMap = { post: 'post_feedback', follower: 'follower', appinfo: 'app_info' } as const;
+    dataService.markUpdateAsRead(uid, updateTypeMap[type], id);
+
     if (type === 'post') {
       setPostNotifications(prev => prev.map(item => item.id === id ? { ...item, isRead: true } : item));
     } else if (type === 'follower') {
@@ -458,11 +580,11 @@ export default function UpdatesView({
     <div className="max-w-4xl mx-auto space-y-6 pb-28 sm:pb-8 text-gray-900" id="updates-view-root">
       
       {/* Main Outer Container */}
-      <div className="p-4 sm:p-6 w-full min-w-0 rounded-2xl bg-white border-2 border-gray-200 shadow-sm">
+      <div className="p-[18px] w-full min-w-0 rounded-none bg-white border-0 shadow-sm">
         
         <AnimatePresence mode="wait">
           {/* LEVEL 0: Main Updates Root View */}
-          {activeCategory === null && activeChatUser === null && (
+          {effectiveCategory === null && activeChatUser === null && (
             <motion.div
               key="updates-level-0"
               initial={{ opacity: 0, x: -10 }}
@@ -471,18 +593,6 @@ export default function UpdatesView({
               transition={{ duration: 0.18 }}
               className="space-y-6"
             >
-              {/* Header Banner */}
-              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#FF5C00]/15 border border-[#FF5C00]/30 flex items-center justify-center text-[#FF5C00]">
-                    <Bell className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-display font-bold uppercase tracking-wider text-gray-900">Updates & Activity</h2>
-                    <p className="text-xs text-gray-500">Notifications, new followers, announcements, and direct conversations.</p>
-                  </div>
-                </div>
-              </div>
 
               {/* Parent Items & Conversations List */}
               <div className="space-y-3" id="updates-main-list">
@@ -493,18 +603,18 @@ export default function UpdatesView({
                   onClick={() => handleOpenCategory('updates')}
                   className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
                     unreadUpdatesCount > 0
-                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
                       : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      unreadUpdatesCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                      unreadUpdatesCount > 0 ? 'bg-[#F59E0B] text-black font-black' : 'bg-gray-200 text-gray-800'
                     }`}>
                       <Bell className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className={`text-sm ${unreadUpdatesCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                      <h3 className={`text-sm ${unreadUpdatesCount > 0 ? 'font-black text-[#F59E0B]' : 'font-bold text-gray-900'}`}>
                         NOTIFICATIONS
                       </h3>
                       <p className="text-xs truncate text-gray-500">Activity on your posts, comments, saves & recipe forks</p>
@@ -513,7 +623,7 @@ export default function UpdatesView({
 
                   <div className="flex items-center gap-3 shrink-0">
                     {unreadUpdatesCount > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#F59E0B] text-black shadow-sm">
                         {unreadUpdatesCount}
                       </span>
                     )}
@@ -527,18 +637,18 @@ export default function UpdatesView({
                   onClick={() => handleOpenCategory('followers')}
                   className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
                     unreadFollowersCount > 0
-                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
                       : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      unreadFollowersCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                      unreadFollowersCount > 0 ? 'bg-[#F59E0B] text-black font-black' : 'bg-gray-200 text-gray-800'
                     }`}>
                       <UserPlus className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className={`text-sm ${unreadFollowersCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                      <h3 className={`text-sm ${unreadFollowersCount > 0 ? 'font-black text-[#F59E0B]' : 'font-bold text-gray-900'}`}>
                         NEW FOLLOWERS
                       </h3>
                       <p className="text-xs truncate text-gray-500">Creators who recently started following your profile</p>
@@ -547,7 +657,7 @@ export default function UpdatesView({
 
                   <div className="flex items-center gap-3 shrink-0">
                     {unreadFollowersCount > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#F59E0B] text-black shadow-sm">
                         {unreadFollowersCount}
                       </span>
                     )}
@@ -561,18 +671,18 @@ export default function UpdatesView({
                   onClick={() => handleOpenCategory('appinfo')}
                   className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
                     unreadAppInfoCount > 0
-                      ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
+                      ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
                       : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      unreadAppInfoCount > 0 ? 'bg-[#FF5C00] text-black font-black' : 'bg-gray-200 text-gray-800'
+                      unreadAppInfoCount > 0 ? 'bg-[#F59E0B] text-black font-black' : 'bg-gray-200 text-gray-800'
                     }`}>
                       <Info className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className={`text-sm ${unreadAppInfoCount > 0 ? 'font-black text-[#FF5C00]' : 'font-bold text-gray-900'}`}>
+                      <h3 className={`text-sm ${unreadAppInfoCount > 0 ? 'font-black text-[#F59E0B]' : 'font-bold text-gray-900'}`}>
                         APP INFO
                       </h3>
                       <p className="text-xs truncate text-gray-500">Platform releases, feature launches & account notices</p>
@@ -581,7 +691,7 @@ export default function UpdatesView({
 
                   <div className="flex items-center gap-3 shrink-0">
                     {unreadAppInfoCount > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#FF5C00] text-black shadow-sm">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-mono font-black bg-[#F59E0B] text-black shadow-sm">
                         {unreadAppInfoCount}
                       </span>
                     )}
@@ -591,19 +701,20 @@ export default function UpdatesView({
 
                 {/* 4. DIRECT CONVERSATIONS (ORDERED BY MOST RECENT ACTIVITY) */}
                 <div className="pt-4 border-t border-gray-200 space-y-3">
-                  <div className="flex items-center justify-between pb-1">
-                    <h4 className="text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 text-gray-500">
-                      <MessageSquare className="w-3.5 h-3.5 text-[#FF5C00]" /> Direct Conversations
-                    </h4>
-                    <span className="text-[10px] font-mono text-gray-400">{sortedThreads.length} Active</span>
-                  </div>
-
                   {sortedThreads.length > 0 ? (
                     sortedThreads.map(thread => {
                       const lastMsg = thread.messages[thread.messages.length - 1];
                       const sharedMsg = [...thread.messages].reverse().find(m => m.postThumbnail || m.text.includes('gonnng.com/g/'));
                       const postThumbnail = sharedMsg?.postThumbnail || (
                         sharedMsg?.text.includes('The Great Wave') ? 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&q=80&w=800' : undefined
+                      );
+
+                      const threadAvatar = resolveCreatorAvatar(
+                        thread.creator.name,
+                        thread.creator.id,
+                        thread.creator.avatarUrl,
+                        creators,
+                        currentUser
                       );
 
                       return (
@@ -613,16 +724,19 @@ export default function UpdatesView({
                           onClick={() => setActiveChatUser(thread.creator)}
                           className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
                             thread.unreadCount > 0
-                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm'
+                              ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm'
                               : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <img
-                              src={thread.creator.avatarUrl && thread.creator.avatarUrl.trim() !== '' ? thread.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                              src={threadAvatar}
                               alt={thread.creator.name}
                               className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
                               referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(thread.creator.name || 'User')}&background=F59E0B&color=fff`;
+                              }}
                             />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
@@ -640,10 +754,10 @@ export default function UpdatesView({
                               <img
                                 src={postThumbnail}
                                 alt="Shared Post"
-                                className="w-10 h-10 rounded-xl object-cover border border-[#FF5C00]/50"
+                                className="w-10 h-10 rounded-xl object-cover border border-[#F59E0B]/50"
                                 referrerPolicy="no-referrer"
                               />
-                              <div className="absolute -bottom-1 -right-1 bg-[#FF5C00] text-black p-0.5 rounded-full shadow">
+                              <div className="absolute -bottom-1 -right-1 bg-[#F59E0B] text-black p-0.5 rounded-full shadow">
                                 <ArrowUpRight className="w-2.5 h-2.5 stroke-[3]" />
                               </div>
                             </div>
@@ -651,7 +765,7 @@ export default function UpdatesView({
 
                           <div className="flex items-center gap-2 shrink-0 ml-2">
                             {thread.unreadCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#FF5C00] text-black shadow">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#F59E0B] text-black shadow">
                                 {thread.unreadCount}
                               </span>
                             )}
@@ -672,9 +786,9 @@ export default function UpdatesView({
           )}
 
           {/* LEVEL 1: DRILL-DOWN CATEGORY VIEWS & DIRECT CHAT */}
-          {(activeCategory !== null || activeChatUser !== null) && (
+          {(effectiveCategory !== null || activeChatUser !== null) && (
             <motion.div
-              key={`updates-drilldown-${activeCategory || 'chat'}-${activeChatUser?.id || 'none'}`}
+              key={`updates-drilldown-${effectiveCategory || 'chat'}-${activeChatUser?.id || 'none'}`}
               initial={{ opacity: 0, x: 15 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 15 }}
@@ -687,34 +801,49 @@ export default function UpdatesView({
                   <button
                     type="button"
                     id="updates-back-button"
-                    onClick={() => setActiveCategory(null)}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300 shadow-sm"
+                    onClick={handleBackToMain}
+                    aria-label="Back"
+                    title="Back"
+                    className="p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer border bg-gray-100 hover:bg-gray-200 text-gray-900 border-gray-300 shadow-sm"
                   >
-                    <ArrowLeft className="w-4 h-4 text-[#FF5C00]" /> Back
+                    <ArrowLeft className="w-5 h-5 text-[#F59E0B]" />
                   </button>
 
                   <h3 className="text-sm font-display font-black tracking-wider uppercase truncate max-w-[200px] sm:max-w-xs text-gray-900 text-center">
-                    {activeCategory === 'updates'
+                    {effectiveCategory === 'updates'
                       ? 'Notifications'
-                      : activeCategory === 'followers'
+                      : effectiveCategory === 'followers'
                       ? 'New Followers'
                       : 'App Info'}
                   </h3>
 
-                  <div className="w-16" />
+                  <div className="w-9" />
                 </div>
               )}
 
               {/* 1. DRILL DOWN: NOTIFICATIONS (SORTED NEWEST FIRST) */}
-              {activeCategory === 'updates' && !activeChatUser && (
+              {effectiveCategory === 'updates' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-updates-list">
                   {sortedPostNotifications.length > 0 ? (
                     sortedPostNotifications.map(n => {
-                      const isUnread = !n.isRead;
+                      const isUnread = (!n.isRead || sessionUnclickedUnreadIds.has(n.id)) && !userClickedIds.has(n.id);
+                      const actorAvatar = resolveCreatorAvatar(
+                        n.actorName,
+                        (n as any).actorId,
+                        n.actorAvatar,
+                        creators,
+                        currentUser
+                      );
                       return (
-                        <div
+                        <InViewTile
                           key={n.id}
+                          isRead={n.isRead}
+                          onMarkRead={() => {
+                            handleMarkItemRead('post', n.id);
+                            setSessionUnclickedUnreadIds(prev => new Set(prev).add(n.id));
+                          }}
                           onClick={() => {
+                            setUserClickedIds(prev => new Set(prev).add(n.id));
                             handleMarkItemRead('post', n.id);
                             if (n.actionType === 'recipe_save' || n.actionType === 'recipe_fork') {
                               if (onSelectRecipe) onSelectRecipe(n.originalRecipeId || n.recipeId || n.postId);
@@ -724,22 +853,43 @@ export default function UpdatesView({
                           }}
                           className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 group ${
                             isUnread
-                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
-                              : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/50 hover:bg-gray-100/80'
+                              ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#F59E0B]/50 hover:bg-gray-100/80'
                           } text-gray-900 relative`}
                         >
                           {isUnread && (
-                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
+                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#F59E0B] shadow-sm animate-pulse" />
                           )}
                           <img
-                            src={n.actorAvatar && n.actorAvatar.trim() !== '' ? n.actorAvatar.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                            src={actorAvatar}
                             alt={n.actorName}
-                            className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0"
+                            onClick={(e) => {
+                              if (onSelectUser) {
+                                e.stopPropagation();
+                                const foundCreator = creators.find(c => c.name.toLowerCase() === n.actorName.toLowerCase() || c.username === n.actorName);
+                                onSelectUser(foundCreator ? foundCreator.id : n.actorName);
+                              }
+                            }}
+                            className="w-10 h-10 rounded-full object-cover border border-gray-300 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(n.actorName || 'User')}&background=F59E0B&color=fff`;
+                            }}
                           />
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex items-center justify-between gap-2 pr-4">
-                              <span className="text-xs font-bold truncate text-gray-900">{n.actorName}</span>
+                              <span 
+                                onClick={(e) => {
+                                  if (onSelectUser) {
+                                    e.stopPropagation();
+                                    const foundCreator = creators.find(c => c.name.toLowerCase() === n.actorName.toLowerCase() || c.username === n.actorName);
+                                    onSelectUser(foundCreator ? foundCreator.id : n.actorName);
+                                  }
+                                }}
+                                className="text-xs font-bold truncate text-gray-900 cursor-pointer hover:underline hover:text-[#F59E0B]"
+                              >
+                                {n.actorName}
+                              </span>
                               <span className="text-[10px] font-mono shrink-0 text-gray-500">{n.timeString}</span>
                             </div>
 
@@ -759,7 +909,7 @@ export default function UpdatesView({
                                 </span>
                               )}
                               {n.actionType === 'recipe_save' && (
-                                <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
+                                <span className="text-[#F59E0B] font-bold inline-flex items-center gap-1 flex-wrap">
                                   <Bookmark className="w-3.5 h-3.5 shrink-0" /> saved your recipe <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong> to Process Library
                                 </span>
                               )}
@@ -770,33 +920,21 @@ export default function UpdatesView({
                               )}
                               {n.actionType === 'gong_continue' && (
                                 <span className="text-emerald-600 font-bold inline-flex items-center gap-1 flex-wrap">
-                                  <Disc3 className="w-3.5 h-3.5 shrink-0" /> celebrated your post <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                  <Disc3 className="w-3.5 h-3.5 shrink-0" /> cheered for you on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
                                 </span>
                               )}
                               {n.actionType === 'gong_refine' && (
-                                <span className="text-[#FF5C00] font-bold inline-flex items-center gap-1 flex-wrap">
-                                  <Pencil className="w-3.5 h-3.5 shrink-0" /> suggested improvements on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                <span className="text-[#F59E0B] font-bold inline-flex items-center gap-1 flex-wrap">
+                                  <Pencil className="w-3.5 h-3.5 shrink-0" /> encouraged you to keep going on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
                                 </span>
                               )}
                               {n.actionType === 'gong_reconsider' && (
                                 <span className="text-red-500 font-bold inline-flex items-center gap-1 flex-wrap">
-                                  <Octagon className="w-3.5 h-3.5 shrink-0" /> requested reconsideration on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                  <Octagon className="w-3.5 h-3.5 shrink-0" /> suggested you try something new on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
                                 </span>
                               )}
                             </p>
 
-                            {/* Permalink Link */}
-                            <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#FF5C00] pt-0.5 group-hover:underline">
-                              <Link className="w-3 h-3 text-[#FF5C00]" />
-                              <span>
-                                {n.actionType === 'recipe_save' || n.actionType === 'recipe_fork'
-                                  ? `gonnng.com/r/${n.originalRecipeId || n.recipeId || n.postId}`
-                                  : `gonnng.com/g/${n.postId}`}
-                              </span>
-                              <span className="font-sans text-gray-500">
-                                • Click to view content →
-                              </span>
-                            </div>
                           </div>
 
                           {n.postImage && (
@@ -807,7 +945,7 @@ export default function UpdatesView({
                               referrerPolicy="no-referrer"
                             />
                           )}
-                        </div>
+                        </InViewTile>
                       );
                     })
                   ) : (
@@ -817,46 +955,71 @@ export default function UpdatesView({
               )}
 
               {/* 2. DRILL DOWN: NEW FOLLOWERS (SORTED NEWEST FIRST) */}
-              {activeCategory === 'followers' && !activeChatUser && (
+              {effectiveCategory === 'followers' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-followers-list">
                   {sortedFollowerNotifications.length > 0 ? (
                     sortedFollowerNotifications.map(f => {
-                      const isUnread = !f.isRead;
-                      const username = `@${f.creator.username || f.creator.name.toLowerCase().replace(/\s+/g, '')}`;
+                      const isUnread = (!f.isRead || sessionUnclickedUnreadIds.has(f.id)) && !userClickedIds.has(f.id);
+                      const liveCreator = creators.find(c => 
+                        c.id === f.creator.id || 
+                        (c.username && f.creator.username && c.username.toLowerCase() === f.creator.username.toLowerCase()) ||
+                        c.name.toLowerCase() === f.creator.name.toLowerCase()
+                      ) || f.creator;
+
+                      const isFollowing = isFollowingUser(currentUser, liveCreator.id, creators);
+                      const username = `@${liveCreator.username || f.creator.username || liveCreator.name.toLowerCase().replace(/\s+/g, '')}`;
+
+                      const followerAvatar = resolveCreatorAvatar(
+                        liveCreator.name || f.creator.name,
+                        liveCreator.id || f.creator.id,
+                        liveCreator.avatarUrl || f.creator.avatarUrl,
+                        creators,
+                        currentUser
+                      );
+
                       return (
-                        <div
+                        <InViewTile
                           key={f.id}
-                          onClick={() => {
+                          isRead={f.isRead}
+                          onMarkRead={() => {
                             handleMarkItemRead('follower', f.id);
-                            if (onSelectUser) onSelectUser(f.creator.id);
+                            setSessionUnclickedUnreadIds(prev => new Set(prev).add(f.id));
+                          }}
+                          onClick={() => {
+                            setUserClickedIds(prev => new Set(prev).add(f.id));
+                            handleMarkItemRead('follower', f.id);
+                            if (onSelectUser) onSelectUser(liveCreator.id);
                           }}
                           className={`p-4 rounded-2xl border flex items-center justify-between gap-3 transition-all cursor-pointer group ${
                             isUnread
-                              ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
-                              : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/50 hover:bg-gray-100/80'
+                              ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#F59E0B]/50 hover:bg-gray-100/80'
                           } text-gray-900 relative`}
                         >
                           {isUnread && (
-                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#FF5C00] shadow-sm animate-pulse" />
+                            <span className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-[#F59E0B] shadow-sm animate-pulse" />
                           )}
                           <div className="flex items-center gap-3.5 min-w-0 pr-2">
                             <img
-                              src={f.creator.avatarUrl && f.creator.avatarUrl.trim() !== '' ? f.creator.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
-                              alt={f.creator.name}
+                              src={followerAvatar}
+                              alt={liveCreator.name || f.creator.name}
                               className="w-11 h-11 rounded-full object-cover border border-gray-300 shrink-0"
                               referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(liveCreator.name || f.creator.name || 'User')}&background=F59E0B&color=fff`;
+                              }}
                             />
                             <div className="min-w-0 space-y-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-xs font-bold truncate text-gray-900">{f.creator.name}</h4>
+                                <h4 className="text-xs font-bold truncate text-gray-900">{liveCreator.name || f.creator.name}</h4>
                                 <span className="text-[11px] font-mono text-gray-500">{username}</span>
                               </div>
-                              <p className="text-xs font-medium text-[#FF5C00] flex items-center gap-1.5">
+                              <p className="text-xs font-medium text-[#F59E0B] flex items-center gap-1.5">
                                 <span>Started following you</span>
                                 <span className="text-gray-400 font-mono text-[10px]">• {f.timeString}</span>
                               </p>
-                              {f.creator.bio && (
-                                <p className="text-[11px] text-gray-600 line-clamp-1">{f.creator.bio}</p>
+                              {(liveCreator.bio || f.creator.bio) && (
+                                <p className="text-[11px] text-gray-600 line-clamp-1">{liveCreator.bio || f.creator.bio}</p>
                               )}
                             </div>
                           </div>
@@ -865,26 +1028,43 @@ export default function UpdatesView({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setUserClickedIds(prev => new Set(prev).add(f.id));
                               handleMarkItemRead('follower', f.id);
-                              onFollowToggle && onFollowToggle(f.creator.id);
+                              if (onFollowToggle) {
+                                onFollowToggle(liveCreator.id);
+                              }
+                              setFollowerNotifications(prev => prev.map(item => {
+                                if (item.id === f.id || item.creator.id === liveCreator.id) {
+                                  return {
+                                    ...item,
+                                    creator: {
+                                      ...item.creator,
+                                      isFollowing: !isFollowing
+                                    }
+                                  };
+                                }
+                                return item;
+                              }));
                             }}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-                              f.creator.isFollowing
+                            className={`p-2 sm:px-3.5 sm:py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                              isFollowing
                                 ? 'bg-gray-200 text-gray-800 border border-gray-300 hover:bg-gray-300'
-                                : 'bg-[#FF5C00] text-black font-black hover:bg-[#FF751A] shadow-sm'
+                                : 'bg-[#F59E0B] text-black font-black hover:bg-[#FF751A] shadow-sm'
                             }`}
                           >
-                            {f.creator.isFollowing ? (
+                            {isFollowing ? (
                               <>
-                                <UserCheck className="w-3.5 h-3.5" /> Following
+                                <UserCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                                <span className="hidden sm:inline">Following</span>
                               </>
                             ) : (
                               <>
-                                <UserPlus className="w-3.5 h-3.5" /> Follow Back
+                                <UserPlus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                                <span className="hidden sm:inline">Follow Back</span>
                               </>
                             )}
                           </button>
-                        </div>
+                        </InViewTile>
                       );
                     })
                   ) : (
@@ -894,63 +1074,83 @@ export default function UpdatesView({
               )}
 
               {/* 3. DRILL DOWN: APP INFO (SORTED NEWEST FIRST) */}
-              {activeCategory === 'appinfo' && !activeChatUser && (
+              {effectiveCategory === 'appinfo' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-appinfo-list">
-                  {sortedAppInfoNotifications.map(a => {
-                    const isExpanded = expandedAppInfoId === a.id;
-                    const isUnread = !a.isRead;
-                    return (
-                      <div
-                        key={a.id}
-                        onClick={() => {
-                          setExpandedAppInfoId(prev => prev === a.id ? null : a.id);
-                          handleMarkItemRead('appinfo', a.id);
-                        }}
-                        className={`p-4 rounded-2xl border space-y-2 cursor-pointer transition-all ${
-                          isUnread
-                            ? 'bg-orange-50/90 border-2 border-[#FF5C00] shadow-sm hover:bg-orange-100/90'
-                            : 'bg-gray-50 border-gray-200 hover:border-[#FF5C00]/40 hover:bg-gray-100/80'
-                        } text-gray-900 relative`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#FF5C00]/15 text-[#FF5C00] border border-[#FF5C00]/30">
-                              {a.category}
-                            </span>
-                            {isUnread && (
-                              <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-[#FF5C00] text-black">
-                                NEW
+                  {sortedAppInfoNotifications.length > 0 ? (
+                    sortedAppInfoNotifications.map(a => {
+                      const isExpanded = expandedAppInfoId === a.id;
+                      const isUnread = (!a.isRead || sessionUnclickedUnreadIds.has(a.id)) && !userClickedIds.has(a.id);
+                      return (
+                        <InViewTile
+                          key={a.id}
+                          isRead={a.isRead}
+                          onMarkRead={() => {
+                            handleMarkItemRead('appinfo', a.id);
+                            setSessionUnclickedUnreadIds(prev => new Set(prev).add(a.id));
+                          }}
+                          onClick={() => {
+                            setUserClickedIds(prev => new Set(prev).add(a.id));
+                            setExpandedAppInfoId(prev => prev === a.id ? null : a.id);
+                            handleMarkItemRead('appinfo', a.id);
+                          }}
+                          className={`p-4 rounded-2xl border space-y-2 cursor-pointer transition-all ${
+                            isUnread
+                              ? 'bg-orange-50/90 border-2 border-[#F59E0B] shadow-sm hover:bg-orange-100/90'
+                              : 'bg-gray-50 border-gray-200 hover:border-[#F59E0B]/40 hover:bg-gray-100/80'
+                          } text-gray-900 relative`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30">
+                                {a.category}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-mono text-gray-500">{a.timeString}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-gray-500" />
-                            )}
-                          </div>
-                        </div>
-
-                        <h4 className="text-sm font-bold text-gray-900">{a.title}</h4>
-                        <p className="text-xs leading-relaxed text-gray-600">{a.subtitle}</p>
-
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="pt-3 mt-2 border-t border-gray-200 text-xs text-gray-800 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-gray-200 space-y-1.5"
-                          >
-                            <div className="whitespace-pre-line">
-                              {a.details || "Full release notes: Process Blueprint library integrated, live messaging enabled, and circle updates synchronized across all workspaces."}
+                              {isUnread && (
+                                <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-[#F59E0B] text-black">
+                                  NEW
+                                </span>
+                              )}
                             </div>
-                          </motion.div>
-                        )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono text-gray-500">{a.timeString}</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              )}
+                            </div>
+                          </div>
+
+                          <h4 className="text-sm font-bold text-gray-900">{a.title}</h4>
+                          <p className="text-xs leading-relaxed text-gray-600">{a.subtitle}</p>
+
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="pt-3 mt-2 border-t border-gray-200 text-xs text-gray-800 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-gray-200 space-y-1.5"
+                            >
+                              <div className="whitespace-pre-line">
+                                {a.details || "Full release notes: Process Blueprint library integrated, live messaging enabled, and circle updates synchronized across all workspaces."}
+                              </div>
+                            </motion.div>
+                          )}
+                        </InViewTile>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-12 px-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-[#F59E0B]/10 text-[#F59E0B] flex items-center justify-center mx-auto">
+                        <Info className="w-6 h-6" />
                       </div>
-                    );
-                  })}
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-gray-900">No App Updates Yet</h4>
+                        <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
+                          This view will display system notifications from Gonnng about platform releases, feature launches, and account notices.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -966,7 +1166,7 @@ export default function UpdatesView({
                       title="Back to Conversations"
                       className="p-2 rounded-xl text-gray-700 hover:text-gray-900 hover:bg-gray-200/80 transition-all cursor-pointer flex items-center justify-center shrink-0 border border-transparent hover:border-gray-300"
                     >
-                      <ChevronLeft className="w-6 h-6 text-[#FF5C00] stroke-[2.5]" />
+                      <ChevronLeft className="w-6 h-6 text-[#F59E0B] stroke-[2.5]" />
                     </button>
 
                     <div 
@@ -976,13 +1176,22 @@ export default function UpdatesView({
                       className="flex items-center gap-3 cursor-pointer group hover:opacity-90 transition-opacity mx-auto"
                     >
                       <img
-                        src={activeChatUser.avatarUrl && activeChatUser.avatarUrl.trim() !== '' ? activeChatUser.avatarUrl.trim() : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120'}
+                        src={resolveCreatorAvatar(
+                          activeChatUser.name,
+                          activeChatUser.id,
+                          activeChatUser.avatarUrl,
+                          creators,
+                          currentUser
+                        )}
                         alt={activeChatUser.name}
-                        className="w-10 h-10 rounded-full object-cover border-2 border-[#FF5C00]/40 group-hover:border-[#FF5C00] transition-colors shrink-0 shadow-sm"
+                        className="w-10 h-10 rounded-full object-cover border-2 border-[#F59E0B]/40 group-hover:border-[#F59E0B] transition-colors shrink-0 shadow-sm"
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(activeChatUser.name || 'User')}&background=F59E0B&color=fff`;
+                        }}
                       />
                       <div className="text-center sm:text-left">
-                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 group-hover:text-[#FF5C00] transition-colors leading-tight">
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 group-hover:text-[#F59E0B] transition-colors leading-tight">
                           {activeChatUser.name}
                         </h4>
                         <p className="text-[10px] sm:text-[11px] font-mono text-gray-500">
@@ -1023,9 +1232,9 @@ export default function UpdatesView({
                                     onSelectPost(m.postId || 'post-1', 'shared_message');
                                   }
                                 }}
-                                className={`w-full max-w-sm rounded-2xl p-3 border transition-all cursor-pointer group shadow-md hover:border-[#FF5C00] ${
+                                className={`w-full max-w-sm rounded-2xl p-3 border transition-all cursor-pointer group shadow-md hover:border-[#F59E0B] ${
                                   isMe
-                                    ? 'bg-[#FF5C00]/10 border-[#FF5C00]/50 text-black'
+                                    ? 'bg-[#F59E0B]/10 border-[#F59E0B]/50 text-black'
                                     : 'bg-white border-gray-300 text-gray-900 hover:shadow-lg'
                                 }`}
                               >
@@ -1037,17 +1246,17 @@ export default function UpdatesView({
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                       referrerPolicy="no-referrer"
                                     />
-                                    <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-mono font-bold text-[#FF5C00] border border-[#FF5C00]/30 uppercase">
+                                    <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-mono font-bold text-[#F59E0B] border border-[#F59E0B]/30 uppercase">
                                       Shared from {isMe ? 'You' : (activeChatUser ? activeChatUser.name : 'Message Thread')}
                                     </div>
                                   </div>
                                 )}
 
-                                <h4 className="text-xs sm:text-sm font-bold leading-tight mb-1.5 group-hover:text-[#FF5C00] transition-colors text-gray-900">
+                                <h4 className="text-xs sm:text-sm font-bold leading-tight mb-1.5 group-hover:text-[#F59E0B] transition-colors text-gray-900">
                                   {postTitle}
                                 </h4>
 
-                                <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-[#FF5C00] pt-1">
+                                <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-[#F59E0B] pt-1">
                                   <div className="flex items-center gap-1 min-w-0">
                                     <Link className="w-3.5 h-3.5 shrink-0" />
                                     <span className="truncate">{permalink}</span>
@@ -1075,7 +1284,7 @@ export default function UpdatesView({
                           >
                             <div className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed space-y-1.5 ${
                               isMe
-                                ? 'bg-[#FF5C00] text-black font-semibold rounded-br-none shadow'
+                                ? 'bg-[#F59E0B] text-black font-semibold rounded-br-none shadow'
                                 : 'bg-white text-gray-900 border border-gray-200 shadow-sm rounded-bl-none'
                             }`}>
                               <p>{m.text}</p>
@@ -1093,21 +1302,33 @@ export default function UpdatesView({
                   </div>
 
                   {/* Chat Input Bar */}
-                  <form onSubmit={handleSendChatMessage} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={chatInputText}
-                      onChange={(e) => setChatInputText(e.target.value)}
-                      placeholder={`Message @${activeChatUser.username || activeChatUser.name.toLowerCase().replace(/\s+/g, '')}...`}
-                      className="flex-1 px-4 py-2.5 rounded-xl text-xs border focus:outline-none focus:border-[#FF5C00] bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!chatInputText.trim()}
-                      className="px-4 py-2.5 bg-[#FF5C00] hover:bg-[#FF751A] disabled:opacity-50 text-black font-black rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow"
-                    >
-                      <Send className="w-4 h-4" /> Send
-                    </button>
+                  <form onSubmit={handleSendChatMessage} className="flex flex-col gap-1">
+                    <div className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          maxLength={1400}
+                          value={chatInputText}
+                          onChange={(e) => setChatInputText(e.target.value)}
+                          placeholder={`Message @${activeChatUser?.username || activeChatUser?.name.toLowerCase().replace(/\s+/g, '')}...`}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs border focus:outline-none focus:border-[#F59E0B] bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 pr-16"
+                        />
+                        {chatInputText.length > 0 && (
+                          <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono select-none pointer-events-none transition-colors ${
+                            chatInputText.length >= 1350 ? 'text-amber-600 font-bold' : 'text-gray-400'
+                          }`}>
+                            {chatInputText.length}/1400
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!chatInputText.trim()}
+                        className="px-4 py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] disabled:opacity-40 text-black font-black rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow shrink-0"
+                      >
+                        <Send className="w-4 h-4" /> Send
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}
