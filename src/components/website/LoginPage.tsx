@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { authService, UserSession } from '../../services/authService';
 import { CATEGORIES_DATA, getCategoryColor } from '../../data/categoriesData';
+import { GonnngGLogo, GonnngGIcon } from '../GonnngLogo';
 
 interface LoginPageProps {
   initialMode?: 'login' | 'register' | 'forgot' | 'reset';
@@ -358,9 +359,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   return (
     <div className="max-w-md mx-auto px-4 py-8 space-y-5 text-gray-900">
       {/* BRAND HEADER */}
-      <div className="text-center space-y-2">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#F59E0B] to-[#FF8000] mx-auto flex items-center justify-center text-black font-mono font-black text-2xl shadow-xl shadow-[#F59E0B]/20">
-          G
+      <div className="text-center space-y-3">
+        <div className="flex items-center justify-center">
+          <GonnngGLogo className="h-10 w-auto text-black" />
         </div>
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
           {mode === 'login' && 'Welcome back to Gonnng'}

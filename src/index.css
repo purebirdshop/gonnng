@@ -53,6 +53,10 @@
 body {
   background-color: #F3F4F6;
   color: #111827;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 header {
@@ -60,6 +64,9 @@ header {
   color: #111827 !important;
   border-color: #E5E7EB !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 nav {
@@ -145,17 +152,26 @@ button.bg-\[\#F59E0B\] {
   color: #6B7280 !important;
 }
 
-/* Input fields & textareas */
+/* Prevent mobile browser zoom on focus by enforcing 16px minimum font size */
+input,
 input[type="text"],
 input[type="email"],
 input[type="url"],
 input[type="password"],
 input[type="search"],
+input[type="number"],
+input[type="tel"],
 textarea,
 select {
+  font-size: 16px !important;
   background-color: #FFFFFF !important;
   color: #111827 !important;
   border-color: #D1D5DB !important;
+}
+
+/* Touch manipulation to prevent double tap/pinch zoom gestures */
+html, body {
+  touch-action: manipulation;
 }
 
 input::placeholder,
@@ -169,6 +185,28 @@ textarea::placeholder {
   color: #111827 !important;
   border-color: #E5E7EB !important;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+.safe-area-header {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-bottom-nav {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-left: calc(0.75rem + env(safe-area-inset-left, 0px)) !important;
+  padding-right: calc(0.75rem + env(safe-area-inset-right, 0px)) !important;
+}
+
+.safe-area-main-scrolled {
+  padding-top: calc(48px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-main-normal {
+  padding-top: calc(58px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
 }
 .fixed.bottom-0 .text-white\/40 {
   color: #6B7280 !important;
@@ -356,5 +394,3 @@ textarea::placeholder {
 .fixed form input[type="text"]::placeholder {
   color: #9CA3AF !important;
 }
-
-

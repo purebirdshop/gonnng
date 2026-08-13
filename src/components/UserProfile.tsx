@@ -18,7 +18,7 @@ export interface AppPermissions {
 }
 
 interface UserProfileProps {
-  currentUser: Creator;
+  currentUser: Creator | null;
   onUpdateUser: (updated: Creator) => void | Promise<void>;
   allCreators: Creator[];
   onToggleFollowCreator: (id: string) => void;
@@ -82,11 +82,11 @@ export default function UserProfile({
   onStartProject,
   onCreateRecipe
 }: UserProfileProps) {
-  const [name, setName] = useState(currentUser.name);
-  const [bio, setBio] = useState(currentUser.bio);
-  const [goals, setGoals] = useState(currentUser.goals);
-  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser.privacyDefault || 'public');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
+  const [name, setName] = useState(currentUser?.name || '');
+  const [bio, setBio] = useState(currentUser?.bio || '');
+  const [goals, setGoals] = useState(currentUser?.goals || '');
+  const [privacy, setPrivacy] = useState<"public" | "internal" | "private">(currentUser?.privacyDefault || 'public');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || '');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
@@ -1410,4 +1410,3 @@ export default function UserProfile({
     </div>
   );
 }
-
