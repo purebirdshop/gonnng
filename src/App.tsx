@@ -2,29 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bell, 
-  Layers, 
   BookOpen, 
-  FileSliders, 
-  Users, 
+  FileSliders,  
   User, 
   Plus, 
-  Trash2, 
-  CheckCircle, 
-  AlertCircle, 
-  Award, 
-  Clock, 
-  Calendar, 
-  Maximize2, 
-  Sliders,
-  ChevronRight,
-  Sparkles,
   Search,
   Settings,
   GitFork,
-  Menu,
-  Home,
   CircleDotDashed,
-  Edit2,
   X,
   BookPlus
 } from 'lucide-react';
@@ -36,6 +21,8 @@ import { uploadService, getPublicMediaUrl } from './services/uploadService';
 import { permissionService } from './services/permissionService';
 import { authService, isAuthFeatureEnabled, UserSession } from './services/authService';
 import { hydrateCreators, isUserInCircle } from './utils/followUtils';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { Capacitor } from '@capacitor/core';
 
 // Component imports
 import Onboarding from './components/Onboarding';
@@ -68,22 +55,6 @@ import { OnboardingWizard } from './components/website/OnboardingWizard';
 import { useCookieConsent } from './hooks/useCookieConsent';
 import { CookieBanner } from './components/CookieBanner';
 import { CookiePreferencesModal } from './components/CookiePreferencesModal';
-
-const DEFAULT_USER: Creator = {
-  id: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-  publicId: '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
-  username: 'gyro_gearloose',
-  name: 'Gyro Gearloose',
-  email: 'test@gonnng.com',
-  avatarUrl: '',
-  bio: '',
-  goals: '',
-  privacyDefault: 'public',
-  followerIds: [],
-  followingIds: [],
-  followersCount: 0,
-  followingCount: 0
-};
 
 export const isRestrictedPath = (pathname: string): boolean => {
   if (!pathname) return false;
@@ -132,10 +103,10 @@ export default function App() {
         }
       } catch {}
     }
-    return [DEFAULT_USER];
+    return [];
   });
 
-  const [currentUser, setCurrentUser] = useState<Creator>(() => {
+  const [currentUser, setCurrentUser] = useState<Creator | null>(() => {
     const saved = localStorage.getItem('gonnng_current_user');
     if (saved) {
       try {
@@ -145,7 +116,6 @@ export default function App() {
           const followingIds = Array.isArray(parsed.followingIds) ? parsed.followingIds : [];
 
           return {
-            ...DEFAULT_USER,
             ...parsed,
             followerIds,
             followingIds,
@@ -155,7 +125,7 @@ export default function App() {
         }
       } catch {}
     }
-    return DEFAULT_USER;
+    return null;
   });
 
   const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>(() => {
@@ -377,6 +347,22 @@ export default function App() {
     governanceItems: cookieGovernanceItems
   } = useCookieConsent();
 
+  // Capacitor Status Bar Mobile Configuration
+  useEffect(() => {
+    const initStatusBar = async () => {
+      try {
+        if (Capacitor.isPluginAvailable('StatusBar')) {
+          await StatusBar.setStyle({ style: Style.Light });
+          await StatusBar.setBackgroundColor({ color: '#FFFFFF' });
+          await StatusBar.setOverlaysWebView({ overlay: false });
+        }
+      } catch (err) {
+        // Silently handle web/preview environment
+      }
+    };
+    initStatusBar();
+  }, []);
+
   // On mount: check server authentication session via gonnng_session cookie
   useEffect(() => {
     authService.checkServerSession().then((user) => {
@@ -397,7 +383,7 @@ export default function App() {
 
   // Ensure currentUser state is synced when authSession or creators change
   useEffect(() => {
-    const activeUserId = authSession?.id || currentUser.id || 'user-current';
+    const activeUserId = authSession?.id || currentUser?.id || 'user-current';
     const activeEmail = authSession?.email;
 
     const matchingCreator = creators.find(
@@ -406,6 +392,7 @@ export default function App() {
 
     if (matchingCreator) {
       setCurrentUser(prev => {
+        if (!prev) return matchingCreator;
         const isDifferent =
           prev.id !== matchingCreator.id ||
           prev.name !== matchingCreator.name ||
@@ -770,13 +757,30 @@ export default function App() {
 
   const handleLoginSuccess = (user: UserSession) => {
     setAuthSession(user);
-    setCurrentUser(prev => ({
-      ...prev,
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      avatarUrl: user.avatarUrl || prev.avatarUrl
-    }));
+    setCurrentUser(prev => {
+      const base: Creator = prev || {
+        id: user.id,
+        publicId: user.publicId || Math.random().toString(36).substring(2, 11).toUpperCase(),
+        username: user.username || user.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl || '',
+        bio: '',
+        goals: '',
+        privacyDefault: 'public',
+        followersCount: 0,
+        followingCount: 0,
+        followerIds: [],
+        followingIds: []
+      };
+      return {
+        ...base,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl || base.avatarUrl
+      };
+    });
     if (user.isOnboarded) {
       setShowTutorial(false);
       localStorage.setItem('gonnng_tutorial_done', 'true');
@@ -791,6 +795,8 @@ export default function App() {
   const handleLogout = () => {
     authService.logout();
     setAuthSession(null);
+    setCurrentUser(null);
+    localStorage.removeItem('gonnng_current_user');
     updateRoute('website', 'home');
   };
 
@@ -1158,11 +1164,17 @@ export default function App() {
   }, [creators]);
 
   useEffect(() => {
-    localStorage.setItem('gonnng_current_user', JSON.stringify(currentUser));
+    if (currentUser) {
+      try {
+        localStorage.setItem('gonnng_current_user', JSON.stringify(currentUser));
+      } catch {}
+    } else {
+      localStorage.removeItem('gonnng_current_user');
+    }
   }, [currentUser]);
 
   const handleUpdateUser = async (updated: Creator) => {
-    const previousName = currentUser.name;
+    const previousName = currentUser?.name || '';
     setCurrentUser(updated);
 
     // Persist changes across creators, users, posts, and recipes tables in database
@@ -1230,9 +1242,9 @@ export default function App() {
                 taskPostToAdd = {
                   id: `post-task-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
                   type: 'task_completed',
-                  userId: currentUser.id,
-                  userName: currentUser.name,
-                  userAvatar: currentUser.avatarUrl,
+                  userId: currentUser?.id || 'user-current',
+                  userName: currentUser?.name || 'Creator',
+                  userAvatar: currentUser?.avatarUrl || '',
                   timeString: 'Just now',
                   title: `Completed action item on: ${p.title}`,
                   content: `✓ Checked off "${t.title}" under phase "${ph.title}"! Progress is building.`,
@@ -1258,9 +1270,9 @@ export default function App() {
           completionPostToAdd = {
             id: `post-comp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
             type: 'project_completed',
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userAvatar: currentUser.avatarUrl,
+            userId: currentUser?.id || 'user-current',
+            userName: currentUser?.name || 'Creator',
+            userAvatar: currentUser?.avatarUrl || '',
             timeString: 'Just now',
             title: `🏆 PROJECT COMPLETE: "${updatedProject.title}"`,
             content: `The whole is a sum of its parts! Successfully checked off every single phase and milestone for "${updatedProject.title}". Send constructive feedback!`,
@@ -1746,9 +1758,25 @@ export default function App() {
     <div className="min-h-screen font-sans flex flex-col antialiased pb-0 overflow-x-hidden w-full transition-colors duration-200 bg-[#F3F4F6] text-gray-900">
       
       {/* Dynamic Global Top Bar - Fixed top position with scroll shrink */}
-      <header className="backdrop-blur-md fixed top-0 left-0 right-0 z-40 border-b shrink-0 transition-all duration-300 shadow-2xl bg-white/95 text-gray-900 border-gray-200 shadow-sm">
-        <div className={`max-w-7xl mx-auto px-3 sm:px-4 md:px-8 flex items-center justify-between transition-all duration-300 relative ${
-          isScrolled ? 'h-9 sm:h-10' : 'h-9 sm:h-14'
+      <header className="backdrop-blur-md fixed top-0 left-0 right-0 z-40 border-b shrink-0 transition-all duration-300 shadow-2xl bg-white/95 text-gray-900 border-gray-200 shadow-sm safe-area-header">
+        
+        {/* Mobile Global Header Progress Bar - Fills entire vertical space of header, no vertical sizing animation */}
+        <div 
+          className="md:hidden absolute inset-0 z-0 overflow-hidden pointer-events-none bg-gray-100/80"
+          id="mobile-header-progress-bar-container" 
+          title={`Active Projects: ${overallProgress}% Completed`}
+        >
+          <div 
+            className={`h-full transition-all duration-500 opacity-20 ${
+              overallProgress < 30 ? 'bg-red-500' : overallProgress < 60 ? 'bg-yellow-400' : overallProgress < 80 ? 'bg-orange-500' : 'bg-emerald-500'
+            }`}
+            style={{ width: `${overallProgress}%` }}
+            id="mobile-header-progress-bar-fill"
+          />
+        </div>
+
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 md:px-10 lg:px-12 flex items-center justify-between transition-all duration-300 relative z-10 ${
+          isScrolled ? 'h-11 sm:h-12 py-1.5' : 'h-13 sm:h-15 py-2.5'
         }`}>
           
           {/* Logo Brand Area */}
@@ -1766,12 +1794,12 @@ export default function App() {
           >
             {/* Mobile & Tablet Layout Logo (Gonnng G Icon) */}
             <div className="lg:hidden flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform">
-              <GonnngGIcon className="w-8 h-8 text-[#F59E0B]" />
+              <GonnngGIcon className="w-8 h-8 text-black" />
             </div>
 
             {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
             <div className="hidden lg:flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform">
-              <GonnngGLogo />
+              <GonnngGLogo className="h-[42px] w-[190px] -my-[4px] text-black" />
             </div>
           </div>
 
@@ -1911,9 +1939,9 @@ export default function App() {
 
         </div>
 
-        {/* Global Header Progress Bar - Shrinks on scroll, number hides on scroll */}
+        {/* Desktop Global Header Progress Bar - Shrinks on scroll */}
         <div 
-          className={`w-full relative overflow-hidden transition-all duration-300 bg-gray-200 ${
+          className={`hidden md:block w-full relative overflow-hidden transition-all duration-300 bg-gray-200 ${
             isScrolled ? 'h-1.5' : 'h-4'
           }`}
           id="header-progress-bar-container" 
@@ -1930,7 +1958,7 @@ export default function App() {
       </header>
 
       {/* Fixed Mobile Navigation Bar at the Bottom */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 py-2 px-3 flex justify-around items-center z-50 shadow-2xl transition-colors border-t bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 py-2 px-3 safe-area-bottom-nav flex justify-around items-center z-50 shadow-2xl transition-colors border-t bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
         <button 
           onClick={() => handleTabChange('profile')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
@@ -2012,8 +2040,10 @@ export default function App() {
       </div>
 
       {/* Main Container Workspace */}
-      <main className={`flex-1 max-w-7xl mx-auto w-full min-w-0 px-0 transition-all duration-300 pb-24 md:pb-8 ${
-        isScrolled ? 'pt-[42px] sm:pt-[48px] md:pt-[52px]' : 'pt-[52px] sm:pt-[72px] md:pt-[72px]'
+      <main className={`flex-1 max-w-7xl mx-auto w-full min-w-0 px-0 transition-all duration-300 md:pb-8 ${
+        isScrolled 
+          ? 'safe-area-main-scrolled sm:pt-[48px] md:pt-[52px]' 
+          : 'safe-area-main-normal sm:pt-[72px] md:pt-[72px]'
       }`}>
         
         {/* Force Guided Tutorial screen or selected tab view */}
@@ -2113,7 +2143,7 @@ export default function App() {
                     creator={homeViewCreatorProfile}
                     allCreators={creators}
                     posts={posts}
-                    currentUserId={currentUser.id}
+                    currentUserId={currentUser?.id || ''}
                     currentUser={currentUser}
                     onBackToHome={() => handleTabChange('social')}
                     onToggleFollow={handleToggleFollowCreator}
@@ -2130,7 +2160,7 @@ export default function App() {
                 ) : (
                   <Feed 
                     posts={posts}
-                    currentUserId={currentUser.id}
+                    currentUserId={currentUser?.id || ''}
                     currentUser={currentUser}
                     creators={creators}
                     projects={projects}
@@ -2282,7 +2312,7 @@ export default function App() {
           collections={collections}
           projects={projects}
           currentUser={currentUser}
-          privacyDefault={currentUser.privacyDefault}
+          privacyDefault={currentUser?.privacyDefault || 'public'}
           permissions={permissions}
           onNavigateToPermissions={handleNavigateToPermissions}
           onUpdatePermissions={handleUpdatePermissions}
