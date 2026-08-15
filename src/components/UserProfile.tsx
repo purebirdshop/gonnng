@@ -357,7 +357,7 @@ export default function UserProfile({
         id="profile-first-tile"
       >
         {/* Top Section */}
-        <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 min-w-0 w-full pl-4 pb-3">
+        <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 min-w-0 w-full pl-4 pb-3 pt-3">
           <div className="w-28 h-28 sm:w-20 sm:h-20 rounded-full flex items-center justify-center font-display font-bold shadow-lg border-4 relative overflow-hidden shrink-0 mx-auto sm:mx-0 bg-gray-200 border-gray-300 text-gray-800">
             {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
               <img src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -403,18 +403,13 @@ export default function UserProfile({
         </div>
 
         {/* Middle Section: Bio & Goal */}
-        <div 
-          onClick={() => setIsSettingsDrawerOpen(true)}
-          className="my-auto py-4 space-y-3 border p-4 mx-3 mb-3 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 cursor-pointer hover:bg-gray-100/80 transition-colors"
-          title="Click to edit profile bio and goals"
-        >
+        <div className="my-auto py-4 space-y-3 border p-4 mx-3 mb-3 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 cursor-pointer hover:bg-gray-100/80 transition-colors">
           <p className="text-xs leading-relaxed italic text-gray-800">
-            "{currentUser.bio && currentUser.bio.trim() !== '' ? currentUser.bio : ""}"
+            {currentUser.bio && currentUser.bio.trim() !== '' ? currentUser.bio : "I'm just getting started with Gonnng!"}
           </p>
-          <div className="text-[11px] font-mono pt-2 border-t flex items-center gap-1.5 border-gray-200 text-gray-600">
-            <Goal className="w-3.5 h-3.5 text-[#F59E0B]" />
-            <span>Current Goal: <strong className="font-sans text-gray-900">{currentUser.goals && currentUser.goals.trim() !== '' ? currentUser.goals : ""}</strong></span>
-          </div>
+          {/* <div className="text-[11px] font-mono pt-2flex items-center gap-1.5 border-gray-200 text-gray-600">
+            <span> @{currentUser.username}'s Goal: <strong className="font-sans text-gray-900">{currentUser.goals && currentUser.goals.trim() !== '' ? currentUser.goals : ""}</strong></span>
+           </div> */}
         </div>
 
         {/* Bottom Section: Followers/Following/Circle Stats & Privacy */}
@@ -474,7 +469,7 @@ export default function UserProfile({
       </div>
 
       {/* Feed Component with MINE filter applied */}
-      <div className="space-y-4">
+      <div className="w-full space-y-0 sm:space-y-4">
         <Feed 
           posts={posts}
           currentUserId={currentUser.id}

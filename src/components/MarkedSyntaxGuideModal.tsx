@@ -107,32 +107,6 @@ export const MarkedSyntaxGuideModal: React.FC<MarkedSyntaxGuideModalProps> = ({
               </div>
             </div>
           </div>
-
-          {/* Section 3: Suppressed Syntax (Literal Characters) */}
-          <div className="space-y-2">
-            <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-              <XCircle className="w-4 h-4 text-rose-600" />
-              <span>3. Suppressed Syntax (Rendered as Literal Text)</span>
-            </h4>
-            <div className="p-3 rounded-xl bg-rose-50/40 border border-rose-200 text-xs font-mono space-y-1.5 text-gray-800">
-              <div className="flex justify-between py-1 border-b border-rose-100">
-                <span>- [ ] Task checkbox</span>
-                <span className="text-rose-900 font-sans italic">Rendered as literal text</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-rose-100">
-                <span>- item / 1. item lists</span>
-                <span className="text-rose-900 font-sans italic">Rendered as literal text</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-rose-100">
-                <span>[^1] Footnote definitions</span>
-                <span className="text-rose-900 font-sans italic">Rendered as literal text</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span>&#123;#custom-id&#125; Heading ID syntax</span>
-                <span className="text-rose-900 font-sans italic">Rendered as literal text</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
@@ -140,7 +114,7 @@ export const MarkedSyntaxGuideModal: React.FC<MarkedSyntaxGuideModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white text-xs font-mono font-bold uppercase cursor-pointer"
+            className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs font-bold uppercase cursor-pointer"
           >
             Got It
           </button>

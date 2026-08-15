@@ -1,7 +1,7 @@
 import React from 'react';
-import { Sparkles, Download, HelpCircle, Mail, LogIn, ArrowRight, Shield, FileText, CheckCircle } from 'lucide-react';
-import { isAuthFeatureEnabled, UserSession } from '../../services/authService';
-import { GonnngGIcon, GonnngGLogo } from '../GonnngLogo';
+import { Sparkles, LogIn, ArrowRight } from 'lucide-react';
+import { UserSession } from '../../services/authService';
+import { GonnngGIcon } from '../GonnngLogo';
 
 interface WebsiteHeaderProps {
   currentTab: string;
@@ -37,7 +37,7 @@ export const WebsiteHeader: React.FC<WebsiteHeaderProps> = ({
 
           {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
           <div className="hidden lg:flex items-center justify-center group-hover:scale-105 transition-transform">
-            <GonnngGLogo />
+            <GonnngGIcon />
           </div>
         </button>
 

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
+  Disc3, 
+  Pencil, 
+  Octagon, 
   Bell, 
   BookOpen, 
   FileSliders,  
@@ -25,6 +28,7 @@ import { authService, isAuthFeatureEnabled, UserSession } from './services/authS
 import { hydrateCreators, isUserInCircle } from './utils/followUtils';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 
 // Component imports
 import Onboarding from './components/Onboarding';
@@ -41,6 +45,9 @@ import HomeCreatorProfileView from './components/HomeCreatorProfileView';
 import PermissionsPromptModal from './components/PermissionsPromptModal';
 import PostDetailModal from './components/PostDetailModal';
 import { ProjectExploreModal, RecipeExploreModal } from './components/ExploreModals';
+import {  
+  IconOnlySubButton, 
+} from './components/DesignSystemTiles';
 
 // Website Component imports
 import { WebsiteHeader } from './components/website/WebsiteHeader';
@@ -146,8 +153,8 @@ export default function App() {
   useEffect(() => {
     const uid = currentUser?.id || 'user-current';
     dataService.getUserSavedRecipeIds(uid).then(ids => {
-      if (ids && ids.length > 0) {
-        setSavedRecipeIds(prev => Array.from(new Set([...prev, ...ids])));
+      if (ids) {
+        setSavedRecipeIds(ids);
       }
     });
   }, [currentUser?.id]);
@@ -186,7 +193,7 @@ export default function App() {
     const path = pathname.toLowerCase().replace(/\/$/, '') || '/';
     const parts = path.split('/').filter(Boolean);
 
-    if (parts.length === 0) {
+    if (parts.length === 0 || (parts.length === 1 && (parts[0] === 'index.html' || parts[0] === 'index.htm'))) {
       return { viewMode: 'website', websiteTab: 'home', activeTab: 'profile' };
     }
 
@@ -343,15 +350,25 @@ export default function App() {
     }
   };
 
+  const isNativeCapacitor = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
   const initialSession = authService.getCurrentSession();
   const rawInitialPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-  const isInitialRestricted = isRestrictedPath(rawInitialPath) && !initialSession;
+  const isRootOrNativeDefault = isNativeCapacitor && (rawInitialPath === '/' || rawInitialPath === '/index.html' || rawInitialPath === '');
 
-  if (isInitialRestricted && typeof window !== 'undefined') {
-    window.history.replaceState({}, '', '/login');
+  let resolvedInitialPath = rawInitialPath;
+  if (isRootOrNativeDefault) {
+    resolvedInitialPath = (initialSession && initialSession.id) ? '/profile' : '/login';
+    if (typeof window !== 'undefined' && window.location.pathname !== resolvedInitialPath) {
+      window.history.replaceState({}, '', resolvedInitialPath);
+    }
+  } else if (isRestrictedPath(rawInitialPath) && !initialSession) {
+    resolvedInitialPath = '/login';
+    if (typeof window !== 'undefined' && window.location.pathname !== resolvedInitialPath) {
+      window.history.replaceState({}, '', '/login');
+    }
   }
 
-  const initialRoute = parsePath(isInitialRestricted ? '/login' : rawInitialPath);
+  const initialRoute = parsePath(resolvedInitialPath);
 
   // Local UI controller states
   const [viewMode, setViewMode] = useState<'website' | 'workspace'>(initialRoute.viewMode);
@@ -387,6 +404,32 @@ export default function App() {
       }
     };
     initStatusBar();
+  }, []);
+
+  // Capacitor App lifecycle state listener on native iOS/Android
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let appStateHandle: any = null;
+    CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        const session = authService.getCurrentSession();
+        if (!session) {
+          updateRoute('website', 'login');
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.history.replaceState({}, '', '/login');
+          }
+        }
+      }
+    }).then(handle => {
+      appStateHandle = handle;
+    }).catch(() => {});
+
+    return () => {
+      if (appStateHandle) {
+        appStateHandle.remove();
+      }
+    };
   }, []);
 
   // On mount: check server authentication session via gonnng_session cookie
@@ -717,6 +760,22 @@ export default function App() {
     const syncFromRoute = () => {
       const currentPath = window.location.pathname;
       const currentSession = authSession || authService.getCurrentSession();
+      const isNative = Capacitor.isNativePlatform();
+
+      // On native platform (iOS/Android) or when landing on root URL / index.html
+      if (isNative && (currentPath === '/' || currentPath === '/index.html' || currentPath === '')) {
+        if (currentSession && currentSession.id) {
+          window.history.replaceState({}, '', '/profile');
+          setViewMode('workspace');
+          setActiveTab('profile');
+          return;
+        } else {
+          window.history.replaceState({}, '', '/login');
+          setViewMode('website');
+          setWebsiteTab('login');
+          return;
+        }
+      }
 
       if (!currentSession && isRestrictedPath(currentPath)) {
         if (currentPath !== '/login') {
@@ -834,6 +893,24 @@ export default function App() {
         avatarUrl: user.avatarUrl || base.avatarUrl
       };
     });
+
+    dataService.getProjects(user.id).then(userProjects => {
+      if (userProjects && userProjects.length > 0) {
+        setProjects(userProjects);
+        setSelectedProjectId(userProjects[0].id);
+      }
+    });
+    dataService.getUserSavedRecipeIds(user.id).then(savedIds => {
+      if (savedIds) {
+        setSavedRecipeIds(savedIds);
+      }
+    });
+    dataService.getRecipes().then(allRecipes => {
+      if (allRecipes && allRecipes.length > 0) {
+        setRecipes(allRecipes);
+      }
+    });
+
     if (user.isOnboarded) {
       setShowTutorial(false);
       localStorage.setItem('gonnng_tutorial_done', 'true');
@@ -850,7 +927,10 @@ export default function App() {
     setAuthSession(null);
     setCurrentUser(null);
     localStorage.removeItem('gonnng_current_user');
-    updateRoute('website', 'home');
+    updateRoute('website', 'login');
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.history.replaceState({}, '', '/login');
+    }
   };
 
   const handleNavigateWebsite = (tab: string) => {
@@ -1230,11 +1310,7 @@ export default function App() {
     dataService.getCreators().then(c => c && c.length > 0 && setCreators(c));
     dataService.getRecipes().then(r => {
       if (r && r.length > 0) {
-        setRecipes(prev => {
-          const existingIds = new Set(prev.map(item => item.id));
-          const newItems = r.filter(item => !existingIds.has(item.id));
-          return [...prev, ...newItems];
-        });
+        setRecipes(r);
       }
     });
     dataService.getCollections().then(col => col && col.length > 0 && setCollections(col));
@@ -2504,15 +2580,14 @@ export default function App() {
                   Your Ideas Deserve To Get Done
                 </h3>
               </div>
-              <button 
-                onClick={() => {
-                  setShowPhilosophyModal(false);
-                  localStorage.setItem('gonnng_philosophy_seen', 'true');
-                }}
-                className="text-gray-400 hover:text-gray-900 transition-all font-mono text-sm cursor-pointer"
-              >
-                ✕ Close
-              </button>
+                <IconOnlySubButton
+                  icon={X}
+                  onClick={() => {
+                    setShowPhilosophyModal(false);
+                    localStorage.setItem('gonnng_philosophy_seen', 'true');
+                  }}
+                  title="Close"
+                />
             </div>
 
             <div className="text-xs text-gray-600 leading-relaxed space-y-3 font-sans">
@@ -2520,43 +2595,50 @@ export default function App() {
                 "Progress over perfection. Make. Improve. Finish."
               </p>
               <p>
-                Gonnng is a <strong className="text-gray-900 font-semibold">progress journal for creative work</strong>. Instead of only showcasing finished projects, Gonnng helps creators document, organize, improve, and complete ideas with encouragement from the people they trust most.
+                Gonnng is a <strong className="text-gray-900 font-semibold">process journal for creative work.</strong> Instead of only showcasing finished projects, Gonnng is here to help you document and organize ideas while you develop and improve your process. And most of all, get them done.
               </p>
               <p>
-                Ideas become skills. Skills become craftsmanship. Craftsmanship becomes confidence. Confidence creates better ideas.
+              Visibility starts with your Circle which is made up of Followers that Follow you back. Insead of sharing your work with the world, share with people you know will give insight and push you to give out your best. Your circle becomes a rich, digital network of creatives you trust.
+                Ideas become skills. Skills become craftsmanship. Craftsmanship becomes confidence. And confidence will help you make sure your ideas come to life.
               </p>
               <p className="text-gray-800 font-medium">
-                Every update in your Circle receives coaching feedback, not empty applause:
+                Every post, every update, is a chance for your Circle to give feedback and encouragement, not just empty applause:
               </p>
             </div>
 
             <div className="grid gap-3.5 pt-1">
               <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="perfect">🟢</span>
+                <span className="text-xl shrink-0" role="img" aria-label="perfect">
+                  <Disc3 className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                </span>
                 <div>
                   <h4 className="text-xs font-mono font-black uppercase text-emerald-800">Perfect</h4>
                   <p className="text-[11px] text-emerald-900/80 leading-normal mt-0.5 font-medium">
-                    You've got it. Signal that the creator's current step or technique is dialed in.
+                    <b>You've got it!</b> Cheer ons current step or technique is dialed in.
                   </p>
                 </div>
               </div>
 
               <div className="bg-orange-50 border border-orange-200 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="potential">🟡</span>
+                <span className="text-xl shrink-0" role="img" aria-label="potential">
+                  <Pencil className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                </span>
                 <div>
                   <h4 className="text-xs font-mono font-black uppercase text-[#F59E0B]">Potential</h4>
                   <p className="text-[11px] text-orange-950/80 leading-normal mt-0.5 font-medium">
-                    Keep working on it. Micro-adjustments and subtle polish will take this to the next level.
+                    Keep Going! You're on to something, stay after it.
                   </p>
                 </div>
               </div>
 
               <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex items-start gap-3">
-                <span className="text-xl shrink-0" role="img" aria-label="promise">🔴</span>
+                <span className="text-xl shrink-0" role="img" aria-label="promise">
+                  <Octagon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                </span>
                 <div>
                   <h4 className="text-xs font-mono font-black uppercase text-rose-700">Promise</h4>
                   <p className="text-[11px] text-rose-950/80 leading-normal mt-0.5 font-medium">
-                    You're headed somewhere, try another approach. Back to the drawing board for a fresh angle.
+                    Try something new. Head back to the drawing board for a fresh angle.
                   </p>
                 </div>
               </div>

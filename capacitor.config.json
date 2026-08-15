@@ -8,12 +8,12 @@
   },
   "plugins": {
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#111827"
+      "style": "LIGHT",
+      "backgroundColor": "#fffffc"
     },
     "Keyboard": {
       "resize": "body",
-      "style": "DARK"
+      "style": "LIGHT"
     }
   }
 }

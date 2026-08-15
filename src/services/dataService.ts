@@ -19,6 +19,12 @@ import {
 import { getPublicMediaUrl, uploadService } from './uploadService';
 import { authService } from './authService';
 import { hydrateCreators } from '../utils/followUtils';
+import {
+  BLT_RECIPE,
+  GONNNG_OFFICIAL_CREATOR,
+  GONNNG_OFFICIAL_ID,
+  createBLTProjectForUser
+} from '../data/initialData';
 
 // LOCAL STORAGE FALLBACK KEYS
 const KEYS = {
@@ -121,7 +127,7 @@ export function toValidUuid(id: string): string {
   return `${part1}-${part2}-${part3}-${part4}-${part5}`.toLowerCase();
 }
 
-export const DEFAULT_RECIPES: Recipe[] = [];
+export const DEFAULT_RECIPES: Recipe[] = [BLT_RECIPE];
 
 export const dataService = {
   isSupabaseActive(): boolean {
@@ -130,6 +136,7 @@ export const dataService = {
 
   // ================= USERS / CREATORS =================
   async getCreators(): Promise<Creator[]> {
+    let creators: Creator[] = [];
     if (this.isSupabaseActive() && supabase) {
       const { data: users, error } = await supabase.from('users').select('*');
       if (!error && users && users.length > 0) {
@@ -140,7 +147,7 @@ export const dataService = {
         const followsList = followsData || [];
         const circlesList = circlesData || [];
 
-        return users.map(u => {
+        creators = users.map(u => {
           const followerIds = followsList.filter(f => f.followee_id === u.id).map(f => f.follower_id);
           const followingIds = followsList.filter(f => f.follower_id === u.id).map(f => f.followee_id);
           const avatarStoragePath = u.avatar_storage_path || u.avatar_path || '';
@@ -169,8 +176,14 @@ export const dataService = {
           };
         });
       }
+    } else {
+      creators = hydrateCreators(getLocal<Creator[]>(KEYS.CREATORS, []));
     }
-    return hydrateCreators(getLocal<Creator[]>(KEYS.CREATORS, []));
+
+    if (!creators.some(c => c.id === GONNNG_OFFICIAL_CREATOR.id || c.id === GONNNG_OFFICIAL_ID)) {
+      creators = [GONNNG_OFFICIAL_CREATOR, ...creators];
+    }
+    return creators;
   },
 
   async saveCreators(creators: Creator[]): Promise<void> {
@@ -381,6 +394,8 @@ export const dataService = {
     const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
     const combinedMap = new Map<string, Recipe>();
 
+    // Always ensure the hardcoded BLT recipe is available
+    combinedMap.set(BLT_RECIPE.id, BLT_RECIPE);
     localRecipes.forEach(r => combinedMap.set(r.id, r));
     dbRecipes.forEach(r => combinedMap.set(r.id, r));
 
@@ -719,6 +734,7 @@ export const dataService = {
     });
 
     const combined = Array.from(new Set([
+      BLT_RECIPE.id,
       ...mappedSupabaseIds,
       ...localIds,
       ...(Array.isArray(stringSaved) ? stringSaved : [])
@@ -796,20 +812,77 @@ export const dataService = {
     return isNowBookmarked;
   },
 
+  // Helper to seed the hardcoded BLT recipe bookmark and active project for new users
+  async seedUserBLTProjectAndBookmark(userId: string): Promise<{ project: Project; recipe: Recipe }> {
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    const project = createBLTProjectForUser(userId);
+
+    // 1. Ensure recipe is saved locally
+    const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
+    if (!localRecipes.some(r => r.id === BLT_RECIPE.id)) {
+      setLocal(KEYS.RECIPES, [BLT_RECIPE, ...localRecipes]);
+    }
+
+    // 2. Ensure bookmark is present locally
+    const localBookmarks = getLocal<any[]>(KEYS.BOOKMARKS, []);
+    const arr = Array.isArray(localBookmarks) ? localBookmarks : [];
+    const hasBm = arr.some(b => {
+      if (!b) return false;
+      const bUid = typeof b === 'string' ? null : (b.userId || (b as any).user_id);
+      const bRId = typeof b === 'string' ? b : (b.recipeId || (b as any).recipe_id);
+      return (!bUid || bUid === userId || bUid === validUserId) && (bRId === BLT_RECIPE.id);
+    });
+    if (!hasBm) {
+      arr.push({ userId: userId || 'user-current', recipeId: BLT_RECIPE.id });
+      setLocal(KEYS.BOOKMARKS, arr);
+    }
+    const currentSaved = getLocal<string[]>('gonnng_recipe_bookmarks', []);
+    if (!currentSaved.includes(BLT_RECIPE.id)) {
+      setLocal('gonnng_recipe_bookmarks', [...currentSaved, BLT_RECIPE.id]);
+    }
+
+    // 3. Ensure project is saved locally
+    const localProjects = getLocal<Project[]>(KEYS.PROJECTS, []);
+    const safeProjects = Array.isArray(localProjects) ? localProjects.filter(Boolean) : [];
+    if (!safeProjects.some(p => p.recipeId === BLT_RECIPE.id && (p.userId === userId || !userId))) {
+      setLocal(KEYS.PROJECTS, [project, ...safeProjects]);
+    }
+
+    // 4. If Supabase is active, persist to database tables
+    if (this.isSupabaseActive() && supabase) {
+      try {
+        await this.ensureUserExistsInSupabase(validUserId);
+        await this.ensureUserExistsInSupabase(GONNNG_OFFICIAL_ID);
+        await this.saveRecipe(BLT_RECIPE, GONNNG_OFFICIAL_ID);
+
+        await supabase.from('recipe_bookmarks').upsert({
+          user_id: validUserId,
+          recipe_id: toValidUuid(BLT_RECIPE.id)
+        }, { onConflict: 'user_id, recipe_id' });
+
+        await this.updateProject(project, validUserId);
+      } catch (err) {
+        console.warn('Supabase BLT seed warning:', err);
+      }
+    }
+
+    return { project, recipe: BLT_RECIPE };
+  },
+
   // ================= PROJECTS (Recipe execution) =================
   async getProjects(userId?: string): Promise<Project[]> {
+    let projectList: Project[] = [];
     if (this.isSupabaseActive() && supabase) {
       let query = supabase.from('projects').select('*');
       if (userId) {
         query = query.eq('user_id', userId);
       }
       const { data: projectRows, error } = await query;
-      if (!error && projectRows) {
-        if (projectRows.length === 0) return [];
+      if (!error && projectRows && projectRows.length > 0) {
         const { data: phasesData } = await supabase.from('project_phases').select('*').order('position');
         const { data: tasksData } = await supabase.from('project_tasks').select('*').order('position');
 
-        return projectRows.map(p => {
+        projectList = projectRows.map(p => {
           const pPhases = (phasesData || []).filter(ph => ph.project_id === p.id);
           const phases: Phase[] = pPhases.map(ph => {
             const phTasks = (tasksData || []).filter(t => t.project_phase_id === ph.id);
@@ -842,12 +915,26 @@ export const dataService = {
         });
       }
     }
-    const all = getLocal<Project[]>(KEYS.PROJECTS, []);
-    const safeAll = Array.isArray(all) ? all.filter(Boolean) : [];
-    if (userId) {
-      return safeAll.filter(p => p && (!p.userId && !(p as any).user_id || p.userId === userId || (p as any).user_id === userId));
+
+    if (projectList.length === 0) {
+      const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+      const safeAll = Array.isArray(all) ? all.filter(Boolean) : [];
+      if (userId) {
+        projectList = safeAll.filter(p => p && (!p.userId && !(p as any).user_id || p.userId === userId || (p as any).user_id === userId));
+      } else {
+        projectList = safeAll;
+      }
     }
-    return safeAll;
+
+    // If still empty for the user, auto-seed the default BLT project
+    if (projectList.length === 0) {
+      const defaultProj = createBLTProjectForUser(userId || 'user-current');
+      const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+      setLocal(KEYS.PROJECTS, [...all.filter(p => p.id !== defaultProj.id), defaultProj]);
+      projectList = [defaultProj];
+    }
+
+    return projectList;
   },
 
   async saveProjects(projects: Project[], userId?: string): Promise<void> {
