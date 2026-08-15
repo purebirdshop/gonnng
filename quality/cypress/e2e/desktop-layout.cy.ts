@@ -1,7 +1,7 @@
 describe('Desktop Layout Functional Test Automation Suite', () => {
   beforeEach(() => {
     cy.setDesktopViewport();
-    cy.visit('/');
+    cy.visit('/profile');
   });
 
   it('TC-008: Header and Navigation Layout on Desktop Viewport', () => {
@@ -32,12 +32,12 @@ describe('Desktop Layout Functional Test Automation Suite', () => {
     cy.contains('Profile Settings', { timeout: 5000 }).should('be.visible');
 
     // Close settings drawer
-    cy.get('body').type('{esc}');
+    cy.get('#close-profile-settings-btn').click();
   });
 
   it('TC-010: Circle View Search Button Styling and Modal on Desktop', () => {
-    // Navigate to Social / Circle tab if available
-    cy.get('button').contains(/Circle|Social/i).click({ force: true });
+    // Navigate to Social / Circle tab
+    cy.get('#nav-social-tab').click({ force: true });
 
     // Verify Circle view search button styling
     cy.get('#circle-search-btn').should('be.visible');
@@ -47,13 +47,14 @@ describe('Desktop Layout Functional Test Automation Suite', () => {
       .should('not.have.class', 'bg-[#FF5C00]');
 
     // Click search button
-    cy.get('#circle-search-btn').click();
+    cy.get('#circle-search-btn').click({ force: true });
 
     // Verify search modal pops up
-    cy.contains('Search Circle', { timeout: 5000 }).should('be.visible');
+    cy.get('#search-modal-root', { timeout: 5000 }).should('be.visible');
+    cy.get('#search-recipes-query').should('be.visible');
 
     // Close modal
-    cy.get('body').type('{esc}');
+    cy.get('#close-search-btn').click({ force: true });
   });
 
   it('TC-014: Session Persistence on Desktop Page Reload', () => {

@@ -91,7 +91,7 @@
             "exec": [
               "var ts = Date.now();",
               "pm.environment.set('dynamicUser', 'qa_user_' + ts);",
-              "pm.environment.set('dynamicEmail', 'qa_user_' + ts + '@gmail.com');"
+              "pm.environment.set('dynamicEmail', 'qa_user_' + ts + '@gonnng.test');"
             ],
             "type": "text/javascript"
           }

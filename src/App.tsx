@@ -2069,6 +2069,7 @@ export default function App() {
       {/* Fixed Mobile Navigation Bar at the Bottom */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 py-2 px-3 safe-area-bottom-nav flex justify-around items-center z-50 shadow-2xl transition-colors border-t bg-white/95 backdrop-blur-md border-gray-200 text-gray-900">
         <button 
+          id="mobile-nav-profile-tab"
           onClick={() => handleTabChange('profile')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'profile' && !showTutorial 
@@ -2092,6 +2093,7 @@ export default function App() {
           <span>Profile</span>
         </button>
         <button 
+          id="mobile-nav-process-tab"
           onClick={() => handleTabChange('coach')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             (activeTab === 'coach' || activeTab === 'recipes') && !showTutorial 
@@ -2107,6 +2109,7 @@ export default function App() {
 
         {/* Centered circle plus button */}
         <button 
+          id="mobile-nav-create-btn"
           onClick={() => setShowCreateModal(true)}
           className="w-11 h-11 rounded-full bg-[#F59E0B] text-black flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer hover:scale-105"
           title="New Post"
@@ -2115,6 +2118,7 @@ export default function App() {
         </button>
 
         <button 
+          id="mobile-nav-updates-tab"
           onClick={() => handleTabChange('updates')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'updates' && !showTutorial 
@@ -2134,6 +2138,7 @@ export default function App() {
           <Bell className="w-4.5 h-4.5" /> Updates
         </button>
         <button 
+          id="mobile-nav-social-tab"
           onClick={() => handleTabChange('social')}
           className={`relative flex flex-col items-center gap-1 py-1.5 px-3 rounded-2xl text-[9px] font-bold transition-all cursor-pointer ${
             activeTab === 'social' && !showTutorial 
@@ -2453,6 +2458,7 @@ export default function App() {
       {/* Search recipes modal */}
       {showSearchModal && (
         <SearchRecipesModal
+          initialCategory={searchModalInitialCategory}
           onClose={() => setShowSearchModal(false)}
           recipes={recipes}
           creators={creators}
@@ -2478,7 +2484,6 @@ export default function App() {
           onDeleteProject={(projectId) => {
             handleDeleteProject(projectId);
           }}
-          initialCategory={searchModalInitialCategory}
         />
       )}
 
