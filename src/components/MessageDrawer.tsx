@@ -91,7 +91,7 @@ export default function MessageDrawer({
 
   // Handle auto-send if initialSharedItem is passed (e.g., when sharing a profile/post/recipe directly)
   useEffect(() => {
-    if (isOpen && partnerUser && initialSharedItem) {
+    if (isOpen && partnerUser && currentUser && initialSharedItem) {
       const sendInitial = async () => {
         const text = initialSharedItem.text;
         if (!text) return;
@@ -108,7 +108,7 @@ export default function MessageDrawer({
       };
       sendInitial();
     }
-  }, [isOpen, partnerUser, initialSharedItem]);
+  }, [isOpen, partnerUser, currentUser, initialSharedItem]);
 
   // Scroll to bottom of message thread
   useEffect(() => {
@@ -117,11 +117,11 @@ export default function MessageDrawer({
     }
   }, [messages, isOpen]);
 
-  if (!isOpen || !partnerUser) return null;
+  if (!isOpen || !partnerUser || !currentUser) return null;
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || sending) return;
+    if (!inputText.trim() || sending || !currentUser) return;
 
     setSending(true);
     try {
@@ -236,7 +236,7 @@ export default function MessageDrawer({
                 </p>
               </div>
             ) : (
-              messages.map(m => {
+              messages.map((m, idx) => {
                 const isMe = m.senderId === currentUser.id;
                 const isSharedPost = Boolean(m.postThumbnail || m.postId);
                 const postObj = m.postId ? posts.find(p => p.id === m.postId) : null;
@@ -244,7 +244,7 @@ export default function MessageDrawer({
                 const postImage = postObj?.image || m.postThumbnail;
 
                 return (
-                  <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div key={`drawer-msg-${m.id || idx}-${idx}`} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     {isSharedPost ? (
                       <div
                         onClick={() => {

@@ -864,11 +864,40 @@ export default function CreateHub({
       ];
     }
 
+    let recipeIdForProject: string | undefined = chosenRecipe ? chosenRecipe.id : undefined;
+
+    if (addToLibrary && onAddRecipe) {
+      const newRecipeUuid = crypto.randomUUID();
+      recipeIdForProject = newRecipeUuid;
+      const newRecipe: Recipe = {
+        id: newRecipeUuid,
+        title: projTitle.trim(),
+        authorId: myUserId,
+        authorName: myUserName,
+        category: projCategory || chosenRecipe?.category || 'Creative',
+        description: projDesc.trim() || `Execution blueprint for ${projTitle.trim()}`,
+        phases: projectPhases.map((ph, pIdx) => ({
+          id: crypto.randomUUID(),
+          title: ph.title,
+          position: pIdx + 1,
+          tasks: (ph.tasks || []).map((t, tIdx) => ({
+            id: crypto.randomUUID(),
+            title: t.title,
+            estimatedHours: t.estimatedHours || 1,
+            position: tIdx + 1
+          }))
+        })),
+        tags: ['my-projects', 'custom'],
+        isCustom: true
+      };
+      onAddRecipe(newRecipe);
+    }
+
     const newProject: Project = {
-      id: `project-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: projTitle.trim(),
       category: projCategory || chosenRecipe?.category || 'Creative',
-      recipeId: chosenRecipe ? chosenRecipe.id : 'recipe-custom',
+      recipeId: recipeIdForProject || (chosenRecipe ? chosenRecipe.id : undefined),
       recipeTitle: chosenRecipe ? chosenRecipe.title : (projFocusId ? (collections.find(c => c.id === projFocusId)?.title || 'Area of FOCUS') : 'Standalone Project'),
       phases: projectPhases,
       createdAt: new Date().toISOString(),
@@ -882,27 +911,6 @@ export default function CreateHub({
     };
 
     onAddProject(newProject);
-
-    if (addToLibrary && onAddRecipe) {
-      const newRecipe: Recipe = {
-        id: `recipe-custom-${Date.now()}`,
-        title: projTitle.trim(),
-        authorId: myUserId,
-        authorName: myUserName,
-        category: projCategory || chosenRecipe?.category || 'Creative',
-        description: projDesc.trim() || `Execution blueprint for ${projTitle.trim()}`,
-        phases: projectPhases.map(ph => ({
-          title: ph.title,
-          tasks: ph.tasks.map(t => ({
-            title: t.title,
-            estimatedHours: t.estimatedHours || 1
-          }))
-        })),
-        tags: ['my-projects', 'custom'],
-        isCustom: true
-      };
-      onAddRecipe(newRecipe);
-    }
 
     const mainImage = mediaItems[0]?.url;
     const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
@@ -1432,7 +1440,7 @@ export default function CreateHub({
                       {mediaItems.length > 1 && (
                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
                           {mediaItems.slice(1).map((item, idx) => (
-                            <div key={item.id} className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/20 shrink-0 group bg-black">
+                            <div key={`hub-media-thumb-${item.id || idx}-${idx}`} className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/20 shrink-0 group bg-black">
                               {item.type === 'video' ? (
                                 <video src={item.url} className="w-full h-full object-cover" />
                               ) : (
@@ -1489,11 +1497,11 @@ export default function CreateHub({
                       </div>
 
                       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                        {[...incompleteProjects].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(proj => {
+                        {[...incompleteProjects].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map((proj, idx) => {
                           const isSelected = updateProjId === proj.id;
                           return (
                             <button
-                              key={proj.id}
+                              key={`hub-proj-select-${proj.id || idx}-${idx}`}
                               type="button"
                               onClick={() => {
                                 if (isSelected) {
@@ -1598,14 +1606,14 @@ export default function CreateHub({
                             if (incompleteInPhase.length === 0) return null;
 
                             return (
-                              <div key={phase.id || `ph-${pIdx}`} className="space-y-1.5">
+                              <div key={phase.id} className="space-y-1.5">
                                 <h5 className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider">
                                   Phase {pIdx + 1}: {phase.title}
                                 </h5>
                                 <div className="space-y-1 pl-1">
-                                  {incompleteInPhase.map((task, tIdx) => (
+                                  {incompleteInPhase.map((task) => (
                                     <label
-                                      key={task.id || `task-${pIdx}-${tIdx}`}
+                                      key={task.id}
                                       className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
                                         selectedTaskIds.includes(task.id)
                                           ? 'bg-[#F59E0B]/15 border-[#F59E0B] text-white'
@@ -1638,9 +1646,9 @@ export default function CreateHub({
                       <div className="space-y-1.5">
                         <label className="block text-xs font-mono text-white/60 uppercase tracking-wider">Area of FOCUS</label>
                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                          {collections.map(col => (
+                          {collections.map((col, idx) => (
                             <button
-                              key={col.id}
+                              key={`hub-col-${col.id || idx}-${idx}`}
                               type="button"
                               onClick={() => setProjFocusId(prev => prev === col.id ? '' : col.id)}
                               className={`px-3.5 py-1.5 rounded-xl text-xs font-mono shrink-0 border transition-all cursor-pointer ${
@@ -1664,8 +1672,8 @@ export default function CreateHub({
                         className="w-full px-4 py-2.5 bg-[#181818] border border-white/10 rounded-xl text-sm font-sans text-white focus:outline-none focus:border-[#F59E0B] cursor-pointer"
                       >
                         <option value="" className="bg-[#181818] text-white/60">Select a Recipe from Library...</option>
-                        {recipes.map(recipe => (
-                          <option key={recipe.id} value={recipe.id} className="bg-[#181818] text-white">
+                        {recipes.map((recipe, idx) => (
+                          <option key={`hub-recipe-opt-${recipe.id || idx}-${idx}`} value={recipe.id} className="bg-[#181818] text-white">
                             {recipe.title} ({recipe.category})
                           </option>
                         ))}
@@ -1967,7 +1975,7 @@ export default function CreateHub({
                       {mediaItems.length > 1 && (
                         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
                           {mediaItems.slice(1).map((m, i) => (
-                            <div key={m.id} className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black">
+                            <div key={`hub-preview-thumb-${m.id || i}-${i}`} className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black">
                               {m.type === 'video' ? (
                                 <video src={m.url} className="w-full h-full object-cover" />
                               ) : (
@@ -2017,7 +2025,7 @@ export default function CreateHub({
                       </span>
                       <ul className="text-xs text-white/70 space-y-0.5 list-disc list-inside">
                         {activeUpdateProject.phases.flatMap(p => p.tasks).filter(t => selectedTaskIds.includes(t.id)).map((t, idx) => (
-                          <li key={t.id || `chk-task-${idx}`} className="truncate">{t.title}</li>
+                          <li key={`chk-task-${t.id || idx}-${idx}`} className="truncate">{t.title}</li>
                         ))}
                       </ul>
                     </div>

@@ -13,9 +13,8 @@ export interface EmailOptions {
   from?: string;
 }
 
-const RESEND_API_KEY = import.meta.env.VITE_RESEND_API_KEY || '';
-const DEFAULT_FROM = 'Gonnng Auth <auth@gonnng.com>';
-const FALLBACK_FROM = 'Gonnng <onboarding@resend.dev>';
+const RESEND_KEY = import.meta.env.RESEND_API_KEY;
+const DEFAULT_FROM = import.meta.env.RESEND_FROM_EMAIL;
 
 export const emailService = {
   /**

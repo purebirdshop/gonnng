@@ -349,7 +349,7 @@ export default function HomeCreatorProfileView({
               {/* User List Container */}
               <div className="overflow-y-auto flex-1 space-y-2 pr-1 max-h-[400px]">
                 {displayedModalCreators.length > 0 ? (
-                  displayedModalCreators.map((item) => {
+                  displayedModalCreators.map((item, idx) => {
                     const isMe = item.id === currentUserId;
                     const amIFollowingItem = isFollowingUser(currentUser, item.id, allCreators);
                     const doesItemFollowMe = isFollowedByUser(currentUser, item.id, allCreators);
@@ -357,7 +357,7 @@ export default function HomeCreatorProfileView({
 
                     return (
                       <div
-                        key={item.id}
+                        key={`home-profile-item-${item.id || idx}-${idx}`}
                         className="bg-white/5 border border-white/10 rounded-2xl p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:border-white/20 transition-all"
                       >
                         <div 

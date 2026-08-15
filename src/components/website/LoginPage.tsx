@@ -361,7 +361,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       {/* BRAND HEADER */}
       <div className="text-center space-y-3">
         <div className="flex items-center justify-center">
-          <GonnngGLogo className="h-10 w-auto text-black" />
+          <GonnngGIcon className="h-10 w-auto text-black" />
         </div>
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
           {mode === 'login' && 'Welcome back to Gonnng'}
@@ -385,7 +385,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <div className="flex items-center justify-center gap-2 pt-2">
             {[1, 2, 3].map((stepNum) => (
               <div 
-                key={stepNum} 
+                key={`reg-step-${stepNum}`} 
                 className={`flex items-center gap-1.5 ${registerStep === stepNum ? 'text-[#F59E0B] font-bold' : 'text-gray-400'}`}
               >
                 <div 
@@ -700,7 +700,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 {/* HORIZONTAL SCROLLABLE PARENT GROUP FILTER TABS */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-none border-b border-gray-100">
-                    {PARENT_GROUPS.map((group) => {
+                    {PARENT_GROUPS.map((group, gIdx) => {
                       const isActive = activeParentGroup === group;
                       const sampleCat = CATEGORIES_DATA.find(c => c.parentCategory === group);
                       const groupColorHex = group === 'All' 
@@ -709,7 +709,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                       return (
                         <button
-                          key={group}
+                          key={`parent-group-${group}-${gIdx}`}
                           type="button"
                           onClick={() => setActiveParentGroup(group)}
                           className={`px-3 py-1.5 rounded-xl text-[11px] font-mono shrink-0 transition-all cursor-pointer flex items-center gap-1.5 border ${
@@ -763,13 +763,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {filteredAndSortedInterests.map((cat) => {
+                      {filteredAndSortedInterests.map((cat, cIdx) => {
                         const isSelected = interests.includes(cat.name);
                         const colorHex = cat.colorHex || getCategoryColor(cat.name);
 
                         return (
                           <button
-                            key={cat.id || cat.name}
+                            key={`login-interest-${cat.id || cat.name}-${cIdx}`}
                             type="button"
                             onClick={() => toggleInterest(cat.name)}
                             className={`px-3 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 border ${
@@ -875,11 +875,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   <div className="py-1">
                     <span className="text-gray-500 font-mono block mb-1">Selected Interests ({interests.length}):</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {interests.map((catName) => {
+                      {interests.map((catName, idx) => {
                         const catColor = getCategoryColor(catName);
                         return (
                           <span
-                            key={catName}
+                            key={`selected-interest-${catName}-${idx}`}
                             className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border shadow-2xs"
                             style={{
                               backgroundColor: catColor,

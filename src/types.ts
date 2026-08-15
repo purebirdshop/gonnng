@@ -53,6 +53,7 @@ export interface Task {
   estimatedHours?: number;
   sourceTaskId?: string | null;
   position?: number;
+  body_markdown?: string;
 }
 
 export interface Phase {
@@ -63,11 +64,20 @@ export interface Phase {
   position?: number;
 }
 
+export interface RecipeTask {
+  id?: string;
+  title: string;
+  position?: number;
+  estimatedHours?: number;
+  body_markdown?: string;
+  completed?: boolean;
+}
+
 export interface RecipePhase {
   id?: string;
   title: string;
   position?: number;
-  tasks: { id?: string; title: string; position?: number; estimatedHours?: number }[];
+  tasks: { id?: string; title: string; position?: number; estimatedHours?: number; body_markdown?: string; completed?: boolean }[];
 }
 
 export interface Recipe {

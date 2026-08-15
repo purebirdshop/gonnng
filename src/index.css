@@ -64,9 +64,13 @@ header {
   color: #111827 !important;
   border-color: #E5E7EB !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-top: env(safe-area-inset-top, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+header > div {
+  padding: 12px 12px 0 12px;
 }
 
 nav {
@@ -188,9 +192,9 @@ textarea::placeholder {
 }
 
 .safe-area-header {
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-top: env(safe-area-inset-top, 24px);
+  padding-left: env(safe-area-inset-left, 12px);
+  padding-right: env(safe-area-inset-right, 12px);
 }
 
 .safe-area-bottom-nav {

@@ -10,14 +10,16 @@ export interface PrintableItem {
   authorName?: string;
   category?: string;
   phases: {
+    id?: string;
     title: string;
     tasks: {
+      id?: string;
       title: string;
       estimatedHours?: number;
       completed?: boolean;
     }[];
   }[];
-  progressPhotos?: { url: string; caption?: string; date?: string }[];
+  progressPhotos?: { id?: string; url: string; caption?: string; date?: string }[];
   createdAt?: string;
   completedAt?: string;
   recipeTitle?: string;
@@ -219,7 +221,7 @@ export default function PrintPreviewModal({
                         </p>
                         <div className="space-y-1.5">
                           {item.phases[0]?.tasks.slice(0, 4).map((task, idx) => (
-                            <div key={idx} className="flex items-start gap-2 text-[11px]">
+                            <div key={task.id || `print-p1-task-${idx}`} className="flex items-start gap-2 text-[11px]">
                               <span className={`w-3.5 h-3.5 shrink-0 rounded border mt-0.5 flex items-center justify-center ${
                                 task.completed ? 'bg-gray-900 border-gray-900 text-white' : 'border-gray-400 bg-white'
                               }`}>
@@ -246,7 +248,7 @@ export default function PrintPreviewModal({
                           </p>
                           <div className="space-y-1.5">
                             {item.phases[1]?.tasks.slice(0, 3).map((task, idx) => (
-                              <div key={idx} className="flex items-start gap-2 text-[11px]">
+                              <div key={task.id || `print-p2-task-${idx}`} className="flex items-start gap-2 text-[11px]">
                                 <span className={`w-3.5 h-3.5 shrink-0 rounded border mt-0.5 flex items-center justify-center ${
                                   task.completed ? 'bg-gray-900 border-gray-900 text-white' : 'border-gray-400 bg-white'
                                 }`}>
@@ -272,7 +274,7 @@ export default function PrintPreviewModal({
                         {item.phases.length > 2 ? (
                           <div className="space-y-1.5">
                             {item.phases[2]?.tasks.map((task, idx) => (
-                              <div key={idx} className="flex items-start gap-2 text-[11px]">
+                              <div key={task.id || `print-p3-task-${idx}`} className="flex items-start gap-2 text-[11px]">
                                 <span className={`w-3.5 h-3.5 shrink-0 rounded border mt-0.5 flex items-center justify-center ${
                                   task.completed ? 'bg-gray-900 border-gray-900 text-white' : 'border-gray-400 bg-white'
                                 }`}>
@@ -299,7 +301,7 @@ export default function PrintPreviewModal({
                           </p>
                           <div className="grid grid-cols-2 gap-1.5">
                             {item.progressPhotos?.slice(0, 2).map((photo, pIdx) => (
-                              <div key={pIdx} className="border border-gray-200 rounded p-1 text-[9px] bg-white">
+                              <div key={photo.id || `print-photo-${pIdx}`} className="border border-gray-200 rounded p-1 text-[9px] bg-white">
                                 <img src={photo.url} alt="Progress" className="w-full h-16 object-cover rounded" />
                                 {photo.caption && <p className="truncate text-gray-600 mt-0.5">{photo.caption}</p>}
                               </div>
@@ -351,7 +353,7 @@ export default function PrintPreviewModal({
                   const isActive = idx === currentPage;
                   return (
                     <button
-                      key={idx}
+                      key={`print-page-dot-${idx}`}
                       type="button"
                       onClick={() => setCurrentPage(idx)}
                       className={`transition-all duration-300 cursor-pointer ${
@@ -427,13 +429,13 @@ export default function PrintPreviewModal({
         {/* Printable Phases List */}
         <div className="space-y-6">
           {item.phases.map((phase, pIdx) => (
-            <div key={pIdx} className="space-y-3">
+            <div key={phase.id || `sheet-phase-${pIdx}`} className="space-y-3">
               <h3 className="text-sm font-mono font-bold text-black uppercase tracking-wider border-b-2 border-gray-400 pb-1">
                 PHASE {pIdx + 1}: {phase.title}
               </h3>
               <div className="space-y-2">
                 {phase.tasks.map((task, tIdx) => (
-                  <div key={tIdx} className="flex items-start justify-between gap-3 text-sm pb-1 border-b border-gray-100">
+                  <div key={task.id || `sheet-task-${tIdx}`} className="flex items-start justify-between gap-3 text-sm pb-1 border-b border-gray-100">
                     <div className="flex items-start gap-2.5">
                       <span className="w-4 h-4 border border-black rounded flex items-center justify-center shrink-0 mt-0.5">
                         {task.completed ? <Check className="w-3 h-3 stroke-[3] text-black" /> : null}

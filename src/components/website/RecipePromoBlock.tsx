@@ -851,7 +851,7 @@ export function RecipePromoObject({
             const tasks = phase.tasks || [];
             return (
               <div
-                key={phase.id || pIdx}
+                key={`promo-mini-${recipe.id || 'rec'}-ph-${phase.id || pIdx}-${pIdx}`}
                 className="rounded-xl border border-black/10 p-2.5 space-y-1.5 shadow-2xs"
                 style={{ backgroundColor: colors.soft }}
               >
@@ -871,7 +871,7 @@ export function RecipePromoObject({
                 <div className="space-y-1 pt-0.5">
                   {tasks.slice(0, 2).map((task, tIdx) => (
                     <div
-                      key={task.id || tIdx}
+                      key={`promo-mini-${recipe.id || 'rec'}-t-${task.id || tIdx}-${pIdx}-${tIdx}`}
                       className="px-2 py-1 rounded-lg border border-black/5 bg-white/80 text-[11px] font-sans text-gray-800 truncate flex items-center gap-1.5"
                     >
                       <span className="text-emerald-600 font-mono text-[10px] shrink-0">✓</span>
@@ -981,7 +981,7 @@ export function RecipePromoBlock({
 
           return (
             <div
-              key={recipe.id || idx}
+              key={`promo-desktop-recipe-${recipe.id || idx}-${idx}`}
               style={{
                 position: 'absolute',
                 zIndex: zIdx,
@@ -1032,7 +1032,7 @@ export function RecipePromoBlock({
 
               return (
                 <motion.div
-                  key={recipe.id || idx}
+                  key={`promo-mobile-recipe-${recipe.id || idx}-${idx}`}
                   initial={{ opacity: 0, scale: 0.9, x: 40, rotate: 10 }}
                   animate={{ opacity: 1, scale: 1, x: 0, rotate: 0 }}
                   exit={{ opacity: 0, scale: 0.9, x: -40, rotate: -10 }}
@@ -1058,7 +1058,7 @@ export function RecipePromoBlock({
       <div className="flex items-center justify-center gap-2 md:hidden pt-1">
         {displayRecipes.map((_, idx) => (
           <button
-            key={idx}
+            key={`promo-mobile-dot-${idx}`}
             type="button"
             onClick={() => setActiveIndex(idx)}
             className={`h-2 rounded-full transition-all cursor-pointer ${

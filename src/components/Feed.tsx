@@ -446,7 +446,7 @@ export default function Feed({
         >
           {displayedPosts.map((post, idx) => (
             <PostTile
-              key={post.id}
+              key={`${post.id || 'post'}-${idx}`}
               post={post}
               idx={idx}
               totalPosts={sortedPosts.length}
@@ -707,7 +707,7 @@ export default function Feed({
                       ? fullPostModal.images
                       : [fullPostModal.image || 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800']
                     ).map((imgUrl, imgIdx) => (
-                      <div key={imgIdx} className="rounded-2xl overflow-hidden border border-white/15 bg-black/60 shadow-lg">
+                      <div key={`feed-modal-img-${imgIdx}`} className="rounded-2xl overflow-hidden border border-white/15 bg-black/60 shadow-lg">
                         <img 
                           src={imgUrl} 
                           alt={`${fullPostModal.title} - ${imgIdx + 1}`} 
@@ -782,14 +782,14 @@ export default function Feed({
                         );
                       }
 
-                      return sortedTopLevel.map(parentComment => {
+                      return sortedTopLevel.map((parentComment, pIdx) => {
                         const replies = allComments.filter(c => c.parentId === parentComment.id);
                         const limit = visibleReplyCounts[parentComment.id] ?? (replies.length > 3 ? 2 : replies.length);
                         const visibleReplies = replies.slice(0, limit);
                         const remainingCount = replies.length - visibleReplies.length;
 
                         return (
-                          <div key={parentComment.id} className="space-y-1.5">
+                          <div key={`parent-comment-${parentComment.id || pIdx}-${pIdx}`} className="space-y-1.5">
                             <CommentCard
                               comment={parentComment}
                               onHeart={() => handleToggleHeart(parentComment.id)}
@@ -805,9 +805,9 @@ export default function Feed({
 
                             {replies.length > 0 && (
                               <div className="pl-3 sm:pl-4 border-l-2 border-white/15 ml-2.5 sm:ml-3 space-y-1.5 my-1">
-                                {visibleReplies.map(reply => (
+                                {visibleReplies.map((reply, rIdx) => (
                                   <CommentCard
-                                    key={reply.id}
+                                    key={`reply-${reply.id || rIdx}-${rIdx}`}
                                     comment={reply}
                                     isReply={true}
                                     onHeart={() => handleToggleHeart(reply.id)}

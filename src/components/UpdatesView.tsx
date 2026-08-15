@@ -448,11 +448,13 @@ export default function UpdatesView({
       dataService.getFollowerNotifications(uid).then(dbFollowers => {
         if (dbFollowers && dbFollowers.length > 0) {
           const mapped: FollowerNotification[] = dbFollowers.map(f => {
-            const creatorMatch = creators.find(c => c.id === f.creatorId || c.name === f.actorName) || {
+            const safeActorName = f.actorName || 'Creative Member';
+            const safeUsername = safeActorName.toLowerCase().replace(/\s+/g, '');
+            const creatorMatch = creators.find(c => c.id === f.creatorId || (c.name && f.actorName && c.name.toLowerCase() === f.actorName.toLowerCase())) || {
               id: f.creatorId,
-              name: f.actorName,
-              username: f.actorName.toLowerCase().replace(/\s+/g, ''),
-              email: `${f.actorName.toLowerCase().replace(/\s+/g, '')}@gonnng.app`,
+              name: safeActorName,
+              username: safeUsername,
+              email: `${safeUsername}@gonnng.app`,
               avatarUrl: f.actorAvatar,
               bio: 'Creative member',
               goals: '',
@@ -702,7 +704,7 @@ export default function UpdatesView({
                 {/* 4. DIRECT CONVERSATIONS (ORDERED BY MOST RECENT ACTIVITY) */}
                 <div className="pt-4 border-t border-gray-200 space-y-3">
                   {sortedThreads.length > 0 ? (
-                    sortedThreads.map(thread => {
+                    sortedThreads.map((thread, idx) => {
                       const lastMsg = thread.messages[thread.messages.length - 1];
                       const sharedMsg = [...thread.messages].reverse().find(m => m.postThumbnail || m.text.includes('gonnng.com/g/'));
                       const postThumbnail = sharedMsg?.postThumbnail || (
@@ -719,7 +721,7 @@ export default function UpdatesView({
 
                       return (
                         <div
-                          key={thread.creator.id}
+                          key={`msg-thread-${thread.creator?.id || idx}-${idx}`}
                           id={`msg-thread-${thread.creator.id}`}
                           onClick={() => setActiveChatUser(thread.creator)}
                           className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
@@ -825,7 +827,7 @@ export default function UpdatesView({
               {effectiveCategory === 'updates' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-updates-list">
                   {sortedPostNotifications.length > 0 ? (
-                    sortedPostNotifications.map(n => {
+                    sortedPostNotifications.map((n, idx) => {
                       const isUnread = (!n.isRead || sessionUnclickedUnreadIds.has(n.id)) && !userClickedIds.has(n.id);
                       const actorAvatar = resolveCreatorAvatar(
                         n.actorName,
@@ -836,7 +838,7 @@ export default function UpdatesView({
                       );
                       return (
                         <InViewTile
-                          key={n.id}
+                          key={`post-notif-${n.id || idx}-${idx}`}
                           isRead={n.isRead}
                           onMarkRead={() => {
                             handleMarkItemRead('post', n.id);
@@ -866,7 +868,7 @@ export default function UpdatesView({
                             onClick={(e) => {
                               if (onSelectUser) {
                                 e.stopPropagation();
-                                const foundCreator = creators.find(c => c.name.toLowerCase() === n.actorName.toLowerCase() || c.username === n.actorName);
+                                const foundCreator = creators.find(c => (c.name && n.actorName && c.name.toLowerCase() === n.actorName.toLowerCase()) || (c.username && n.actorName && c.username.toLowerCase() === n.actorName.toLowerCase()));
                                 onSelectUser(foundCreator ? foundCreator.id : n.actorName);
                               }
                             }}
@@ -882,7 +884,7 @@ export default function UpdatesView({
                                 onClick={(e) => {
                                   if (onSelectUser) {
                                     e.stopPropagation();
-                                    const foundCreator = creators.find(c => c.name.toLowerCase() === n.actorName.toLowerCase() || c.username === n.actorName);
+                                    const foundCreator = creators.find(c => (c.name && n.actorName && c.name.toLowerCase() === n.actorName.toLowerCase()) || (c.username && n.actorName && c.username.toLowerCase() === n.actorName.toLowerCase()));
                                     onSelectUser(foundCreator ? foundCreator.id : n.actorName);
                                   }
                                 }}
@@ -958,16 +960,17 @@ export default function UpdatesView({
               {effectiveCategory === 'followers' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-followers-list">
                   {sortedFollowerNotifications.length > 0 ? (
-                    sortedFollowerNotifications.map(f => {
+                    sortedFollowerNotifications.map((f, idx) => {
                       const isUnread = (!f.isRead || sessionUnclickedUnreadIds.has(f.id)) && !userClickedIds.has(f.id);
                       const liveCreator = creators.find(c => 
                         c.id === f.creator.id || 
                         (c.username && f.creator.username && c.username.toLowerCase() === f.creator.username.toLowerCase()) ||
-                        c.name.toLowerCase() === f.creator.name.toLowerCase()
+                        (c.name && f.creator.name && c.name.toLowerCase() === f.creator.name.toLowerCase())
                       ) || f.creator;
 
                       const isFollowing = isFollowingUser(currentUser, liveCreator.id, creators);
-                      const username = `@${liveCreator.username || f.creator.username || liveCreator.name.toLowerCase().replace(/\s+/g, '')}`;
+                      const safeName = liveCreator.name || f.creator.name || 'user';
+                      const username = `@${liveCreator.username || f.creator.username || safeName.toLowerCase().replace(/\s+/g, '')}`;
 
                       const followerAvatar = resolveCreatorAvatar(
                         liveCreator.name || f.creator.name,
@@ -979,7 +982,7 @@ export default function UpdatesView({
 
                       return (
                         <InViewTile
-                          key={f.id}
+                          key={`follower-notif-${f.id || idx}-${idx}`}
                           isRead={f.isRead}
                           onMarkRead={() => {
                             handleMarkItemRead('follower', f.id);
@@ -1077,12 +1080,12 @@ export default function UpdatesView({
               {effectiveCategory === 'appinfo' && !activeChatUser && (
                 <div className="space-y-3" id="drilldown-appinfo-list">
                   {sortedAppInfoNotifications.length > 0 ? (
-                    sortedAppInfoNotifications.map(a => {
+                    sortedAppInfoNotifications.map((a, idx) => {
                       const isExpanded = expandedAppInfoId === a.id;
                       const isUnread = (!a.isRead || sessionUnclickedUnreadIds.has(a.id)) && !userClickedIds.has(a.id);
                       return (
                         <InViewTile
-                          key={a.id}
+                          key={`appinfo-notif-${a.id || idx}-${idx}`}
                           isRead={a.isRead}
                           onMarkRead={() => {
                             handleMarkItemRead('appinfo', a.id);
@@ -1195,7 +1198,7 @@ export default function UpdatesView({
                           {activeChatUser.name}
                         </h4>
                         <p className="text-[10px] sm:text-[11px] font-mono text-gray-500">
-                          @{activeChatUser.username || activeChatUser.name.toLowerCase().replace(/\s+/g, '')}
+                          @{activeChatUser.username || (activeChatUser.name ? activeChatUser.name.toLowerCase().replace(/\s+/g, '') : 'user')}
                         </p>
                       </div>
                     </div>
@@ -1215,8 +1218,8 @@ export default function UpdatesView({
                           </div>
                         );
                       }
-                      return msgs.map(m => {
-                        const isMe = m.senderId === currentUser.id || (currentUser.id === 'user-current' && m.senderId === 'user-current');
+                      return msgs.map((m, idx) => {
+                        const isMe = m.senderId === currentUser?.id || (currentUser?.id === 'user-current' && m.senderId === 'user-current');
                         const isSharedPost = Boolean(m.postThumbnail || m.postId);
                         const postObj = m.postId ? posts.find(p => p.id === m.postId) : null;
                         const postTitle = postObj?.title || 'Shared Gonnng Blueprint';
@@ -1225,7 +1228,7 @@ export default function UpdatesView({
 
                         if (isSharedPost) {
                           return (
-                            <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            <div key={`chat-msg-shared-${m.id || idx}-${idx}`} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                               <div 
                                 onClick={() => {
                                   if (onSelectPost) {
@@ -1279,7 +1282,7 @@ export default function UpdatesView({
 
                         return (
                           <div
-                            key={m.id}
+                            key={`chat-msg-text-${m.id || idx}-${idx}`}
                             className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
                           >
                             <div className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed space-y-1.5 ${
@@ -1310,7 +1313,7 @@ export default function UpdatesView({
                           maxLength={1400}
                           value={chatInputText}
                           onChange={(e) => setChatInputText(e.target.value)}
-                          placeholder={`Message @${activeChatUser?.username || activeChatUser?.name.toLowerCase().replace(/\s+/g, '')}...`}
+                          placeholder={`Message @${activeChatUser?.username || (activeChatUser?.name ? activeChatUser.name.toLowerCase().replace(/\s+/g, '') : 'user')}...`}
                           className="w-full px-4 py-2.5 rounded-xl text-xs border focus:outline-none focus:border-[#F59E0B] bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 pr-16"
                         />
                         {chatInputText.length > 0 && (

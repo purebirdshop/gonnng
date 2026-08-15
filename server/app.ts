@@ -1,7 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import { setupSwagger } from './swagger.js';
-import { ensureAuthColumnsExist, SESSION_SECRET } from './lib/sessions.js';
+import { ensureAuthColumnsExist } from './lib/sessions.js';
 import authRoutes from './routes/auth.js';
 import messageRoutes from './routes/messages.js';
 import mediaRoutes from './routes/media.js';
@@ -40,7 +40,7 @@ export async function createApp(): Promise<Express> {
   });
 
   app.use(express.json());
-  app.use(cookieParser(SESSION_SECRET));
+  app.use(cookieParser());
 
   await ensureAuthColumnsExist();
 
