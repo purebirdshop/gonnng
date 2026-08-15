@@ -76,22 +76,25 @@ export function isUserInCircle(userA?: Creator | null, targetUserId?: string | n
 /**
  * Returns all creators who are in profileUser's circle (mutual follow).
  */
-export function getCircleOfUser(profileUser: Creator, allCreators: Creator[]): Creator[] {
-  return allCreators.filter(c => c.id !== profileUser.id && isUserInCircle(profileUser, c.id, allCreators));
+export function getCircleOfUser(profileUser?: Creator | null, allCreators: Creator[] = []): Creator[] {
+  if (!profileUser || !Array.isArray(allCreators)) return [];
+  return allCreators.filter(c => c && c.id !== profileUser.id && isUserInCircle(profileUser, c.id, allCreators));
 }
 
 /**
  * Returns all creators who follow profileUser
  */
-export function getFollowersOfUser(profileUser: Creator, allCreators: Creator[]): Creator[] {
-  const ids = profileUser.followerIds || [];
-  return allCreators.filter(c => c.id !== profileUser.id && (ids.includes(c.id) || (Array.isArray(c.followingIds) && c.followingIds.includes(profileUser.id))));
+export function getFollowersOfUser(profileUser?: Creator | null, allCreators: Creator[] = []): Creator[] {
+  if (!profileUser || !Array.isArray(allCreators)) return [];
+  const ids = Array.isArray(profileUser.followerIds) ? profileUser.followerIds : [];
+  return allCreators.filter(c => c && c.id !== profileUser.id && (ids.includes(c.id) || (Array.isArray(c.followingIds) && c.followingIds.includes(profileUser.id))));
 }
 
 /**
  * Returns all creators whom profileUser is following
  */
-export function getFollowingOfUser(profileUser: Creator, allCreators: Creator[]): Creator[] {
-  const ids = profileUser.followingIds || [];
-  return allCreators.filter(c => c.id !== profileUser.id && (ids.includes(c.id) || (Array.isArray(c.followerIds) && c.followerIds.includes(profileUser.id))));
+export function getFollowingOfUser(profileUser?: Creator | null, allCreators: Creator[] = []): Creator[] {
+  if (!profileUser || !Array.isArray(allCreators)) return [];
+  const ids = Array.isArray(profileUser.followingIds) ? profileUser.followingIds : [];
+  return allCreators.filter(c => c && c.id !== profileUser.id && (ids.includes(c.id) || (Array.isArray(c.followerIds) && c.followerIds.includes(profileUser.id))));
 }

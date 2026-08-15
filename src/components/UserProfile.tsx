@@ -728,6 +728,7 @@ export default function UserProfile({
                   </h3>
                   <button
                     type="button"
+                    id="close-profile-settings-btn"
                     onClick={() => setIsSettingsDrawerOpen(false)}
                     className="p-2 text-gray-400 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
                   >

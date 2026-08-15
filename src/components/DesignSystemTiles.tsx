@@ -8,7 +8,6 @@ import {
   BookPlus, 
   SquarePen, 
   Shredder, 
-  Printer, 
   NotebookText 
 } from 'lucide-react';
 import { 
@@ -69,7 +68,6 @@ export function IconOnlyPrimaryButton({
   className = '',
 }: IconOnlyButtonProps) {
   const goldColors = COLOR_COLLECTIONS['Gonnng Gold'];
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <button
@@ -77,13 +75,11 @@ export function IconOnlyPrimaryButton({
       id={id}
       disabled={disabled}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       title={title}
       aria-label={title}
-      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-colors cursor-pointer shrink-0 border border-amber-300/40 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-all cursor-pointer shrink-0 border border-amber-300/40 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
       style={{
-        backgroundColor: isHovered ? goldColors.light : goldColors.soft,
+        backgroundColor: goldColors.soft,
         borderRadius: '18px',
       }}
     >
@@ -105,7 +101,6 @@ export function IconOnlyTileButton({
   className = '',
 }: IconOnlyButtonProps) {
   const colors = collection || COLOR_COLLECTIONS['Light Mayo'];
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <button
@@ -113,13 +108,11 @@ export function IconOnlyTileButton({
       id={id}
       disabled={disabled}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       title={title}
       aria-label={title}
-      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-all cursor-pointer shrink-0 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
       style={{
-        backgroundColor: isHovered ? colors.light : colors.soft,
+        backgroundColor: colors.soft,
       }}
     >
       <Icon className="w-[20px] h-[20px] shrink-0" style={{ color: colors.dark }} />
@@ -140,7 +133,6 @@ export function IconOnlySubButton({
   className = '',
 }: IconOnlyButtonProps) {
   const colors = collection || COLOR_COLLECTIONS['Light Mayo'];
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <button
@@ -148,14 +140,9 @@ export function IconOnlySubButton({
       id={id}
       disabled={disabled}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       title={title}
       aria-label={title}
-      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-colors cursor-pointer shrink-0 bg-transparent disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
-      style={{
-        backgroundColor: isHovered ? colors.light : 'transparent',
-      }}
+      className={`w-[44px] h-[44px] min-w-[44px] min-h-[44px] rounded-[18px] flex items-center justify-center transition-all cursor-pointer shrink-0 bg-transparent hover:bg-black/5 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       <Icon className="w-[20px] h-[20px] shrink-0" style={{ color: colors.dark }} />
     </button>
