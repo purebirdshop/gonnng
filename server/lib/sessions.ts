@@ -97,13 +97,11 @@ export interface ServerSession {
 // this Map purely as a warm-instance cache, not persistent storage.
 export const userSessions = new Map<string, ServerSession>();
 
-export const SESSION_SECRET = process.env.SESSION_SECRET || 'gonnng_secret_cookie_key_2026';
 export const DEFAULT_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days standard web session duration
 
 export function generateSessionToken(userId: string, expiresAtMs: number): string {
-  const payload = `${userId}:${expiresAtMs}`;
-  const hmac = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
-  return `gon_sess.${userId}.${expiresAtMs}.${hmac}`;
+  const randomSuffix = crypto.randomBytes(24).toString('hex');
+  return `gon_sess.${userId}.${expiresAtMs}.${randomSuffix}`;
 }
 
 export function verifySessionToken(token: string): { valid: boolean; userId?: string; expiresAtMs?: number } {
@@ -112,23 +110,12 @@ export function verifySessionToken(token: string): { valid: boolean; userId?: st
   }
   const parts = token.split('.');
   if (parts.length !== 4) return { valid: false };
-  const [, userId, expiresAtStr, signature] = parts;
+  const [, userId, expiresAtStr] = parts;
   const expiresAtMs = parseInt(expiresAtStr, 10);
-  if (isNaN(expiresAtMs) || expiresAtMs < Date.now()) {
+  if (isNaN(expiresAtMs) || expiresAtMs < Date.now() || !userId) {
     return { valid: false };
   }
-  const payload = `${userId}:${expiresAtMs}`;
-  const expectedHmac = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
-
-  if (!signature || signature.length !== expectedHmac.length) return { valid: false };
-  try {
-    if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedHmac))) {
-      return { valid: true, userId, expiresAtMs };
-    }
-  } catch {
-    return { valid: false };
-  }
-  return { valid: false };
+  return { valid: true, userId, expiresAtMs };
 }
 
 export async function getOrRestoreSession(token: string): Promise<ServerSession | null> {

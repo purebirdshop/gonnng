@@ -52,12 +52,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ user, onComp
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {CREATOR_TYPES.map(type => {
+            {CREATOR_TYPES.map((type, tIdx) => {
               const Icon = type.icon;
               const isSelected = selectedType === type.id;
               return (
                 <button
-                  key={type.id}
+                  key={`creator-type-${type.id || tIdx}-${tIdx}`}
                   onClick={() => setSelectedType(type.id)}
                   className={`p-4 rounded-2xl border text-left transition-all space-y-2 cursor-pointer ${
                     isSelected

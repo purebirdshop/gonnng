@@ -219,9 +219,9 @@ export default function FileUploadZone({
           </div>
 
           <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-            {userFiles.map((file) => (
+            {userFiles.map((file, fIdx) => (
               <div
-                key={file.id}
+                key={`user-file-${file.id || fIdx}-${fIdx}`}
                 className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10 text-xs group hover:border-white/20 transition-all"
               >
                 <div className="flex items-center gap-2.5 overflow-hidden">

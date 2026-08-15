@@ -189,7 +189,7 @@ export default function CategoryCombobox({
 
               return (
                 <div
-                  key={match.category.id}
+                  key={`cat-combobox-${match.category.id || match.category.name}-${index}`}
                   onClick={() => handleSelect(match.category.name)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                   className={`px-3.5 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${

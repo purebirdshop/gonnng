@@ -224,7 +224,7 @@ export const dataService = {
       const userPayload: any = {
         id: updatedUser.id,
         public_id: updatedUser.publicId,
-        username: updatedUser.username || rawName.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+        username: updatedUser.username || (rawName ? rawName.toLowerCase().replace(/[^a-z0-9_]/g, '') : '') || `user_${updatedUser.id.substring(0, 6)}`,
         first_name: firstName,
         last_name: lastName,
         email: updatedUser.email,
@@ -390,25 +390,49 @@ export const dataService = {
   },
 
   async saveRecipe(recipe: Recipe, userId?: string): Promise<Recipe> {
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const validUserId = toValidUuid(userId || recipe.authorId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    const validRecipeId = isUuid(recipe.id) ? recipe.id : toValidUuid(recipe.id || `recipe-${Date.now()}`);
+    
+    recipe.id = validRecipeId;
+    recipe.authorId = validUserId;
+
     // 1. Update local storage
     const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
-    const existsLocally = localRecipes.some(r => r.id === recipe.id);
+    const existsLocally = localRecipes.some(r => r.id === validRecipeId);
     const updatedLocal = existsLocally
-      ? localRecipes.map(r => r.id === recipe.id ? recipe : r)
+      ? localRecipes.map(r => r.id === validRecipeId ? recipe : r)
       : [recipe, ...localRecipes];
     setLocal(KEYS.RECIPES, updatedLocal);
+
+    // Ensure it is saved in local bookmarks
+    try {
+      const localBookmarks = getLocal<any[]>(KEYS.BOOKMARKS, []);
+      const arr = Array.isArray(localBookmarks) ? localBookmarks : [];
+      const alreadyBookmarked = arr.some(b => {
+        if (!b) return false;
+        const bUid = typeof b === 'string' ? null : (b.userId || (b as any).user_id);
+        const bRId = typeof b === 'string' ? b : (b.recipeId || (b as any).recipe_id);
+        return (!bUid || bUid === validUserId) && (bRId === validRecipeId);
+      });
+      if (!alreadyBookmarked) {
+        arr.push({ userId: validUserId, recipeId: validRecipeId });
+        setLocal(KEYS.BOOKMARKS, arr);
+      }
+      const stringBookmarks = getLocal<string[]>('gonnng_recipe_bookmarks', []);
+      if (!stringBookmarks.includes(validRecipeId)) {
+        localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify([...stringBookmarks, validRecipeId]));
+      }
+    } catch {}
 
     // 2. Write to Supabase if active
     if (this.isSupabaseActive() && supabase) {
       try {
-        const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
-        const authorId = userId || recipe.authorId;
+        await this.ensureUserExistsInSupabase(validUserId, { id: validUserId, name: recipe.authorName });
 
         let existingDbId: string | null = null;
-        if (isUuid(recipe.id)) {
-          const { data: found } = await supabase.from('recipes').select('id').eq('id', recipe.id).maybeSingle();
-          if (found) existingDbId = found.id;
-        }
+        const { data: found } = await supabase.from('recipes').select('id').eq('id', validRecipeId).maybeSingle();
+        if (found) existingDbId = found.id;
 
         if (existingDbId) {
           // Update existing recipe row
@@ -416,63 +440,50 @@ export const dataService = {
             title: recipe.title,
             description: recipe.description || '',
             category: recipe.category || 'General',
-            visibility: recipe.visibility || 'public',
+            visibility: (recipe.visibility as RecipeVisibility) || 'public',
             updated_at: new Date().toISOString()
           }).eq('id', existingDbId);
 
           if (recipe.phases) {
             for (let pIndex = 0; pIndex < recipe.phases.length; pIndex++) {
               const ph = recipe.phases[pIndex];
-              let realPhaseId: string | null = null;
+              const phaseId = isUuid(ph.id) ? ph.id : toValidUuid(ph.id || `${existingDbId}-ph-${pIndex}`);
+              ph.id = phaseId;
 
-              if (isUuid(ph.id)) {
-                const { data: foundPh } = await supabase.from('recipe_phases').select('id').eq('id', ph.id).maybeSingle();
-                if (foundPh) {
-                  realPhaseId = foundPh.id;
-                  await supabase.from('recipe_phases').update({
-                    title: ph.title,
-                    position: ph.position ?? pIndex + 1
-                  }).eq('id', realPhaseId);
-                }
-              }
-
-              if (!realPhaseId) {
-                const { data: newPhRow } = await supabase.from('recipe_phases').insert({
+              const { data: foundPh } = await supabase.from('recipe_phases').select('id').eq('id', phaseId).maybeSingle();
+              if (foundPh) {
+                await supabase.from('recipe_phases').update({
+                  title: ph.title,
+                  position: ph.position ?? pIndex + 1
+                }).eq('id', phaseId);
+              } else {
+                await supabase.from('recipe_phases').insert({
+                  id: phaseId,
                   recipe_id: existingDbId,
                   title: ph.title,
                   position: ph.position ?? pIndex + 1
-                }).select().single();
-                if (newPhRow) {
-                  realPhaseId = newPhRow.id;
-                  ph.id = newPhRow.id;
-                }
+                });
               }
 
-              if (realPhaseId && ph.tasks) {
+              if (ph.tasks) {
                 for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
                   const t = ph.tasks[tIndex];
-                  let realTaskId: string | null = null;
+                  const taskId = isUuid(t.id) ? t.id : toValidUuid(t.id || `${phaseId}-tk-${tIndex}`);
+                  t.id = taskId;
 
-                  if (isUuid(t.id)) {
-                    const { data: foundTk } = await supabase.from('recipe_tasks').select('id').eq('id', t.id).maybeSingle();
-                    if (foundTk) {
-                      realTaskId = foundTk.id;
-                      await supabase.from('recipe_tasks').update({
-                        title: t.title,
-                        position: t.position ?? tIndex + 1
-                      }).eq('id', realTaskId);
-                    }
-                  }
-
-                  if (!realTaskId) {
-                    const { data: newTkRow } = await supabase.from('recipe_tasks').insert({
-                      phase_id: realPhaseId,
+                  const { data: foundTk } = await supabase.from('recipe_tasks').select('id').eq('id', taskId).maybeSingle();
+                  if (foundTk) {
+                    await supabase.from('recipe_tasks').update({
                       title: t.title,
                       position: t.position ?? tIndex + 1
-                    }).select().single();
-                    if (newTkRow) {
-                      t.id = newTkRow.id;
-                    }
+                    }).eq('id', taskId);
+                  } else {
+                    await supabase.from('recipe_tasks').insert({
+                      id: taskId,
+                      phase_id: phaseId,
+                      title: t.title,
+                      position: t.position ?? tIndex + 1
+                    });
                   }
                 }
               }
@@ -481,24 +492,20 @@ export const dataService = {
         } else {
           // Insert new recipe row
           const insertPayload: any = {
+            id: validRecipeId,
+            user_id: validUserId,
             title: recipe.title,
             description: recipe.description || '',
             category: recipe.category || 'General',
-            visibility: recipe.visibility || 'public'
+            visibility: (recipe.visibility as RecipeVisibility) || 'public'
           };
-          if (authorId && isUuid(authorId)) {
-            insertPayload.user_id = authorId;
-          }
-          if (isUuid(recipe.id)) {
-            insertPayload.id = recipe.id;
-          }
           if (recipe.forkedFrom && isUuid(recipe.forkedFrom)) {
             insertPayload.forked_from_recipe_id = recipe.forkedFrom;
           }
 
           const { data: newRecipeRow, error: rErr } = await supabase
             .from('recipes')
-            .insert(insertPayload)
+            .upsert(insertPayload, { onConflict: 'id' })
             .select()
             .single();
 
@@ -509,32 +516,41 @@ export const dataService = {
             if (recipe.phases) {
               for (let pIndex = 0; pIndex < recipe.phases.length; pIndex++) {
                 const ph = recipe.phases[pIndex];
-                const { data: newPhRow } = await supabase.from('recipe_phases').insert({
+                const phaseId = isUuid(ph.id) ? ph.id : toValidUuid(ph.id || `${newRecipeRow.id}-ph-${pIndex}`);
+                ph.id = phaseId;
+
+                const { data: newPhRow } = await supabase.from('recipe_phases').upsert({
+                  id: phaseId,
                   recipe_id: newRecipeRow.id,
                   title: ph.title,
                   position: ph.position ?? pIndex + 1
-                }).select().single();
+                }, { onConflict: 'id' }).select().single();
 
-                if (newPhRow) {
-                  ph.id = newPhRow.id;
-                  if (ph.tasks) {
-                    for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
-                      const t = ph.tasks[tIndex];
-                      const { data: newTkRow } = await supabase.from('recipe_tasks').insert({
-                        phase_id: newPhRow.id,
-                        title: t.title,
-                        position: t.position ?? tIndex + 1
-                      }).select().single();
-                      if (newTkRow) {
-                        t.id = newTkRow.id;
-                      }
-                    }
+                if (newPhRow && ph.tasks) {
+                  for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                    const t = ph.tasks[tIndex];
+                    const taskId = isUuid(t.id) ? t.id : toValidUuid(t.id || `${phaseId}-tk-${tIndex}`);
+                    t.id = taskId;
+
+                    await supabase.from('recipe_tasks').upsert({
+                      id: taskId,
+                      phase_id: phaseId,
+                      title: t.title,
+                      position: t.position ?? tIndex + 1
+                    }, { onConflict: 'id' });
                   }
                 }
               }
             }
           }
         }
+
+        // Bookmark in database recipe_bookmarks table
+        await supabase.from('recipe_bookmarks').upsert({
+          user_id: validUserId,
+          recipe_id: validRecipeId
+        }, { onConflict: 'user_id, recipe_id' });
+
       } catch (dbErr) {
         console.error('Error saving recipe to Supabase:', dbErr);
       }
@@ -857,6 +873,8 @@ export const dataService = {
       try {
         const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
         const ownerId = userId || project.userId;
+        const validOwnerId = toValidUuid(ownerId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+        await this.ensureUserExistsInSupabase(validOwnerId);
 
         let existingDbId: string | null = null;
         if (isUuid(project.id)) {
@@ -864,11 +882,14 @@ export const dataService = {
           if (found) existingDbId = found.id;
         }
 
+        const validRecipeId = project.recipeId && isUuid(project.recipeId) ? project.recipeId : (project.recipeId ? toValidUuid(project.recipeId) : null);
+
         if (existingDbId) {
           // UPDATE existing project row
           await supabase.from('projects').update({
             title: project.title,
             category: project.category || 'General',
+            recipe_id: validRecipeId,
             updated_at: new Date().toISOString()
           }).eq('id', existingDbId);
 
@@ -1353,7 +1374,7 @@ export const dataService = {
       try {
         const { data: userRow } = await supabase.from('users').select('id, email, about, profile_visibility').eq('id', validUserId).maybeSingle();
         if (!userRow) {
-          const rawSessName = (session?.name).trim();
+          const rawSessName = (session?.name || '').trim();
           const sSpaceIdx = rawSessName.indexOf(' ');
           const sFirstName = sSpaceIdx === -1 ? rawSessName : rawSessName.substring(0, sSpaceIdx);
           const sLastName = sSpaceIdx === -1 ? '' : rawSessName.substring(sSpaceIdx + 1).trim();
@@ -1361,7 +1382,7 @@ export const dataService = {
           await supabase.from('users').upsert({
             id: validUserId,
             public_id: session?.publicId || session?.username || validUserId,
-            username: session?.username || rawSessName.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            username: session?.username || (rawSessName ? rawSessName.toLowerCase().replace(/[^a-z0-9_]/g, '') : '') || `user_${validUserId.substring(0, 6)}`,
             first_name: sFirstName,
             last_name: sLastName,
             email: userRow?.email || session?.email,
@@ -2097,7 +2118,7 @@ export const dataService = {
       const partnerCreator: Creator = creators.find(c =>
         c.id === partnerId ||
         c.username === partnerId ||
-        c.name.toLowerCase() === partnerId.toLowerCase()
+        (c.name && partnerId && c.name.toLowerCase() === partnerId.toLowerCase())
       ) || {
         id: partnerId,
         name: partnerId.startsWith('creator-') ? partnerId.replace('creator-', '').toUpperCase() : partnerId,

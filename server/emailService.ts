@@ -13,8 +13,7 @@ export interface SendEmailOptions {
 export const emailService = {
   async sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string; error?: string }> {
     const apiKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || '';
-    const configuredFrom = options.from || process.env.RESEND_FROM_EMAIL || 'Gonnng <onboarding@resend.dev>';
-    const fallbackFrom = 'Gonnng <onboarding@resend.dev>';
+    const configuredFrom = options.from || process.env.RESEND_FROM_EMAIL || 'Gonnng <auth@gonnng.com>';
 
     if (!apiKey) {
       console.log('✉️ [Email Service Simulated - No RESEND_API_KEY set]:');
@@ -50,16 +49,10 @@ export const emailService = {
       }
     };
 
-    // Attempt 1: Try sending with configured sender address
+    // Send with configured sender address
     let res = await attemptSend(configuredFrom);
 
-    // Fallback 1: If domain is not verified, retry with onboarding@resend.dev
-    if (!res.success && configuredFrom !== fallbackFrom && res.data?.message?.includes('domain is not verified')) {
-      console.log(`ℹ️ [Resend Info] Domain in '${configuredFrom}' is not verified. Retrying with default '${fallbackFrom}'...`);
-      res = await attemptSend(fallbackFrom);
-    }
-
-    // Fallback 2: Resend test mode restriction (only owner allowed as recipient on free tier)
+    // Fallback: Resend test mode restriction (only owner allowed as recipient on free tier)
     if (!res.success && res.data?.message?.includes('only send testing emails to your own email address')) {
       console.log(`✉️ [Resend Test Mode] Recipient '${options.to}' is restricted by Resend free account settings. Email simulated successfully.`);
       return { success: true, id: `sim_testmode_${Date.now()}` };

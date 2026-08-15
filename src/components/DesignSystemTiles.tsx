@@ -418,7 +418,7 @@ export function RecipeTile({
           <div className="space-y-1">
             {phases.slice(0, 3).map((ph, phIdx) => (
               <div 
-                key={`rec-phase-${id}-${phIdx}`} 
+                key={ph.id ? `rec-phase-${ph.id}` : `rec-phase-${id}-${phIdx}`} 
                 className="flex justify-between items-center text-xs text-black"
               >
                 <div className="flex items-center gap-1.5 min-w-0 pr-2">
@@ -634,7 +634,7 @@ export function ProjectTile({
 
               return (
                 <div 
-                  key={`proj-phase-${id}-${phIdx}`} 
+                  key={ph.id ? `proj-phase-${ph.id}` : `proj-phase-${id}-${phIdx}`} 
                   className="flex justify-between items-center text-xs text-black"
                 >
                   <div className="flex items-center gap-1.5 min-w-0 pr-2">

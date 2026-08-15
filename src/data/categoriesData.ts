@@ -905,7 +905,7 @@ export function getCategoryGroup(categoryName?: string): ParentCategoryGroup | u
  * Perform category autocomplete search with synonym, parent group, and common project matching.
  */
 export function searchCategories(query: string, categories: CategoryItem[] = CATEGORIES_DATA): CategoryMatch[] {
-  const normalizedQuery = query.toLowerCase().trim();
+  const normalizedQuery = (query || '').toLowerCase().trim();
 
   if (!normalizedQuery) {
     return categories.map(cat => ({

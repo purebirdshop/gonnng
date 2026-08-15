@@ -130,12 +130,12 @@ export const SupportPage: React.FC = () => {
 
       {/* CATEGORIES GRID */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        {CATEGORIES.map(cat => {
+        {CATEGORIES.map((cat, cIdx) => {
           const Icon = cat.icon;
           const isActive = selectedCategory === cat.name;
           return (
             <button
-              key={cat.name}
+              key={`support-cat-${cat.name}-${cIdx}`}
               onClick={() => setSelectedCategory(cat.name)}
               className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-2 cursor-pointer ${
                 isActive
@@ -169,12 +169,12 @@ export const SupportPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredArticles.map(art => {
+            {filteredArticles.map((art, aIdx) => {
               const isExpanded = expandedArticle === art.id;
               const rating = ratedArticles[art.id];
               return (
                 <div 
-                  key={art.id}
+                  key={`support-art-${art.id}-${aIdx}`}
                   className="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden transition-colors"
                 >
                   <button

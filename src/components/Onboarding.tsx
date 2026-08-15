@@ -154,9 +154,9 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                 <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <p className="text-xs text-white/40 font-mono uppercase tracking-wider mb-2">Required Action Items</p>
-                    {tasks.filter(t => t.phase === 0).map(task => (
+                    {tasks.filter(t => t.phase === 0).map((task, tIdx) => (
                       <div
-                        key={task.id}
+                        key={`onboarding-p0-task-${task.id || tIdx}-${tIdx}`}
                         id={`task-${task.id}`}
                         onClick={() => toggleTask(task.id)}
                         className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
@@ -273,9 +273,9 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                 <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <p className="text-xs text-white/40 font-mono uppercase tracking-wider mb-2">Required Action Items</p>
-                    {tasks.filter(t => t.phase === 1).map(task => (
+                    {tasks.filter(t => t.phase === 1).map((task, tIdx) => (
                       <div
-                        key={task.id}
+                        key={`onboarding-p1-task-${task.id || tIdx}-${tIdx}`}
                         id={`task-${task.id}`}
                         onClick={() => toggleTask(task.id)}
                         className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
@@ -367,9 +367,9 @@ export default function Onboarding({ onCompleteTutorial }: OnboardingProps) {
                 <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <p className="text-xs text-white/40 font-mono uppercase tracking-wider mb-2">Required Action Items</p>
-                    {tasks.filter(t => t.phase === 2).map(task => (
+                    {tasks.filter(t => t.phase === 2).map((task, tIdx) => (
                       <div
-                        key={task.id}
+                        key={`onboarding-p2-task-${task.id || tIdx}-${tIdx}`}
                         id={`task-${task.id}`}
                         onClick={() => toggleTask(task.id)}
                         className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${

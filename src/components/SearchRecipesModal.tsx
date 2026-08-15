@@ -84,15 +84,15 @@ export default function SearchRecipesModal({
 
   const categories = ['All', 'Users', 'Recipes', 'Projects'];
 
-  const q = searchQuery.toLowerCase().trim();
+  const q = (searchQuery || '').toLowerCase().trim();
 
   // Filter Creators
   const filteredCreators = creators.filter(c => {
     if (!q) return true;
     return (
-      c.name.toLowerCase().includes(q) ||
-      c.bio.toLowerCase().includes(q) ||
-      c.goals.toLowerCase().includes(q)
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.bio || '').toLowerCase().includes(q) ||
+      (c.goals || '').toLowerCase().includes(q)
     );
   });
 
@@ -100,7 +100,7 @@ export default function SearchRecipesModal({
   // - Public: created by any user and marked public (or default)
   // - Internal: created by users in my circle and marked internal
   // - Private: ONLY visible to authenticated user who created it
-  const matchedCategoryNames = q ? searchCategories(q).map(m => m.category.name.toLowerCase()) : [];
+  const matchedCategoryNames = q ? searchCategories(q).map(m => (m.category?.name || '').toLowerCase()) : [];
 
   const filteredRecipes = communityRecipes.filter(recipe => {
     const isAuthor = Boolean(
@@ -114,7 +114,7 @@ export default function SearchRecipesModal({
     }
 
     if (vis === 'internal' && !isAuthor) {
-      const creator = creators.find(c => c.id === recipe.authorId || c.name.toLowerCase() === recipe.authorName?.toLowerCase());
+      const creator = creators.find(c => c.id === recipe.authorId || (c.name && recipe.authorName && c.name.toLowerCase() === recipe.authorName.toLowerCase()));
       const inCircle = creator
         ? creator.isInCircle || (currentUser && isUserInCircle(currentUser as any, creator.id, creators))
         : false;
@@ -126,41 +126,41 @@ export default function SearchRecipesModal({
     const isCategoryMatch = catLower.includes(q) || matchedCategoryNames.includes(catLower);
 
     return (
-      recipe.title.toLowerCase().includes(q) ||
-      recipe.description.toLowerCase().includes(q) ||
-      recipe.authorName.toLowerCase().includes(q) ||
+      (recipe.title || '').toLowerCase().includes(q) ||
+      (recipe.description || '').toLowerCase().includes(q) ||
+      (recipe.authorName || '').toLowerCase().includes(q) ||
       isCategoryMatch ||
-      (recipe.tags || []).some(t => t.toLowerCase().includes(q))
+      (recipe.tags || []).some(t => (t || '').toLowerCase().includes(q))
     );
-  }).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+  }).sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
 
   // Filter Projects
   const filteredProjects = projects.filter(project => {
     if (!q) return true;
     const catLower = (project.category || '').toLowerCase();
     const recipeTitleLower = (project.recipeTitle || '').toLowerCase();
-    const titleLower = project.title.toLowerCase();
+    const titleLower = (project.title || '').toLowerCase();
 
     return (
       titleLower.includes(q) ||
       catLower.includes(q) ||
       recipeTitleLower.includes(q) ||
       (project.phases || []).some(ph =>
-        ph.title.toLowerCase().includes(q) ||
-        (ph.tasks || []).some(t => t.title.toLowerCase().includes(q))
+        (ph.title || '').toLowerCase().includes(q) ||
+        (ph.tasks || []).some(t => (t.title || '').toLowerCase().includes(q))
       )
     );
-  }).sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+  }).sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
 
   // Filter Posts / Projects
   const filteredPosts = posts.filter(post => {
     if (!q) return true;
     const hashtagStr = Array.isArray(post.hashtags) ? post.hashtags.join(' ') : post.hashtags || '';
     return (
-      post.title.toLowerCase().includes(q) ||
-      post.content.toLowerCase().includes(q) ||
-      post.userName.toLowerCase().includes(q) ||
-      hashtagStr.toLowerCase().includes(q)
+      (post.title || '').toLowerCase().includes(q) ||
+      (post.content || '').toLowerCase().includes(q) ||
+      (post.userName || '').toLowerCase().includes(q) ||
+      (hashtagStr || '').toLowerCase().includes(q)
     );
   });
 
@@ -214,9 +214,9 @@ export default function SearchRecipesModal({
 
           {/* Options Row: All, Users, Recipes, Projects */}
           <div className="flex gap-2 overflow-x-auto pb-0.5">
-            {categories.map(cat => (
+            {categories.map((cat, cIdx) => (
               <button
-                key={cat}
+                key={`search-tab-cat-${cat}-${cIdx}`}
                 type="button"
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer shrink-0 border ${
@@ -251,9 +251,9 @@ export default function SearchRecipesModal({
                 </div>
                 {filteredCreators.length > 0 ? (
                   <div className="grid sm:grid-cols-2 gap-3">
-                    {filteredCreators.map(creator => (
+                    {filteredCreators.map((creator, idx) => (
                       <div 
-                        key={creator.id} 
+                        key={`search-creator-${creator.id || idx}-${idx}`} 
                         className="bg-white/5 border border-white/10 p-3.5 rounded-2xl flex items-center justify-between gap-3 hover:border-white/20 transition-all cursor-pointer"
                         onClick={() => setSelectedCreator(creator)}
                       >
@@ -311,7 +311,7 @@ export default function SearchRecipesModal({
                 </div>
                 {filteredRecipes.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filteredRecipes.map(recipe => {
+                    {filteredRecipes.map((recipe, idx) => {
                       const isSaved = isRecipeSavedInLib(recipe);
                       const isAuthor = Boolean(
                         recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
@@ -319,7 +319,7 @@ export default function SearchRecipesModal({
 
                       return (
                         <ProcessTile
-                          key={recipe.id}
+                          key={`search-recipe-${recipe.id || idx}-${idx}`}
                           type="recipe"
                           id={recipe.id}
                           title={recipe.title}
@@ -379,9 +379,9 @@ export default function SearchRecipesModal({
                 </div>
                 {filteredProjects.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filteredProjects.map(project => (
+                    {filteredProjects.map((project, idx) => (
                       <ProcessTile
-                        key={project.id}
+                        key={`search-project-${project.id || idx}-${idx}`}
                         type="project"
                         id={project.id}
                         title={project.title}
@@ -435,9 +435,9 @@ export default function SearchRecipesModal({
                       Community Posts & Updates ({filteredPosts.length})
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {filteredPosts.map(post => (
+                      {filteredPosts.map((post, idx) => (
                         <div 
-                          key={post.id} 
+                          key={`search-post-${post.id || idx}-${idx}`} 
                           className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all flex flex-col justify-between"
                         >
                           <div className="space-y-2">

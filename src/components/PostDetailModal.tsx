@@ -161,9 +161,9 @@ export default function PostDetailModal({
 
     const newCommentObj: PostComment = {
       id: `c-${Date.now()}`,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatarUrl,
+      userId: currentUser?.id || 'user-current',
+      userName: currentUser?.name || 'Creator',
+      userAvatar: currentUser?.avatarUrl || '',
       content: newCommentText.trim(),
       timeString: 'Just now',
       likes: 0,
@@ -325,7 +325,7 @@ export default function PostDetailModal({
                   ? localPost.images
                   : [localPost.image || 'https://images.unsplash.com/photo-1612178537253-bccd437b730e?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D']
                 ).map((imgUrl, imgIdx) => (
-                  <div key={imgIdx} className="rounded-2xl overflow-hidden border border-gray-200 bg-gray-900 shadow-md">
+                  <div key={`post-detail-modal-img-${imgIdx}`} className="rounded-2xl overflow-hidden border border-gray-200 bg-gray-900 shadow-md">
                     <img 
                       src={imgUrl} 
                       alt={`${localPost.title} - ${imgIdx + 1}`} 
@@ -408,14 +408,14 @@ export default function PostDetailModal({
                     );
                   }
 
-                  return sortedTopLevel.map(parentComment => {
+                  return sortedTopLevel.map((parentComment, pIdx) => {
                     const replies = allComments.filter(c => c.parentId === parentComment.id);
                     const limit = visibleReplyCounts[parentComment.id] ?? (replies.length > 3 ? 2 : replies.length);
                     const visibleReplies = replies.slice(0, limit);
                     const remainingCount = replies.length - visibleReplies.length;
 
                     return (
-                      <div key={parentComment.id} className="space-y-1.5">
+                      <div key={`modal-parent-comment-${parentComment.id || pIdx}-${pIdx}`} className="space-y-1.5">
                         <ModalCommentCard
                           comment={parentComment}
                           onHeart={() => handleToggleHeart(parentComment.id)}
@@ -432,9 +432,9 @@ export default function PostDetailModal({
 
                         {replies.length > 0 && (
                           <div className="pl-3 sm:pl-4 border-l-2 border-gray-200 ml-2.5 sm:ml-3 space-y-1.5 my-1">
-                            {visibleReplies.map(reply => (
+                            {visibleReplies.map((reply, rIdx) => (
                               <ModalCommentCard
-                                key={reply.id}
+                                key={`modal-reply-${reply.id || rIdx}-${rIdx}`}
                                 comment={reply}
                                 isReply={true}
                                 onHeart={() => handleToggleHeart(reply.id)}

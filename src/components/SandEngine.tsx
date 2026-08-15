@@ -494,7 +494,7 @@ export default function SandEngine({
   const visibleActiveProjects = activeProjectsList.slice(0, visibleActiveProjectsCount);
   const sortedProjects = [...visibleActiveProjects, ...completedProjectsList];
 
-  const isProjectInLibrary = activeProject ? (recipes?.some(r => r.id === activeProject.recipeId || r.title.trim().toLowerCase() === activeProject.title.trim().toLowerCase()) || false) : false;
+  const isProjectInLibrary = activeProject ? (recipes?.some(r => r.id === activeProject.recipeId || (r.title && activeProject.title && r.title.trim().toLowerCase() === activeProject.title.trim().toLowerCase())) || false) : false;
 
   const handleSaveProjectToLibrary = () => {
     if (!activeProject || !onAddRecipe) return;
@@ -520,10 +520,13 @@ export default function SandEngine({
     if (!activeProject) return;
     setEditProjectTitle(activeProject.title);
     setEditProjectCategory(activeProject.category || 'General');
-    setEditPhases(activeProject.phases.map(ph => ({
-      id: ph.id,
+    setEditPhases(activeProject.phases.map((ph, pIdx) => ({
+      id: ph.id || crypto.randomUUID(),
       title: ph.title,
-      tasks: ph.tasks.map(t => ({ ...t }))
+      tasks: ph.tasks.map((t, tIdx) => ({
+        ...t,
+        id: t.id || crypto.randomUUID()
+      }))
     })));
     setSaveToLibrary(!isProjectInLibrary);
     setIsEditingProject(true);
@@ -532,32 +535,47 @@ export default function SandEngine({
   const handleSaveProjectEdit = () => {
     if (!activeProject) return;
     const updatedCategory = editProjectCategory.trim() || activeProject.category || 'General';
-    const updated: Project = {
-      ...activeProject,
-      title: editProjectTitle.trim() || activeProject.title,
-      category: updatedCategory,
-      phases: editPhases
-    };
-    if (onUpdateProject) {
-      onUpdateProject(updated);
-    }
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    let recipeId = activeProject.recipeId;
+
     if (saveToLibrary && onAddRecipe && !isProjectInLibrary) {
+      const newRecipeUuid = (activeProject.recipeId && isUuid(activeProject.recipeId)) ? activeProject.recipeId : crypto.randomUUID();
+      recipeId = newRecipeUuid;
       const newRecipe: Recipe = {
-        id: `recipe-proj-${Date.now()}`,
-        title: updated.title,
+        id: newRecipeUuid,
+        title: editProjectTitle.trim() || activeProject.title,
         authorId: currentUser?.id,
         authorName: currentUser?.name,
         category: updatedCategory,
-        description: `Execution blueprint for ${updated.title}`,
-        phases: updated.phases.map(ph => ({
+        description: `Execution blueprint for ${editProjectTitle.trim() || activeProject.title}`,
+        phases: editPhases.map((ph, pIdx) => ({
+          id: (ph.id && isUuid(ph.id)) ? ph.id : crypto.randomUUID(),
           title: ph.title,
-          tasks: ph.tasks.map(t => ({ title: t.title, estimatedHours: t.estimatedHours || 1 }))
+          position: pIdx + 1,
+          tasks: (ph.tasks || []).map((t, tIdx) => ({
+            id: (t.id && isUuid(t.id)) ? t.id : crypto.randomUUID(),
+            title: t.title,
+            estimatedHours: t.estimatedHours || 1,
+            position: tIdx + 1
+          }))
         })),
         tags: ['my-projects', 'custom'],
         isCustom: true
       };
       onAddRecipe(newRecipe);
       setSaveToLibrary(false);
+    }
+
+    const updated: Project = {
+      ...activeProject,
+      title: editProjectTitle.trim() || activeProject.title,
+      category: updatedCategory,
+      phases: editPhases,
+      recipeId
+    };
+
+    if (onUpdateProject) {
+      onUpdateProject(updated);
     }
     setIsEditingProject(false);
     setShowMobileDetailModal(false);
@@ -657,11 +675,11 @@ export default function SandEngine({
     setEditPhases(prev => [
       ...prev,
       {
-        id: `phase-edit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: crypto.randomUUID(),
         title: `Phase ${prev.length + 1}`,
         tasks: [
           {
-            id: `task-edit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            id: crypto.randomUUID(),
             title: 'New Task',
             completed: false,
             estimatedHours: 1
@@ -681,7 +699,7 @@ export default function SandEngine({
       tasks: [
         ...ph.tasks,
         {
-          id: `task-edit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          id: crypto.randomUUID(),
           title: 'New Task',
           completed: false,
           estimatedHours: 1
@@ -842,12 +860,18 @@ export default function SandEngine({
                       onExploreRecipe={() => {
                         setPreviewInitialEditMode(false);
                         setSelectedPreviewRecipe(recipe);
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', `/recipe/${encodeURIComponent(recipe.publicId || recipe.id)}`);
+                        }
                       }}
                       onForkRecipe={() => handleForkRecipeToProjectObj(recipe)}
                       onStartRecipe={() => handleStartProjectFromRecipeObj(recipe)}
                       onEditRecipe={() => {
                         setSelectedPreviewRecipe(recipe);
                         setPreviewInitialEditMode(true);
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', `/recipe/${encodeURIComponent(recipe.publicId || recipe.id)}`);
+                        }
                       }}
                       onPrint={() => handleOpenPrintModal({
                         id: recipe.id,
@@ -922,7 +946,7 @@ export default function SandEngine({
             {sortedProjects.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {sortedProjects.map(p => {
+                  {sortedProjects.map((p) => {
                     const progress = getProjectProgress(p);
                     const isSelected = selectedProjectId === p.id && activeItemType === 'project';
 
@@ -1017,7 +1041,7 @@ export default function SandEngine({
                   {/* List Content */}
                   <div className="space-y-2.5 max-md:max-h-none max-md:overflow-visible md:max-h-[520px] md:overflow-y-auto pr-0 md:pr-1">
                     {collections.length > 0 ? (
-                      collections.map(col => {
+                      collections.map((col) => {
                         const colProjects = sessionProjects.filter(p => p.collectionId === col.id || col.projectIds.includes(p.id));
                         const totalTasks = colProjects.reduce((sum, p) => sum + p.phases.reduce((ps, ph) => ps + ph.tasks.length, 0), 0);
                         const compTasks = colProjects.reduce((sum, p) => sum + p.phases.reduce((ps, ph) => ps + ph.tasks.filter(t => t.completed).length, 0), 0);
@@ -1250,7 +1274,7 @@ export default function SandEngine({
                       <div className="space-y-6">
                         {editPhases.map((phase, pIdx) => (
                           <div 
-                            key={phase.id || `edit-phase-${pIdx}`} 
+                            key={phase.id} 
                             className={`space-y-3 p-3.5 rounded-2xl border transition-all ${
                               dragOverPhaseIdx === pIdx ? 'border-[#F59E0B] bg-[#F59E0B]/10' : 'bg-black/40 border-white/10'
                             }`}
@@ -1301,7 +1325,7 @@ export default function SandEngine({
                             <div className="space-y-2 pl-0 sm:pl-7 w-full min-w-0">
                               {phase.tasks.map((task, tIdx) => (
                                 <div
-                                  key={task.id || `edit-task-${tIdx}`}
+                                  key={task.id}
                                   draggable
                                   onDragStart={(e) => handleTaskDragStart(e, pIdx, tIdx)}
                                   onDragOver={(e) => handleTaskDragOver(e, pIdx, tIdx)}
@@ -1377,7 +1401,7 @@ export default function SandEngine({
                         const isPhaseComplete = phase.tasks.length > 0 && phase.tasks.every(t => t.completed);
 
                         return (
-                          <div key={phase.id || `proj-phase-${pIdx}`} className="space-y-3 w-full min-w-0">
+                          <div key={phase.id} className="space-y-3 w-full min-w-0">
                             <div className="flex items-center justify-between">
                               <h3 className="text-xs font-mono font-bold text-white/80 uppercase tracking-wider flex items-center gap-2">
                                 <span className="bg-white/10 text-white/85 w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] shrink-0">
@@ -1397,9 +1421,9 @@ export default function SandEngine({
                             </div>
 
                             <div className="space-y-2 pl-0 sm:pl-7 w-full min-w-0">
-                              {phase.tasks.map((task, tIdx) => (
+                              {phase.tasks.map((task) => (
                                 <div
-                                  key={task.id || `proj-task-${pIdx}-${tIdx}`}
+                                  key={task.id}
                                   onClick={() => handleToggleTask(activeProject.id, phase.id, task.id)}
                                   className={`p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 min-w-0 w-full ${
                                     task.completed
@@ -1656,9 +1680,9 @@ export default function SandEngine({
                       Work Execution Style
                     </label>
                     <div className="grid grid-cols-3 gap-2">
-                      {(['sequential', 'parallel', 'hybrid'] as const).map(mode => (
+                      {(['sequential', 'parallel', 'hybrid'] as const).map((mode, mIdx) => (
                         <button
-                          key={mode}
+                          key={`work-mode-${mode}-${mIdx}`}
                           type="button"
                           onClick={() => onUpdateCollectionMode(activeCollection.id, mode)}
                           className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
@@ -1697,7 +1721,7 @@ export default function SandEngine({
                     </h4>
                     {linkedProjects.length > 0 ? (
                       <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                        {linkedProjects.map(p => {
+                        {linkedProjects.map((p) => {
                           const pProg = getProjectProgress(p);
                           return (
                             <div key={p.id} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
@@ -1711,11 +1735,11 @@ export default function SandEngine({
                                 <div className="bg-[#F59E0B] h-full rounded-full" style={{ width: `${pProg}%` }}></div>
                               </div>
                               {p.phases.map((ph, phIdx) => (
-                                <div key={ph.id || `bound-ph-${p.id}-${phIdx}`} className="space-y-1 pt-1">
+                                <div key={ph.id} className="space-y-1 pt-1">
                                   <span className="text-[9px] font-mono text-white/40 uppercase">Phase {phIdx + 1}: {ph.title}</span>
-                                  {ph.tasks.map((t, tIdx) => (
+                                  {ph.tasks.map((t) => (
                                     <div 
-                                      key={t.id || `bound-t-${phIdx}-${tIdx}`} 
+                                      key={t.id} 
                                       onClick={() => handleToggleTask(p.id, ph.id, t.id)}
                                       className="flex items-center gap-2 text-xs text-white/80 hover:text-white cursor-pointer"
                                     >
@@ -1994,6 +2018,9 @@ export default function SandEngine({
           onClose={() => {
             setSelectedPreviewRecipe(null);
             setPreviewInitialEditMode(false);
+            if (typeof window !== 'undefined' && window.location.pathname.startsWith('/recipe/')) {
+              window.history.pushState({}, '', '/process/library');
+            }
           }}
           onStartRecipe={(rec) => {
             setSelectedPreviewRecipe(null);

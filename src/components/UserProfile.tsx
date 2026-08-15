@@ -287,6 +287,14 @@ export default function UserProfile({
     return c.name.toLowerCase().includes(q) || (c.bio && c.bio.toLowerCase().includes(q)) || handle.includes(q);
   });
 
+  if (!currentUser) {
+    return (
+      <div className="max-w-4xl mx-auto p-12 text-center text-gray-500 font-mono text-sm space-y-4">
+        <p>Please sign in to view your profile and manage your workspace settings.</p>
+      </div>
+    );
+  }
+
   return (
     <div 
       className="max-w-4xl mx-auto text-white px-0 w-full min-w-0 h-[calc(100vh-130px)] sm:h-auto overflow-y-scroll sm:overflow-visible snap-y snap-mandatory scroll-smooth sm:scroll-auto no-scrollbar space-y-0 sm:space-y-6" 
@@ -580,7 +588,7 @@ export default function UserProfile({
               {/* User List Container */}
               <div className="overflow-y-auto flex-1 space-y-2 pr-1 max-h-[400px]">
                 {displayedModalCreators.length > 0 ? (
-                  displayedModalCreators.map((creator) => {
+                  displayedModalCreators.map((creator, idx) => {
                     const isMe = creator.id === currentUser.id;
                     const amIFollowing = isFollowingUser(currentUser, creator.id, allCreators);
                     const doesUserFollowMe = isFollowedByUser(currentUser, creator.id, allCreators);
@@ -588,7 +596,7 @@ export default function UserProfile({
 
                     return (
                       <div
-                        key={creator.id}
+                        key={`profile-modal-creator-${creator.id || idx}-${idx}`}
                         className="bg-white/5 border border-white/10 rounded-2xl p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:border-white/20 transition-all"
                       >
                         <div 
@@ -1245,8 +1253,8 @@ export default function UserProfile({
                     return 0;
                   });
 
-                  return sortedComments.map(c => (
-                    <div key={c.id} className="p-3 border rounded-2xl space-y-1.5 bg-gray-50 border-gray-200 text-gray-900">
+                  return sortedComments.map((c, cIdx) => (
+                    <div key={`user-comment-${c.id || cIdx}-${cIdx}`} className="p-3 border rounded-2xl space-y-1.5 bg-gray-50 border-gray-200 text-gray-900">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <img src={c.userAvatar} alt={c.userName} className="w-5 h-5 rounded-full object-cover" />
@@ -1410,3 +1418,4 @@ export default function UserProfile({
     </div>
   );
 }
+
