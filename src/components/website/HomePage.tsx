@@ -98,7 +98,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenWorkspace,
               <span className="inline-flex items-center overflow-hidden py-1 align-middle relative">
                 <AnimatePresence mode="wait">
                   <motion.span
-                    key={currentRecipe?.id || currentTitle}
+                    key={`home-hero-title-${currentRecipe?.id || 'rec'}-${currentIndex}`}
                     initial={{ y: 28, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -28, opacity: 0 }}
@@ -300,7 +300,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenWorkspace,
           ].map((item, idx) => {
             const Icon = item.icon;
             return (
-              <div key={idx} className="bg-white border border-gray-200 shadow-sm px-4 py-2.5 rounded-full flex items-center gap-2 text-xs text-gray-800 font-medium">
+              <div key={`home-audience-${item.label}-${idx}`} className="bg-white border border-gray-200 shadow-sm px-4 py-2.5 rounded-full flex items-center gap-2 text-xs text-gray-800 font-medium">
                 <Icon className="w-4 h-4 text-[#F59E0B]" />
                 <span>{item.label}</span>
               </div>

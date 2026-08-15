@@ -11,7 +11,9 @@ import {
   GitFork,
   CircleDotDashed,
   X,
-  BookPlus
+  BookPlus,
+  Copy,
+  Check
 } from 'lucide-react';
 
 import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase, ProfileVisibility } from './types';
@@ -62,7 +64,7 @@ export const isRestrictedPath = (pathname: string): boolean => {
   const parts = path.split('/').filter(Boolean);
   if (parts.length === 0) return false;
   const root = parts[0];
-  return root === 'process' || root === 'updates' || root === 'circle' || root === 'library' || root === 'sand';
+  return root === 'updates' || root === 'circle';
 };
 
 export default function App() {
@@ -179,6 +181,7 @@ export default function App() {
     viewedCreatorIdentifier?: string | null;
     postId?: string | null;
     recipeId?: string | null;
+    projectId?: string | null;
   } => {
     const path = pathname.toLowerCase().replace(/\/$/, '') || '/';
     const parts = path.split('/').filter(Boolean);
@@ -198,12 +201,20 @@ export default function App() {
       return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'social' };
     }
 
-    if (root === 'p' || root === 'post' || root === 'project') {
+    // Projects permalink: /project/:projectId or /projects/:projectId
+    if (root === 'project' || root === 'projects') {
+      const projectId = parts[1] || null;
+      return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'projects', projectId };
+    }
+
+    // Posts permalink: /p/:postId or /post/:postId
+    if (root === 'p' || root === 'post') {
       const postId = parts[1] || null;
       return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'social', postId };
     }
 
-    if (root === 'recipe') {
+    // Recipes permalink: /recipe/:recipeId or /recipes/:recipeId
+    if (root === 'recipe' || root === 'recipes') {
       const recipeId = parts[1] || null;
       return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library', recipeId };
     }
@@ -231,11 +242,16 @@ export default function App() {
       if (sub === 'focus') {
         return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'focus' };
       }
-      if (sub === 'library') {
-        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library' };
+      if (sub === 'library' || sub === 'recipes') {
+        const recipeId = parts[2] || null;
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library', recipeId };
       }
       if (sub === 'recipe' && parts[2]) {
         return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'recipes', processTab: 'library', recipeId: parts[2] };
+      }
+      if (sub === 'projects' || sub === 'project') {
+        const projectId = parts[2] || null;
+        return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'projects', projectId };
       }
       return { viewMode: 'workspace', websiteTab: 'home', activeTab: 'coach', processTab: 'projects' };
     }
@@ -263,19 +279,21 @@ export default function App() {
       viewedCreator?: Creator | null | string;
       postId?: string | null;
       recipeId?: string | null;
+      projectId?: string | null;
     }
   ): string => {
     if (mode === 'workspace') {
-      if (subState?.postId) {
-        return `/p/${subState.postId}`;
-      }
+      // Direct permalinks take precedence
       if (subState?.recipeId) {
-        return `/recipe/${subState.recipeId}`;
+        return `/recipe/${encodeURIComponent(subState.recipeId)}`;
+      }
+      if (subState?.postId) {
+        return `/p/${encodeURIComponent(subState.postId)}`;
       }
       if (subState?.viewedCreator) {
         const creatorObj = typeof subState.viewedCreator === 'object' ? subState.viewedCreator : null;
         const handle = creatorObj 
-          ? (creatorObj.username || creatorObj.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || creatorObj.id)
+          ? (creatorObj.username || (creatorObj.name ? creatorObj.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') || creatorObj.id)
           : subState.viewedCreator;
         return `/u/${encodeURIComponent(String(handle))}`;
       }
@@ -292,8 +310,10 @@ export default function App() {
           return '/updates';
         case 'coach':
           if (subState?.processTab === 'focus') return '/process/focus';
+          if (subState?.projectId) return `/project/${encodeURIComponent(subState.projectId)}`;
           return '/process/projects';
         case 'recipes':
+          if (subState?.recipeId) return `/recipe/${encodeURIComponent(subState.recipeId)}`;
           return '/process/library';
         case 'social':
           return '/circle';
@@ -303,6 +323,12 @@ export default function App() {
           return '/profile';
       }
     } else {
+      if (subState?.recipeId) {
+        return `/recipe/${encodeURIComponent(subState.recipeId)}`;
+      }
+      if (subState?.projectId) {
+        return `/project/${encodeURIComponent(subState.projectId)}`;
+      }
       switch (webTab) {
         case 'home': return '/';
         case 'features': return '/features';
@@ -416,9 +442,9 @@ export default function App() {
       const newCreator: Creator = {
         id: authSession.id,
         publicId: authSession.publicId || Math.random().toString(36).substring(2, 11).toUpperCase(),
-        username: authSession.username || authSession.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        name: authSession.name,
-        email: authSession.email,
+        username: authSession.username || (authSession.name ? authSession.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '') || `user_${authSession.id?.substring(0, 6) || Date.now()}`,
+        name: authSession.name || 'User',
+        email: authSession.email || '',
         avatarUrl: authSession.avatarUrl || '',
         bio: (authSession as any).bio || '',
         goals: (authSession as any).goals || '',
@@ -632,6 +658,7 @@ export default function App() {
 
   const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
   const [selectedPostModal, setSelectedPostModal] = useState<FeedPost | null>(null);
+  const [recipeModalCopied, setRecipeModalCopied] = useState<boolean>(false);
 
   const updateRoute = (
     newViewMode?: 'website' | 'workspace',
@@ -644,6 +671,7 @@ export default function App() {
       viewedCreator?: Creator | null | string;
       postId?: string | null;
       recipeId?: string | null;
+      projectId?: string | null;
     },
     push: boolean = true
   ) => {
@@ -656,7 +684,8 @@ export default function App() {
     const effProcessTab = subState?.processTab !== undefined ? subState.processTab : processTab;
     const effViewedCreator = subState?.viewedCreator !== undefined ? subState.viewedCreator : (homeViewCreatorProfile || viewedCreatorId);
     const effPostId = subState?.postId !== undefined ? subState.postId : (homeSuperimposedPostId || profileSuperimposedPostId);
-    const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : selectedRecipeModal?.id;
+    const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : (selectedRecipeModal ? (selectedRecipeModal.publicId || selectedRecipeModal.id) : null);
+    const effProjectId = subState?.projectId !== undefined ? subState.projectId : (targetActiveTab === 'coach' && effProcessTab === 'projects' ? (activeProject?.publicId || activeProject?.id || selectedProjectId) : null);
 
     let targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab, {
       updatesCategory: effUpdatesCat,
@@ -664,7 +693,8 @@ export default function App() {
       processTab: effProcessTab,
       viewedCreator: effViewedCreator,
       postId: effPostId,
-      recipeId: effRecipeId
+      recipeId: effRecipeId,
+      projectId: effProjectId
     });
 
     const currentSession = authSession || authService.getCurrentSession();
@@ -716,8 +746,12 @@ export default function App() {
       }
 
       if (route.viewedCreatorIdentifier) {
-        const handle = route.viewedCreatorIdentifier.toLowerCase();
-        const found = creators.find(c => c.id === route.viewedCreatorIdentifier || c.username?.toLowerCase() === handle || c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === handle);
+        const handle = (route.viewedCreatorIdentifier || '').toLowerCase();
+        const found = creators.find(c => 
+          c.id === route.viewedCreatorIdentifier || 
+          (c.username && c.username.toLowerCase() === handle) || 
+          (c.name && c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === handle)
+        );
         if (found) {
           if (currentUser && found.id === currentUser.id) {
             setHomeViewCreatorProfile(null);
@@ -741,9 +775,28 @@ export default function App() {
         setProfileSuperimposedPostId(null);
       }
 
+      if (route.projectId) {
+        const foundProj = projects.find(p => 
+          p.id === route.projectId || 
+          p.publicId === route.projectId || 
+          (p.title && p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === route.projectId?.toLowerCase())
+        );
+        if (foundProj) {
+          setSelectedProjectId(foundProj.id);
+        } else {
+          setSelectedProjectId(route.projectId);
+        }
+      }
+
       if (route.recipeId) {
-        const foundRec = recipes.find(r => r.id === route.recipeId);
-        if (foundRec) setSelectedRecipeModal(foundRec);
+        const foundRec = recipes.find(r => 
+          r.id === route.recipeId || 
+          r.publicId === route.recipeId || 
+          (r.title && r.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === route.recipeId?.toLowerCase())
+        );
+        if (foundRec) {
+          setSelectedRecipeModal(foundRec);
+        }
       } else {
         setSelectedRecipeModal(null);
       }
@@ -753,7 +806,7 @@ export default function App() {
 
     window.addEventListener('popstate', syncFromRoute);
     return () => window.removeEventListener('popstate', syncFromRoute);
-  }, [authSession, creators, currentUser, recipes]);
+  }, [authSession, creators, currentUser, recipes, projects]);
 
   const handleLoginSuccess = (user: UserSession) => {
     setAuthSession(user);
@@ -761,8 +814,8 @@ export default function App() {
       const base: Creator = prev || {
         id: user.id,
         publicId: user.publicId || Math.random().toString(36).substring(2, 11).toUpperCase(),
-        username: user.username || user.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        name: user.name,
+        username: user.username || (user.name ? user.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '') || `user_${user.id?.substring(0, 6) || Date.now()}`,
+        name: user.name || 'User',
         email: user.email,
         avatarUrl: user.avatarUrl || '',
         bio: '',
@@ -882,10 +935,40 @@ export default function App() {
     updateRoute('workspace', undefined, 'updates', { updatesCategory: null, updatesChatUser: user, viewedCreator: null, postId: null, recipeId: null });
   };
 
+  const handleSelectProject = (projectId: string | null) => {
+    setSelectedProjectId(projectId);
+    if (projectId) {
+      const targetProject = projects.find(p => p.id === projectId || p.publicId === projectId);
+      const identifier = targetProject?.publicId || targetProject?.id || projectId;
+      updateRoute('workspace', undefined, 'coach', { 
+        processTab: 'projects', 
+        projectId: identifier,
+        recipeId: null,
+        postId: null,
+        viewedCreator: null 
+      });
+    } else {
+      updateRoute('workspace', undefined, 'coach', { 
+        processTab: 'projects', 
+        projectId: null,
+        recipeId: null,
+        postId: null,
+        viewedCreator: null 
+      });
+    }
+  };
+
   const handleProcessTabChange = (tab: 'projects' | 'focus' | 'library') => {
     setProcessTab(tab);
     const targetAppTab = tab === 'library' ? 'recipes' : 'coach';
-    updateRoute('workspace', undefined, targetAppTab, { processTab: tab, viewedCreator: null, postId: null, recipeId: null });
+    const effectiveProjectId = tab === 'projects' ? (activeProject?.publicId || activeProject?.id || selectedProjectId) : null;
+    updateRoute('workspace', undefined, targetAppTab, { 
+      processTab: tab, 
+      projectId: effectiveProjectId, 
+      viewedCreator: null, 
+      postId: null, 
+      recipeId: null 
+    });
   };
 
   const getActiveViewTitle = () => {
@@ -912,7 +995,8 @@ export default function App() {
 
   const handleSelectPost = (postId: string, actionType?: 'comment' | 'vote' | 'shared_message') => {
     setShowTutorial(false);
-    const match = posts.find(p => p.id === postId || (p.title && p.title.toLowerCase().includes(postId.toLowerCase()))) || posts[0];
+    const targetLower = (postId || '').toLowerCase();
+    const match = posts.find(p => p.id === postId || (p.title && targetLower && p.title.toLowerCase().includes(targetLower))) || posts[0];
     const actualPostId = match ? match.id : postId;
 
     if (activeTab === 'updates') {
@@ -941,17 +1025,33 @@ export default function App() {
 
   const handleSelectRecipe = (recipeId: string) => {
     setShowTutorial(false);
-    const targetRecipe = recipes.find(r => r.id === recipeId) || recipes[0];
+    const targetRecipe = recipes.find(r => 
+      r.id === recipeId || 
+      r.publicId === recipeId || 
+      (r.title && r.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === recipeId.toLowerCase())
+    ) || recipes[0];
     if (targetRecipe) {
       setSelectedRecipeModal(targetRecipe);
       if (activeTab === 'updates') {
         return;
       }
-      updateRoute('workspace', undefined, 'recipes', { recipeId: targetRecipe.id, processTab: 'library' });
+      const identifier = targetRecipe.publicId || targetRecipe.id;
+      updateRoute('workspace', undefined, 'recipes', { 
+        recipeId: identifier, 
+        processTab: 'library',
+        projectId: null,
+        postId: null,
+        viewedCreator: null 
+      });
     }
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
+  };
+
+  const handleCloseRecipeModal = () => {
+    setSelectedRecipeModal(null);
+    updateRoute(undefined, undefined, undefined, { recipeId: null });
   };
 
   const handleSelectUser = (creatorId: string) => {
@@ -964,14 +1064,14 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
     const loadThreads = async () => {
-      const threads = await dataService.getDirectMessageThreads(currentUser.id || 'user-current', creators);
+      const threads = await dataService.getDirectMessageThreads(currentUser?.id || 'user-current', creators);
       if (isMounted) {
         setMessageThreads(threads);
       }
     };
     loadThreads();
     return () => { isMounted = false; };
-  }, [currentUser.id, creators]);
+  }, [currentUser?.id, creators]);
 
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
 
@@ -1028,7 +1128,7 @@ export default function App() {
   const totalUnreadNotifications = unreadMessageCount + unreadNotifsCount;
 
   const handleMarkThreadAsRead = async (creatorId: string) => {
-    const currentUserId = currentUser.id || 'user-current';
+    const currentUserId = currentUser?.id || 'user-current';
     setMessageThreads(prev => prev.map(t => {
       if (t.creator.id === creatorId) {
         return {
@@ -1046,7 +1146,7 @@ export default function App() {
   };
 
   const handleSendMessage = async (targetUserId: string, messageText: string, postThumbnail?: string, postId?: string) => {
-    const currentUserId = currentUser.id || 'user-current';
+    const currentUserId = currentUser?.id || 'user-current';
     await dataService.sendDirectMessage(currentUserId, targetUserId, messageText.slice(0, 1400), postThumbnail, postId, 'accepted');
     const refreshed = await dataService.getDirectMessageThreads(currentUserId, creators);
     setMessageThreads(refreshed);
@@ -1216,7 +1316,7 @@ export default function App() {
     return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   }, [projects]);
 
-  const activeProject = projects.find(p => p.id === selectedProjectId);
+  const activeProject = projects.find(p => p.id === selectedProjectId || p.publicId === selectedProjectId);
 
   // Toggle tasks inside project phase
   const handleToggleTask = (projectId: string, phaseId: string, taskId: string) => {
@@ -1334,12 +1434,13 @@ export default function App() {
     setProfileSuperimposedPostId(null);
 
     const found = creators.find(c => c.id === creatorIdOrName || c.username === creatorIdOrName || c.name === creatorIdOrName);
+    const cleanCreatorName = typeof creatorIdOrName === 'string' ? creatorIdOrName : String(creatorIdOrName || 'creator');
     const targetCreator: Creator = found || {
-      id: creatorIdOrName,
-      name: creatorIdOrName,
-      username: creatorIdOrName.toLowerCase().replace(/\s+/g, ''),
-      email: `${creatorIdOrName.toLowerCase().replace(/\s+/g, '')}@gonnng.com`,
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorIdOrName)}&background=F59E0B&color=fff`,
+      id: cleanCreatorName,
+      name: cleanCreatorName,
+      username: cleanCreatorName.toLowerCase().replace(/\s+/g, ''),
+      email: `${cleanCreatorName.toLowerCase().replace(/\s+/g, '')}@gonnng.com`,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanCreatorName)}&background=F59E0B&color=fff`,
       bio: 'Creative collaborator on Gonnng.',
       goals: 'Documenting projects & sharing ideas.',
       privacyDefault: 'public' as const,
@@ -1463,9 +1564,9 @@ export default function App() {
     const newPost: FeedPost = {
       id: `post-save-${Date.now()}`,
       type: 'project_created',
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatarUrl,
+      userId: currentUser?.id || 'user-current',
+      userName: currentUser?.name || 'Creator',
+      userAvatar: currentUser?.avatarUrl || '',
       timeString: 'Just now',
       title: `Saved Blueprint: "${recipe.title}"`,
       content: `Just added ${recipe.authorName}'s blueprint to my personal Process Library! Preparing to start it soon.`,
@@ -1513,9 +1614,9 @@ export default function App() {
       const currentComments = p.comments || [];
       const newComment = {
         id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userAvatar: currentUser.avatarUrl,
+        userId: currentUser?.id || 'user-current',
+        userName: currentUser?.name || 'Creator',
+        userAvatar: currentUser?.avatarUrl || '',
         content: commentContent,
         timeString: 'Just now',
         likes: 0,
@@ -1575,6 +1676,14 @@ export default function App() {
       const exists = prev.some(item => item.id === r.id);
       if (exists) return prev.map(item => item.id === r.id ? r : item);
       return [r, ...prev];
+    });
+    setSavedRecipeIds(prev => {
+      if (prev.includes(r.id)) return prev;
+      const next = [...prev, r.id];
+      try {
+        localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify(next));
+      } catch {}
+      return next;
     });
     await dataService.saveRecipe(r, currentUser?.id);
   };
@@ -1646,7 +1755,7 @@ export default function App() {
       recipeTitle: recipe.title,
       phases: mappedPhases,
       createdAt: new Date().toISOString(),
-      privacy: currentUser.privacyDefault,
+      privacy: currentUser?.privacyDefault || 'public',
       progressPhotos: []
     };
 
@@ -1658,15 +1767,15 @@ export default function App() {
     const newPost: FeedPost = {
       id: `post-inst-${Date.now()}`,
       type: 'project_created',
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatarUrl,
+      userId: currentUser?.id || 'user-current',
+      userName: currentUser?.name || 'Creator',
+      userAvatar: currentUser?.avatarUrl || '',
       timeString: 'Just now',
       title: `Started Project: "${newProject.title}"`,
       content: `Let's break down the creative parts of "${recipe.title}". Starting step 1 today!`,
       attachedId: newProject.id,
       attachedName: newProject.title,
-      privacy: currentUser.privacyDefault,
+      privacy: currentUser?.privacyDefault || 'public',
       gongs: { continue: 0, refine: 0, reconsider: 0 }
     };
     setPosts(prev => [newPost, ...prev]);
@@ -2077,7 +2186,7 @@ export default function App() {
                   onUpdateCollection={handleUpdateCollection}
                   onMarkProjectComplete={handleMarkProjectComplete}
                   selectedProjectId={selectedProjectId}
-                  setSelectedProjectId={setSelectedProjectId}
+                  setSelectedProjectId={handleSelectProject}
                   getProjectProgress={getProjectProgress}
                   handleDeleteProject={handleDeleteProject}
                   onDeleteCollection={handleDeleteCollection}
@@ -2359,15 +2468,11 @@ export default function App() {
           onToggleCircleCreator={handleToggleCircleCreator}
           onOpenCreatorProfile={handleOpenCreatorProfile}
           onSelectProject={(project) => {
-            setSelectedProjectId(project.id);
-            setProcessTab('projects');
-            setActiveTab('coach');
+            handleSelectProject(project.id);
             setShowSearchModal(false);
           }}
           onEditProject={(project) => {
-            setSelectedProjectId(project.id);
-            setProcessTab('projects');
-            setActiveTab('coach');
+            handleSelectProject(project.id);
             setShowSearchModal(false);
           }}
           onDeleteProject={(projectId) => {
@@ -2532,7 +2637,7 @@ export default function App() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRecipeModal(null)}
+                onClick={handleCloseRecipeModal}
                 className="p-2 rounded-full transition-colors cursor-pointer shrink-0 hover:bg-gray-100 text-gray-600"
               >
                 <X className="w-5 h-5" />
@@ -2545,7 +2650,7 @@ export default function App() {
               </h3>
               {selectedRecipeModal.phases && selectedRecipeModal.phases.map((ph, pIdx) => (
                 <div 
-                  key={ph.id || pIdx} 
+                  key={`app-recipe-modal-phase-${ph.id || pIdx}-${pIdx}`} 
                   className="p-3.5 rounded-2xl border space-y-2 bg-gray-50 border-gray-200"
                 >
                   <h4 className="text-xs font-mono font-bold uppercase text-[#F59E0B]">
@@ -2553,7 +2658,7 @@ export default function App() {
                   </h4>
                   <div className="space-y-1.5 pl-2">
                     {ph.tasks.map((t, tIdx) => (
-                      <div key={t.id || tIdx} className="flex items-center gap-2 text-xs opacity-80">
+                      <div key={`app-recipe-modal-task-${t.id || tIdx}-${pIdx}-${tIdx}`} className="flex items-center gap-2 text-xs opacity-80">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" />
                         <span>{t.title}</span>
                       </div>
@@ -2563,12 +2668,27 @@ export default function App() {
               ))}
             </div>
 
-            <div className="pt-4 border-t flex flex-wrap items-center justify-end gap-2.5 border-gray-200">
+            <div className="pt-4 border-t flex flex-wrap items-center justify-between gap-2.5 border-gray-200">
+              <button
+                type="button"
+                onClick={() => {
+                  const permalink = `${window.location.origin}/recipe/${encodeURIComponent(selectedRecipeModal.publicId || selectedRecipeModal.id)}`;
+                  navigator.clipboard.writeText(permalink);
+                  setRecipeModalCopied(true);
+                  setTimeout(() => setRecipeModalCopied(false), 2000);
+                }}
+                className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-mono text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                title="Copy shareable permalink"
+              >
+                {recipeModalCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-gray-600" />}
+                <span>{recipeModalCopied ? 'LINK COPIED' : 'COPY PERMALINK'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
                   const rec = selectedRecipeModal;
-                  setSelectedRecipeModal(null);
+                  handleCloseRecipeModal();
                   if (rec) handleInstantiateRecipe(rec);
                 }}
                 className="px-4 py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-bold text-xs rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
@@ -2587,7 +2707,7 @@ export default function App() {
           onClose={() => setViewedCreatorId(null)}
           onToggleFollow={handleToggleFollowCreator}
           posts={posts}
-          currentUserId={currentUser.id}
+          currentUserId={currentUser?.id || ''}
           onOpenMessageDrawer={handleOpenMessageDrawer}
         />
       )}

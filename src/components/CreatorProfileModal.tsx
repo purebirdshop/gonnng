@@ -178,8 +178,8 @@ export default function CreatorProfileModal({
 
             <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
               {creatorPosts.length > 0 ? (
-                creatorPosts.map(post => (
-                  <div key={post.id} className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-1">
+                creatorPosts.map((post, idx) => (
+                  <div key={`creator-modal-post-${post.id || idx}-${idx}`} className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-1">
                     <div className="flex justify-between items-center text-[10px] text-white/40 font-mono">
                       <span>{post.timeString}</span>
                       <span className="uppercase text-[#F59E0B] font-bold">{post.type.replace('_', ' ')}</span>

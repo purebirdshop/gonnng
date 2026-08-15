@@ -41,8 +41,16 @@ import {
   MessageSquareShare,
   Save,
   Shredder,
-  BookPlus
+  BookPlus,
+  List,
+  FileCode,
+  Info,
+  HelpCircle,
+  AlertTriangle
 } from 'lucide-react';
+import { parseMarkedText, serializeToMarked } from '../utils/markedEngine';
+import { MarkedRenderer } from './MarkedRenderer';
+import { MarkedSyntaxGuideModal } from './MarkedSyntaxGuideModal';
 
 // ==========================================
 // PROJECT EXPLORE MODAL
@@ -92,7 +100,7 @@ export function ProjectExploreModal({
 
   const isAuthor = Boolean(
     currentUser?.id && project.userId && currentUser.id === project.userId ||
-    currentUser?.name && (project as any).authorName && currentUser.name.toLowerCase() === (project as any).authorName.toLowerCase() ||
+    (currentUser?.name && (project as any).authorName && currentUser.name.toLowerCase() === String((project as any).authorName).toLowerCase()) ||
     true // default true if logged in user owns state
   );
 
@@ -113,12 +121,44 @@ export function ProjectExploreModal({
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Marked mode state
+  const [editModeToggle, setEditModeToggle] = useState<'bulleted' | 'marked'>(() => {
+    try {
+      const saved = localStorage.getItem('gonnng_edit_mode_toggle');
+      return saved === 'marked' ? 'marked' : 'bulleted';
+    } catch (e) {
+      return 'bulleted';
+    }
+  });
+  const [markedText, setMarkedText] = useState('');
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [showInfoPopover, setShowInfoPopover] = useState(false);
+  const [showSyntaxGuideModal, setShowSyntaxGuideModal] = useState(false);
+
   // Sync state when project changes
   useEffect(() => {
     if (project) {
       setTempTitle(project.title || '');
       setTempCategory(project.category || 'General');
-      setTempPhases(project.phases ? JSON.parse(JSON.stringify(project.phases)) : []);
+      setTempPhases(
+        project.phases
+          ? JSON.parse(JSON.stringify(project.phases)).map((ph: any, pIdx: number) => ({
+              id: ph.id || crypto.randomUUID(),
+              title: ph.title,
+              sourcePhaseId: ph.sourcePhaseId,
+              position: ph.position ?? pIdx + 1,
+              tasks: (ph.tasks || []).map((t: any, tIdx: number) => ({
+                id: t.id || crypto.randomUUID(),
+                title: t.title,
+                completed: Boolean(t.completed),
+                sourceTaskId: t.sourceTaskId,
+                position: t.position ?? tIdx + 1,
+                estimatedHours: t.estimatedHours,
+                body_markdown: t.body_markdown
+              }))
+            }))
+          : []
+      );
       setTempPrivacy(project.privacy || 'public');
       setIsEditing(initialEditMode);
 
@@ -132,6 +172,42 @@ export function ProjectExploreModal({
       setCollapsedPhases(initialCollapsed);
     }
   }, [project, initialEditMode]);
+
+  useEffect(() => {
+    if (isEditing) {
+      const text = serializeToMarked({ title: tempTitle, phases: tempPhases });
+      setMarkedText(text);
+      const parsed = parseMarkedText(text, tempTitle);
+      setParseWarnings(parsed.warnings);
+    }
+  }, [isEditing]);
+
+  const handleSwitchEditMode = (mode: 'bulleted' | 'marked') => {
+    if (mode === editModeToggle) return;
+
+    if (mode === 'marked') {
+      const text = serializeToMarked({ title: tempTitle, phases: tempPhases });
+      setMarkedText(text);
+      const parsed = parseMarkedText(text, tempTitle);
+      setParseWarnings(parsed.warnings);
+    } else {
+      const parsed = parseMarkedText(markedText, tempTitle);
+      setTempTitle(parsed.title);
+      setTempPhases(parsed.phases);
+      setParseWarnings(parsed.warnings);
+    }
+
+    setEditModeToggle(mode);
+    try {
+      localStorage.setItem('gonnng_edit_mode_toggle', mode);
+    } catch (e) {}
+  };
+
+  const handleMarkedTextChange = (val: string) => {
+    setMarkedText(val);
+    const parsed = parseMarkedText(val, tempTitle);
+    setParseWarnings(parsed.warnings);
+  };
 
   const activeCategory = isEditing ? tempCategory : (project.category || 'General');
   const colors = getCategoryColorCollection(activeCategory);
@@ -181,28 +257,28 @@ export function ProjectExploreModal({
   // Edit Mode actions
   const handleAddPhase = () => {
     setTempPhases(prev => [
-      ...prev,
-      {
-        id: `ph-${Date.now()}`,
+       ...prev,
+       {
+        id: crypto.randomUUID(),
         title: `Phase ${prev.length + 1}`,
-        tasks: [{ id: `t-${Date.now()}`, title: 'Initial step', completed: false }]
-      }
-    ]);
-  };
-
-  const handleAddTask = (phaseIndex: number) => {
-    setTempPhases(prev =>
-      prev.map((ph, pIdx) => {
-        if (pIdx === phaseIndex) {
-          return {
-            ...ph,
-            tasks: [...ph.tasks, { id: `t-${Date.now()}`, title: '', completed: false }]
-          };
-        }
-        return ph;
-      })
-    );
-  };
+        tasks: [{ id: crypto.randomUUID(), title: 'Initial step', completed: false }]
+       }
+     ]);
+   };
+ 
+   const handleAddTask = (phaseIndex: number) => {
+     setTempPhases(prev =>
+       prev.map((ph, pIdx) => {
+         if (pIdx === phaseIndex) {
+           return {
+             ...ph,
+            tasks: [...ph.tasks, { id: crypto.randomUUID(), title: '', completed: false }]
+           };
+         }
+         return ph;
+       })
+     );
+   };
 
   const handleDeletePhase = (phaseIndex: number) => {
     const phaseToDelete = tempPhases[phaseIndex];
@@ -263,46 +339,77 @@ export function ProjectExploreModal({
   };
 
   const handleSaveEdit = async () => {
-    const updatedProject: Project = {
-      ...project,
-      title: tempTitle,
-      category: tempCategory,
-      phases: tempPhases,
-      privacy: tempPrivacy,
-    };
+    let finalTitle = tempTitle;
+    let finalPhases = tempPhases;
+
+    if (editModeToggle === 'marked') {
+      const parsed = parseMarkedText(markedText, tempTitle);
+      finalTitle = parsed.title;
+      finalPhases = parsed.phases;
+    }
+
+    let linkedRecipeId = project.recipeId;
+    let savedRecipeObj: Recipe | null = null;
 
     if (saveAsRecipe) {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const recipeUuid = (project.recipeId && isUuid(project.recipeId))
+        ? project.recipeId
+        : crypto.randomUUID();
+
       const newRecipe: Recipe = {
-        id: `recipe-${Date.now()}`,
-        title: tempTitle,
-        category: tempCategory,
-        description: `Recipe created from project: ${tempTitle}`,
-        phases: tempPhases.map((p, pIdx) => ({
-          id: `r-ph-${pIdx}-${Date.now()}`,
-          title: p.title,
-          position: pIdx + 1,
-          tasks: p.tasks.map((t, tIdx) => ({
-            id: `r-tk-${tIdx}-${Date.now()}`,
-            title: t.title,
-            completed: false,
-            position: tIdx + 1
-          }))
-        })),
-        authorId: currentUser?.id || 'creator-id',
-        authorName: currentUser?.name || 'Creator',
+        id: recipeUuid,
+        title: finalTitle,
+        category: tempCategory || 'General',
+        description: `Recipe created from project: ${finalTitle}`,
+        phases: finalPhases.map((p, pIdx) => {
+          const phaseUuid = (p.id && isUuid(p.id)) ? p.id : crypto.randomUUID();
+          return {
+            id: phaseUuid,
+            title: p.title,
+            position: pIdx + 1,
+            tasks: (p.tasks || []).map((t, tIdx) => ({
+              id: (t.id && isUuid(t.id)) ? t.id : crypto.randomUUID(),
+              title: t.title,
+              completed: false,
+              position: tIdx + 1,
+              body_markdown: t.body_markdown
+            }))
+          };
+        }),
+        authorId: currentUser?.id || project.userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2',
+        authorName: currentUser?.name || (project as any).authorName || 'Creator',
         createdAt: new Date().toISOString(),
         visibility: tempPrivacy === 'private' ? 'private' : 'public',
-        tags: ['project-recipe']
+        tags: ['project-recipe', 'custom'],
+        isCustom: true
       };
 
-      await dataService.saveRecipe(newRecipe, currentUser?.id);
+      savedRecipeObj = await dataService.saveRecipe(newRecipe, currentUser?.id);
+      linkedRecipeId = savedRecipeObj.id;
 
       if (onAddRecipe) {
-        onAddRecipe(newRecipe);
+        onAddRecipe(savedRecipeObj);
       } else if (onSaveProjectAsRecipe) {
-        await onSaveProjectAsRecipe(newRecipe);
+        await onSaveProjectAsRecipe(savedRecipeObj);
       }
     }
+
+    const updatedProject: Project = {
+      ...project,
+      title: finalTitle,
+      category: tempCategory,
+      phases: finalPhases.map((p, pIdx) => ({
+        ...p,
+        source_phase_id: savedRecipeObj?.phases[pIdx]?.id || (p as any).source_phase_id,
+        tasks: (p.tasks || []).map((t, tIdx) => ({
+          ...t,
+          source_task_id: savedRecipeObj?.phases[pIdx]?.tasks[tIdx]?.id || (t as any).source_task_id
+        }))
+      })),
+      privacy: tempPrivacy,
+      recipeId: linkedRecipeId || project.recipeId
+    };
 
     await dataService.updateProject(updatedProject, currentUser?.id);
 
@@ -339,7 +446,8 @@ export function ProjectExploreModal({
     if (onShare) {
       onShare(project);
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+      const permalink = `${window.location.origin}/project/${encodeURIComponent(project.publicId || project.id)}`;
+      navigator.clipboard.writeText(permalink);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }
@@ -370,18 +478,50 @@ export function ProjectExploreModal({
             style={{ backgroundColor: colors.light }}
           >
             <div className="w-full p-[12px] flex items-center justify-between gap-3 sm:gap-4">
-              {/* Left: Category Badge or Category Dropdown */}
-              <div className="flex items-center gap-3 min-w-0">
+              {/* Left: Category Badge or Category Dropdown + Bulleted/Marked Toggle */}
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 {isEditing ? (
-                  <select
-                    value={tempCategory}
-                    onChange={(e) => setTempCategory(e.target.value)}
-                    className="font-mono text-[11px] font-bold uppercase px-3 py-1.5 rounded-lg border border-black/20 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/20 cursor-pointer"
-                  >
-                    {ALL_CATEGORY_NAMES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={tempCategory}
+                      onChange={(e) => setTempCategory(e.target.value)}
+                      className="font-mono text-[11px] font-bold uppercase px-2.5 py-1.5 rounded-lg border border-black/20 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/20 cursor-pointer shrink-0"
+                    >
+                      {ALL_CATEGORY_NAMES.map((cat, catIdx) => (
+                        <option key={`exp-proj-cat-${cat}-${catIdx}`} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+
+                    {/* Bulleted vs Marked Toggle */}
+                    <div className="flex items-center gap-1 bg-white/90 p-1 rounded-xl border border-black/15 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchEditMode('bulleted')}
+                        className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                          editModeToggle === 'bulleted'
+                            ? 'bg-amber-500 text-black shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
+                        }`}
+                        title="Bulleted Mode (Structured Phase & Task Builder)"
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Bulleted</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchEditMode('marked')}
+                        className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                          editModeToggle === 'marked'
+                            ? 'bg-amber-500 text-black shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
+                        }`}
+                        title="Marked Mode (Markdown Content Entry Engine)"
+                      >
+                        <FileCode className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Marked</span>
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <CategoryBadge category={project.category || 'General'} collection={colors} />
                 )}
@@ -471,9 +611,88 @@ export function ProjectExploreModal({
               </div>
             </div>
 
-            {/* PHASE & TASK LIST */}
-            <div className="space-y-4">
-              {tempPhases.map((phase, pIdx) => {
+            {/* PHASE & TASK LIST / MARKED EDITOR */}
+            {isEditing && editModeToggle === 'marked' ? (
+              <div className="space-y-4">
+                {/* Marked Mode Banner with Info Icon */}
+                <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 font-mono">
+                  <div className="flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="font-bold">Marked Mode Engine</span>
+                    <span className="hidden md:inline text-[11px] text-gray-600 font-sans">
+                      (# Title, ## Phase, ### Task, followed by Markdown task body)
+                    </span>
+                  </div>
+
+                  <div className="relative group flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowInfoPopover(!showInfoPopover)}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-bold uppercase"
+                      title="Markdown Convention Reference"
+                    >
+                      <Info className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Info</span>
+                    </button>
+
+                    {/* Hover / Tap Info Popover */}
+                    {showInfoPopover && (
+                      <div className="absolute right-0 top-full mt-2 w-72 p-3.5 bg-white rounded-xl shadow-xl border border-black/10 z-40 text-xs text-gray-800 space-y-2 font-sans">
+                        <div className="font-bold font-mono text-[11px] text-amber-900 border-b border-gray-100 pb-1 flex items-center justify-between">
+                          <span>Marked Formatting Guide</span>
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-100">Help</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-gray-600">
+                          Type <code className="font-mono bg-gray-100 px-1"># Title</code> for document title, <code className="font-mono bg-gray-100 px-1">## Phase</code> for phases, and <code className="font-mono bg-gray-100 px-1">### Task</code> for step titles. Content under tasks supports bold, italics, links, images, code blocks, and tables.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowInfoPopover(false);
+                            setShowSyntaxGuideModal(true);
+                          }}
+                          className="text-[11px] font-mono font-bold uppercase text-amber-700 hover:text-amber-900 underline block cursor-pointer pt-1"
+                        >
+                          Full Reference Table →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Parser Warnings Banner */}
+                {parseWarnings.length > 0 && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-1.5 font-mono text-xs shadow-xs">
+                    <div className="flex items-center justify-between border-b border-amber-200 pb-1">
+                      <div className="flex items-center gap-2 font-bold text-amber-800">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Parsing Warnings ({parseWarnings.length})</span>
+                      </div>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-950 font-sans">
+                      {parseWarnings.map((warn, wIdx) => (
+                        <li key={`explore-proj-warn-${wIdx}`}>{warn}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Textarea */}
+                <div className="space-y-1">
+                  <label className="font-mono text-xs font-bold uppercase text-gray-700 block">
+                    Markdown Content Source
+                  </label>
+                  <textarea
+                    value={markedText}
+                    onChange={(e) => handleMarkedTextChange(e.target.value)}
+                    className="w-full font-mono text-xs sm:text-sm bg-white border border-black/15 rounded-2xl p-4 min-h-[380px] shadow-inner focus:outline-none focus:ring-2 focus:ring-amber-500/50 leading-relaxed text-gray-900"
+                    placeholder="# My Project Title&#10;&#10;## Phase 1: Planning&#10;&#10;### Research requirements&#10;Add task body notes, links, or code snippets here..."
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {tempPhases.map((phase, pIdx) => {
                 const totalInPhase = phase.tasks.length;
                 const doneInPhase = phase.tasks.filter(t => t.completed).length;
                 const isPhaseDone = totalInPhase > 0 && doneInPhase === totalInPhase;
@@ -481,7 +700,7 @@ export function ProjectExploreModal({
 
                 return (
                   <div
-                    key={phase.id || `phase-${pIdx}`}
+                    key={phase.id}
                     className="rounded-2xl border border-black/10 overflow-hidden shadow-sm transition-all"
                     style={{ backgroundColor: colors.soft }}
                   >
@@ -578,7 +797,7 @@ export function ProjectExploreModal({
                       <div className="p-3 space-y-2 bg-white/60">
                         {phase.tasks.map((task, tIdx) => (
                           <div
-                            key={task.id || `task-${pIdx}-${tIdx}`}
+                            key={task.id}
                             className="p-3 rounded-xl border border-black/5 bg-white flex items-center justify-between gap-3 shadow-2xs hover:border-black/15 transition-all"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -640,9 +859,17 @@ export function ProjectExploreModal({
                                   placeholder="Task description..."
                                 />
                               ) : (
-                                <span className={`text-xs font-medium ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                  {task.title}
-                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <span className={`text-xs font-medium block ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                    {task.title}
+                                  </span>
+                                  {task.body_markdown && (
+                                    <MarkedRenderer
+                                      markdown={task.body_markdown}
+                                      className="mt-1.5 pt-1.5 border-t border-black/5 text-xs text-gray-700"
+                                    />
+                                  )}
+                                </div>
                               )}
                             </div>
 
@@ -690,6 +917,7 @@ export function ProjectExploreModal({
                 </div>
               )}
             </div>
+          )}
 
             {/* VISIBILITY SELECTOR (in Edit Mode) */}
             {isEditing && (
@@ -698,9 +926,9 @@ export function ProjectExploreModal({
                   Project Visibility
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
-                  {(['public', 'internal', 'private'] as ProfileVisibility[]).map((vis) => (
+                  {(['public', 'internal', 'private'] as ProfileVisibility[]).map((vis, visIdx) => (
                     <button
-                      key={vis}
+                      key={`exp-proj-vis-${vis}-${visIdx}`}
                       type="button"
                       onClick={() => setTempPrivacy(vis)}
                       className={`p-2.5 rounded-xl border text-xs font-mono font-bold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
@@ -830,6 +1058,11 @@ export function ProjectExploreModal({
           onCancel={() => setDeleteConfirm(null)}
         />
       )}
+
+      <MarkedSyntaxGuideModal
+        isOpen={showSyntaxGuideModal}
+        onClose={() => setShowSyntaxGuideModal(false)}
+      />
     </AnimatePresence>
   );
 }
@@ -882,7 +1115,7 @@ export function RecipeExploreModal({
 
   const isAuthor = Boolean(
     currentUser?.id && recipe.authorId && currentUser.id === recipe.authorId ||
-    currentUser?.name && recipe.authorName && currentUser.name.toLowerCase() === recipe.authorName.toLowerCase() ||
+    (currentUser?.name && recipe.authorName && currentUser.name.toLowerCase() === String(recipe.authorName).toLowerCase()) ||
     recipe.isCustom
   );
 
@@ -903,12 +1136,42 @@ export function RecipeExploreModal({
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Marked mode state
+  const [editModeToggle, setEditModeToggle] = useState<'bulleted' | 'marked'>(() => {
+    try {
+      const saved = localStorage.getItem('gonnng_edit_mode_toggle');
+      return saved === 'marked' ? 'marked' : 'bulleted';
+    } catch (e) {
+      return 'bulleted';
+    }
+  });
+  const [markedText, setMarkedText] = useState('');
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [showInfoPopover, setShowInfoPopover] = useState(false);
+  const [showSyntaxGuideModal, setShowSyntaxGuideModal] = useState(false);
+
   useEffect(() => {
     if (recipe) {
       setTempTitle(recipe.title || '');
       setTempCategory(recipe.category || 'General');
       setTempDescription(recipe.description || '');
-      setTempPhases(recipe.phases ? JSON.parse(JSON.stringify(recipe.phases)) : []);
+      setTempPhases(
+        recipe.phases
+          ? JSON.parse(JSON.stringify(recipe.phases)).map((ph: any, pIdx: number) => ({
+              id: ph.id || crypto.randomUUID(),
+              title: ph.title,
+              position: ph.position ?? pIdx + 1,
+              tasks: (ph.tasks || []).map((t: any, tIdx: number) => ({
+                id: t.id || crypto.randomUUID(),
+                title: t.title,
+                position: t.position ?? tIdx + 1,
+                estimatedHours: t.estimatedHours,
+                body_markdown: t.body_markdown,
+                completed: t.completed
+              }))
+            }))
+          : []
+      );
       setTempPrivacy(recipe.visibility || 'public');
     }
   }, [recipe]);
@@ -916,6 +1179,50 @@ export function RecipeExploreModal({
   useEffect(() => {
     setIsEditing(initialEditMode);
   }, [initialEditMode, recipe?.id]);
+
+  useEffect(() => {
+    if (isEditing) {
+      const text = serializeToMarked({
+        title: tempTitle,
+        description: tempDescription,
+        phases: tempPhases
+      });
+      setMarkedText(text);
+      const parsed = parseMarkedText(text, tempTitle);
+      setParseWarnings(parsed.warnings);
+    }
+  }, [isEditing]);
+
+  const handleSwitchEditMode = (mode: 'bulleted' | 'marked') => {
+    if (mode === editModeToggle) return;
+
+    if (mode === 'marked') {
+      const text = serializeToMarked({
+        title: tempTitle,
+        description: tempDescription,
+        phases: tempPhases
+      });
+      setMarkedText(text);
+      const parsed = parseMarkedText(text, tempTitle);
+      setParseWarnings(parsed.warnings);
+    } else {
+      const parsed = parseMarkedText(markedText, tempTitle);
+      setTempTitle(parsed.title);
+      setTempPhases(parsed.phases);
+      setParseWarnings(parsed.warnings);
+    }
+
+    setEditModeToggle(mode);
+    try {
+      localStorage.setItem('gonnng_edit_mode_toggle', mode);
+    } catch (e) {}
+  };
+
+  const handleMarkedTextChange = (val: string) => {
+    setMarkedText(val);
+    const parsed = parseMarkedText(val, tempTitle);
+    setParseWarnings(parsed.warnings);
+  };
 
   const activeCategory = isEditing ? tempCategory : (recipe.category || 'General');
   const colors = getCategoryColorCollection(activeCategory);
@@ -928,9 +1235,9 @@ export function RecipeExploreModal({
     setTempPhases(prev => [
       ...prev,
       {
-        id: `ph-${Date.now()}`,
+        id: crypto.randomUUID(),
         title: `Phase ${prev.length + 1}`,
-        tasks: [{ id: `t-${Date.now()}`, title: 'Initial task' }]
+        tasks: [{ id: crypto.randomUUID(), title: 'Initial task' }]
       }
     ]);
   };
@@ -941,7 +1248,7 @@ export function RecipeExploreModal({
         if (pIdx === phaseIndex) {
           return {
             ...ph,
-            tasks: [...(ph.tasks || []), { id: `t-${Date.now()}`, title: '' }]
+            tasks: [...(ph.tasks || []), { id: crypto.randomUUID(), title: '' }]
           };
         }
         return ph;
@@ -1008,12 +1315,21 @@ export function RecipeExploreModal({
   };
 
   const handleSaveEdit = async () => {
+    let finalTitle = tempTitle;
+    let finalPhases = tempPhases;
+
+    if (editModeToggle === 'marked') {
+      const parsed = parseMarkedText(markedText, tempTitle);
+      finalTitle = parsed.title;
+      finalPhases = parsed.phases;
+    }
+
     const updatedRecipe: Recipe = {
       ...recipe,
-      title: tempTitle,
+      title: finalTitle,
       category: tempCategory,
       description: tempDescription,
-      phases: tempPhases,
+      phases: finalPhases,
       visibility: tempPrivacy,
     };
     await dataService.saveRecipe(updatedRecipe, currentUser?.id);
@@ -1049,7 +1365,8 @@ export function RecipeExploreModal({
 
   const handleCopyShare = () => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+      const permalink = `${window.location.origin}/recipe/${encodeURIComponent(recipe.publicId || recipe.id)}`;
+      navigator.clipboard.writeText(permalink);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }
@@ -1077,18 +1394,50 @@ export function RecipeExploreModal({
             className="w-full p-[12px] flex items-center justify-between gap-3 sm:gap-4 sticky top-0 z-20 border-b border-black/5"
             style={{ backgroundColor: colors.light }}
           >
-            {/* Left Cluster: Category Badge/Dropdown */}
-            <div className="flex items-center gap-2.5 min-w-0">
+            {/* Left Cluster: Category Badge/Dropdown + Bulleted/Marked Toggle */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {isEditing ? (
-                <select
-                  value={tempCategory}
-                  onChange={(e) => setTempCategory(e.target.value)}
-                  className="font-mono text-[11px] font-bold uppercase px-3 py-1.5 rounded-lg border border-black/20 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/20 cursor-pointer"
-                >
-                  {ALL_CATEGORY_NAMES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={tempCategory}
+                    onChange={(e) => setTempCategory(e.target.value)}
+                    className="font-mono text-[11px] font-bold uppercase px-2.5 py-1.5 rounded-lg border border-black/20 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/20 cursor-pointer shrink-0"
+                  >
+                    {ALL_CATEGORY_NAMES.map((cat, catIdx) => (
+                      <option key={`exp-rec-cat-${cat}-${catIdx}`} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+
+                  {/* Bulleted vs Marked Toggle */}
+                  <div className="flex items-center gap-1 bg-white/90 p-1 rounded-xl border border-black/15 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchEditMode('bulleted')}
+                      className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                        editModeToggle === 'bulleted'
+                          ? 'bg-amber-500 text-black shadow-2xs'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
+                      }`}
+                      title="Bulleted Mode (Structured Phase & Task Builder)"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Bulleted</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchEditMode('marked')}
+                      className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                        editModeToggle === 'marked'
+                          ? 'bg-amber-500 text-black shadow-2xs'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
+                      }`}
+                      title="Marked Mode (Markdown Content Entry Engine)"
+                    >
+                      <FileCode className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Marked</span>
+                    </button>
+                  </div>
+                </>
               ) : (
                 <CategoryBadge category={recipe.category || 'General'} collection={colors} />
               )}
@@ -1252,15 +1601,94 @@ export function RecipeExploreModal({
               )}
             </div>
 
-            {/* PHASE & TASK LIST */}
-            <div className="space-y-4">
-              {tempPhases.map((phase, pIdx) => {
+            {/* PHASE & TASK LIST / MARKED EDITOR */}
+            {isEditing && editModeToggle === 'marked' ? (
+              <div className="space-y-4">
+                {/* Marked Mode Banner with Info Icon */}
+                <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 font-mono">
+                  <div className="flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="font-bold">Marked Mode Engine</span>
+                    <span className="hidden md:inline text-[11px] text-gray-600 font-sans">
+                      (# Title, ## Phase, ### Task, followed by Markdown task body)
+                    </span>
+                  </div>
+
+                  <div className="relative group flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowInfoPopover(!showInfoPopover)}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 cursor-pointer transition-colors flex items-center gap-1 text-[11px] font-bold uppercase"
+                      title="Markdown Convention Reference"
+                    >
+                      <Info className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Info</span>
+                    </button>
+
+                    {/* Hover / Tap Info Popover */}
+                    {showInfoPopover && (
+                      <div className="absolute right-0 top-full mt-2 w-72 p-3.5 bg-white rounded-xl shadow-xl border border-black/10 z-40 text-xs text-gray-800 space-y-2 font-sans">
+                        <div className="font-bold font-mono text-[11px] text-amber-900 border-b border-gray-100 pb-1 flex items-center justify-between">
+                          <span>Marked Formatting Guide</span>
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-100">Help</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-gray-600">
+                          Type <code className="font-mono bg-gray-100 px-1"># Title</code> for document title, <code className="font-mono bg-gray-100 px-1">## Phase</code> for phases, and <code className="font-mono bg-gray-100 px-1">### Task</code> for step titles. Content under tasks supports bold, italics, links, images, code blocks, and tables.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowInfoPopover(false);
+                            setShowSyntaxGuideModal(true);
+                          }}
+                          className="text-[11px] font-mono font-bold uppercase text-amber-700 hover:text-amber-900 underline block cursor-pointer pt-1"
+                        >
+                          Full Reference Table →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Parser Warnings Banner */}
+                {parseWarnings.length > 0 && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-1.5 font-mono text-xs shadow-xs">
+                    <div className="flex items-center justify-between border-b border-amber-200 pb-1">
+                      <div className="flex items-center gap-2 font-bold text-amber-800">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Parsing Warnings ({parseWarnings.length})</span>
+                      </div>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-950 font-sans">
+                      {parseWarnings.map((warn, wIdx) => (
+                        <li key={`explore-rec-warn-${wIdx}`}>{warn}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Textarea */}
+                <div className="space-y-1">
+                  <label className="font-mono text-xs font-bold uppercase text-gray-700 block">
+                    Markdown Content Source
+                  </label>
+                  <textarea
+                    value={markedText}
+                    onChange={(e) => handleMarkedTextChange(e.target.value)}
+                    className="w-full font-mono text-xs sm:text-sm bg-white border border-black/15 rounded-2xl p-4 min-h-[380px] shadow-inner focus:outline-none focus:ring-2 focus:ring-amber-500/50 leading-relaxed text-gray-900"
+                    placeholder="# My Recipe Title&#10;&#10;## Phase 1: Preparation&#10;&#10;### Prep ingredients&#10;Add recipe step body notes, links, or code snippets here..."
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {tempPhases.map((phase, pIdx) => {
                 const tasks = phase.tasks || [];
                 const isCollapsed = Boolean(collapsedPhases[pIdx]);
 
                 return (
                   <div
-                    key={phase.id || `phase-${pIdx}`}
+                    key={phase.id}
                     className="rounded-2xl border border-black/10 overflow-hidden shadow-sm transition-all"
                     style={{ backgroundColor: colors.soft }}
                   >
@@ -1344,7 +1772,7 @@ export function RecipeExploreModal({
                       <div className="p-3 space-y-2 bg-white/60">
                         {tasks.map((task: any, tIdx: number) => (
                           <div
-                            key={task.id || `task-${pIdx}-${tIdx}`}
+                            key={task.id}
                             className="p-3 rounded-xl border border-black/5 bg-white flex items-center justify-between gap-3 shadow-2xs hover:border-black/15 transition-all"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1397,9 +1825,17 @@ export function RecipeExploreModal({
                                   placeholder="Step description..."
                                 />
                               ) : (
-                                <span className="text-xs font-medium text-gray-900 leading-snug">
-                                  {task.title}
-                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-xs font-semibold text-gray-900 leading-snug block">
+                                    {task.title}
+                                  </span>
+                                  {task.body_markdown && (
+                                    <MarkedRenderer
+                                      markdown={task.body_markdown}
+                                      className="mt-1.5 pt-1.5 border-t border-black/5 text-xs text-gray-700"
+                                    />
+                                  )}
+                                </div>
                               )}
                             </div>
 
@@ -1447,6 +1883,7 @@ export function RecipeExploreModal({
                 </div>
               )}
             </div>
+          )}
 
             {/* VISIBILITY SELECTOR (in Edit Mode) */}
             {isEditing && (
@@ -1455,9 +1892,9 @@ export function RecipeExploreModal({
                   Recipe Visibility
                 </h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['public', 'private'] as RecipeVisibility[]).map((vis) => (
+                  {(['public', 'private'] as RecipeVisibility[]).map((vis, visIdx) => (
                     <button
-                      key={vis}
+                      key={`exp-rec-vis-${vis}-${visIdx}`}
                       type="button"
                       onClick={() => setTempPrivacy(vis)}
                       className={`p-2.5 rounded-xl border text-xs font-mono font-bold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
@@ -1583,6 +2020,11 @@ export function RecipeExploreModal({
           onCancel={() => setDeleteConfirm(null)}
         />
       )}
+
+      <MarkedSyntaxGuideModal
+        isOpen={showSyntaxGuideModal}
+        onClose={() => setShowSyntaxGuideModal(false)}
+      />
     </AnimatePresence>
   );
 }

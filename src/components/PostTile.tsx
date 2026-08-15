@@ -214,7 +214,7 @@ export const PostTile: React.FC<PostTileProps> = ({
     };
   }, [displayImage]);
 
-  const rawAuthorName = getUserName(post.userId, post.userName);
+  const rawAuthorName = getUserName(post.userId, post.userName) || 'creator';
   const handleName = rawAuthorName.startsWith('@') 
     ? rawAuthorName 
     : `@${rawAuthorName.toLowerCase().replace(/\s+/g, '')}`;
@@ -377,7 +377,7 @@ export const PostTile: React.FC<PostTileProps> = ({
             <div className="inline-flex items-center gap-1.5 bg-[#111827]/60 backdrop-blur-md px-2.5 py-1 rounded-full shadow-md">
               {postImages.map((_, dotIdx) => (
                 <button
-                  key={dotIdx}
+                  key={`post-${post.id || 'tile'}-dot-${dotIdx}`}
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();

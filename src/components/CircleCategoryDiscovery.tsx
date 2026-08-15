@@ -154,8 +154,8 @@ export default function CircleCategoryDiscovery({
 
     const isEligibleUser = (c: Creator) => {
       if (!c || !c.id) return false;
-      if (c.id === currentUser.id || (currentUser.publicId && c.publicId === currentUser.publicId)) return false;
-      if (isUserInCircle(currentUser, c.id, creators)) return false;
+      if (currentUser && (c.id === currentUser.id || (currentUser.publicId && c.publicId === currentUser.publicId))) return false;
+      if (currentUser && isUserInCircle(currentUser, c.id, creators)) return false;
       return true;
     };
 
@@ -269,11 +269,11 @@ export default function CircleCategoryDiscovery({
 
         {/* 5 Parent Category Tiles Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {PARENT_CATEGORY_TILES.map(tile => {
+          {PARENT_CATEGORY_TILES.map((tile, tIdx) => {
             const IconComponent = tile.icon;
             return (
               <motion.button
-                key={tile.id}
+                key={`circle-cat-tile-${tile.id || tIdx}-${tIdx}`}
                 type="button"
                 whileHover={{ y: -3, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -363,13 +363,13 @@ export default function CircleCategoryDiscovery({
               {/* Modal User List */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {categoryUsers.length > 0 ? (
-                  categoryUsers.map(({ creator, latestActivity }) => {
+                  categoryUsers.map(({ creator, latestActivity }, idx) => {
                     const isFollowing = isFollowingUser(currentUser, creator.id, creators);
                     const avatarUrl = creator.avatarUrl ? getPublicMediaUrl('Gonnng', creator.avatarUrl) : '';
 
                     return (
                       <div
-                        key={creator.id}
+                        key={`circle-creator-${creator.id || idx}-${idx}`}
                         className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-gray-200 bg-white hover:border-gray-300 transition-all shadow-2xs"
                       >
                         {/* Avatar & User Details */}

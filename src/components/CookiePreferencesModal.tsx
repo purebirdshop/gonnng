@@ -230,9 +230,9 @@ export const CookiePreferencesModal: React.FC<CookiePreferencesModalProps> = ({
                 </div>
 
                 <div className="space-y-3">
-                  {governanceItems.map((item) => (
+                  {governanceItems.map((item, itmIdx) => (
                     <div
-                      key={item.name}
+                      key={`cookie-gov-${item.name}-${item.category}-${itmIdx}`}
                       className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2 hover:border-white/20 transition-all text-xs"
                     >
                       <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">

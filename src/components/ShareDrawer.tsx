@@ -52,8 +52,8 @@ export default function ShareDrawer({
 
   // FR-003 Public URL Structure formatting
   let permalink = `gonnng.com/p/${post.publicId || post.id}`;
-  if (post.title.toLowerCase().includes('profile') || post.username) {
-    const handle = post.username || post.userName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if ((post.title || '').toLowerCase().includes('profile') || post.username) {
+    const handle = post.username || (post.userName ? post.userName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'user');
     permalink = `gonnng.com/u/${handle}`;
   } else if (post.attachedName?.toLowerCase().includes('recipe')) {
     permalink = `gonnng.com/recipe/${post.publicId || post.id}`;
@@ -166,11 +166,11 @@ export default function ShareDrawer({
               {isSignedIn ? (
                 followingUsers.length > 0 ? (
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {followingUsers.map(user => {
+                    {followingUsers.map((user, idx) => {
                       const isSent = sentMap[user.id];
                       return (
                         <div
-                          key={user.id}
+                          key={`share-user-${user.id || idx}-${idx}`}
                           className="flex justify-between items-center p-2.5 border rounded-xl transition-all bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-900"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -188,7 +188,7 @@ export default function ShareDrawer({
                             )}
                             <div className="min-w-0">
                               <h5 className="text-xs font-bold truncate text-gray-900">{user.name}</h5>
-                              <p className="text-[10px] font-mono truncate text-gray-500">@{user.name.toLowerCase().replace(/\s+/g, '')}</p>
+                              <p className="text-[10px] font-mono truncate text-gray-500">@{(user.name || user.username || 'user').toLowerCase().replace(/\s+/g, '')}</p>
                             </div>
                           </div>
 
