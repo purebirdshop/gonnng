@@ -63,4 +63,13 @@ describe('Desktop Layout Functional Test Automation Suite', () => {
     cy.get('header').should('be.visible');
     cy.get('#header-profile-menu-btn').should('be.visible');
   });
+
+  it.skip('TC-003: User Registration Flow (Disabled in automated suite to prevent test account creation)', () => {
+    // Retained for manual regression runs
+    cy.visit('/login');
+    cy.get('#tab-register-btn').click();
+    cy.get('#register-username').type('manual_qa_user');
+    cy.get('#register-email').type('manual_qa_user@gonnng.test');
+    cy.get('#register-password').type('QAPassword123!');
+  });
 });

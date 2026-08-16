@@ -727,8 +727,8 @@ export default function App() {
     const effProcessTab = subState?.processTab !== undefined ? subState.processTab : processTab;
     const effViewedCreator = subState?.viewedCreator !== undefined ? subState.viewedCreator : (homeViewCreatorProfile || viewedCreatorId);
     const effPostId = subState?.postId !== undefined ? subState.postId : (homeSuperimposedPostId || profileSuperimposedPostId);
-    const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : (selectedRecipeModal ? (selectedRecipeModal.publicId || selectedRecipeModal.id) : null);
-    const effProjectId = subState?.projectId !== undefined ? subState.projectId : (targetActiveTab === 'coach' && effProcessTab === 'projects' ? (activeProject?.publicId || activeProject?.id || selectedProjectId) : null);
+    const effRecipeId = subState?.recipeId !== undefined ? subState.recipeId : null;
+    const effProjectId = subState?.projectId !== undefined ? subState.projectId : null;
 
     let targetPath = getPathFromState(targetViewMode, targetWebsiteTab, targetActiveTab, {
       updatesCategory: effUpdatesCat,
@@ -993,13 +993,17 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setActiveTab(tab);
+    if (tab === 'coach') {
+      setProcessTab('projects');
+    }
     updateRoute('workspace', undefined, tab, {
       updatesCategory: null,
       updatesChatUser: null,
       processTab: tab === 'recipes' ? 'library' : tab === 'coach' ? 'projects' : undefined,
       viewedCreator: options?.keepCreatorProfile ? homeViewCreatorProfile : null,
       postId: null,
-      recipeId: null
+      recipeId: null,
+      projectId: null
     });
   };
 
@@ -1041,10 +1045,9 @@ export default function App() {
   const handleProcessTabChange = (tab: 'projects' | 'focus' | 'library') => {
     setProcessTab(tab);
     const targetAppTab = tab === 'library' ? 'recipes' : 'coach';
-    const effectiveProjectId = tab === 'projects' ? (activeProject?.publicId || activeProject?.id || selectedProjectId) : null;
     updateRoute('workspace', undefined, targetAppTab, { 
       processTab: tab, 
-      projectId: effectiveProjectId, 
+      projectId: null, 
       viewedCreator: null, 
       postId: null, 
       recipeId: null 

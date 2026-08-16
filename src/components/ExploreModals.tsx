@@ -20,9 +20,7 @@ import {
   ChevronUp, 
   ChevronRight, 
   X, 
-  Edit2, 
   SquarePen,
-  Share2, 
   Check, 
   Trash2, 
   Plus, 
@@ -34,7 +32,6 @@ import {
   Users, 
   CheckSquare, 
   Square, 
-  Sparkles,
   ArrowUp,
   ArrowDown,
   UtensilsCrossed,
@@ -45,7 +42,6 @@ import {
   List,
   FileCode,
   Info,
-  HelpCircle,
   AlertTriangle
 } from 'lucide-react';
 import { parseMarkedText, serializeToMarked } from '../utils/markedEngine';
@@ -700,7 +696,7 @@ export function ProjectExploreModal({
 
                 return (
                   <div
-                    key={phase.id}
+                    key={`modal-project-ph-${phase.id || pIdx}-${pIdx}`}
                     className="rounded-2xl border border-black/10 overflow-hidden shadow-sm transition-all"
                     style={{ backgroundColor: colors.soft }}
                   >
@@ -797,7 +793,7 @@ export function ProjectExploreModal({
                       <div className="p-3 space-y-2 bg-white/60">
                         {phase.tasks.map((task, tIdx) => (
                           <div
-                            key={task.id}
+                            key={`modal-project-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`}
                             className="p-3 rounded-xl border border-black/5 bg-white flex items-center justify-between gap-3 shadow-2xs hover:border-black/15 transition-all"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1688,7 +1684,7 @@ export function RecipeExploreModal({
 
                 return (
                   <div
-                    key={phase.id}
+                    key={`modal-recipe-ph-${phase.id || pIdx}-${pIdx}`}
                     className="rounded-2xl border border-black/10 overflow-hidden shadow-sm transition-all"
                     style={{ backgroundColor: colors.soft }}
                   >
@@ -1772,7 +1768,7 @@ export function RecipeExploreModal({
                       <div className="p-3 space-y-2 bg-white/60">
                         {tasks.map((task: any, tIdx: number) => (
                           <div
-                            key={task.id}
+                            key={`modal-recipe-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`}
                             className="p-3 rounded-xl border border-black/5 bg-white flex items-center justify-between gap-3 shadow-2xs hover:border-black/15 transition-all"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">

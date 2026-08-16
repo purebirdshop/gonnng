@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Collection, Project, Recipe, Phase } from '../types';
-import { AlertCircle, ShieldAlert, Hourglass, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, BookOpenCheck, Target, GripVertical, Plus, Search, LibraryBig, BookOpen, PrinterCheck, FolderKanban, Bookmark, Pencil, Sparkles } from 'lucide-react';
+import { AlertCircle, ShieldAlert, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, BookOpenCheck, Target, GripVertical, Plus, LibraryBig, BookOpen, PrinterCheck, FolderKanban } from 'lucide-react';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
 import RecipeDetailModal from './RecipeDetailModal';
@@ -379,14 +379,22 @@ export default function SandEngine({
   const userProjects = sessionProjects;
 
   // Recipes in Process > LIBRARY: created by authenticated user OR saved/bookmarked by authenticated user OR unbookmarked during current view session
-  const userLibraryRecipes = (recipes || []).filter(recipe => {
-    const isAuthor = Boolean(
-      recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
-    );
-    const isSaved = (savedRecipeIds || []).includes(recipe.id);
-    const isKeptInSession = sessionKeptUnbookmarkedIds.includes(recipe.id);
-    return isAuthor || isSaved || isKeptInSession;
-  });
+  const userLibraryRecipes = useMemo(() => {
+    const raw = (recipes || []).filter(recipe => {
+      const isAuthor = Boolean(
+        recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
+      );
+      const isSaved = (savedRecipeIds || []).includes(recipe.id);
+      const isKeptInSession = sessionKeptUnbookmarkedIds.includes(recipe.id);
+      return isAuthor || isSaved || isKeptInSession;
+    });
+    const seen = new Set<string>();
+    return raw.filter(r => {
+      if (!r.id || seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+  }, [recipes, currentUser?.id, savedRecipeIds, sessionKeptUnbookmarkedIds]);
 
   const activeCollection = collections.find(c => c.id === selectedColId) || collections[0];
 
@@ -492,7 +500,15 @@ export default function SandEngine({
   });
 
   const visibleActiveProjects = activeProjectsList.slice(0, visibleActiveProjectsCount);
-  const sortedProjects = [...visibleActiveProjects, ...completedProjectsList];
+  const sortedProjects = useMemo(() => {
+    const combined = [...visibleActiveProjects, ...completedProjectsList];
+    const seen = new Set<string>();
+    return combined.filter(p => {
+      if (!p.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [visibleActiveProjects, completedProjectsList]);
 
   const isProjectInLibrary = activeProject ? (recipes?.some(r => r.id === activeProject.recipeId || (r.title && activeProject.title && r.title.trim().toLowerCase() === activeProject.title.trim().toLowerCase())) || false) : false;
 
@@ -821,7 +837,7 @@ export default function SandEngine({
 
             {userLibraryRecipes && userLibraryRecipes.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {userLibraryRecipes.map((recipe) => {
+                {userLibraryRecipes.map((recipe, rIdx) => {
                   const isSaved = (savedRecipeIds || []).includes(recipe.id);
                   const isAuthor = Boolean(
                     recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
@@ -829,7 +845,7 @@ export default function SandEngine({
 
                   return (
                     <ProcessTile
-                      key={recipe.id}
+                      key={`recipe-tile-${recipe.id || rIdx}-${rIdx}`}
                       type="recipe"
                       id={recipe.id}
                       title={recipe.title}
@@ -946,13 +962,13 @@ export default function SandEngine({
             {sortedProjects.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {sortedProjects.map((p) => {
+                  {sortedProjects.map((p, pIdx) => {
                     const progress = getProjectProgress(p);
                     const isSelected = selectedProjectId === p.id && activeItemType === 'project';
 
                     return (
                       <ProcessTile
-                        key={p.id}
+                        key={`proj-tile-${p.id || pIdx}-${pIdx}`}
                         type="project"
                         id={p.id}
                         title={p.title}
@@ -1041,7 +1057,7 @@ export default function SandEngine({
                   {/* List Content */}
                   <div className="space-y-2.5 max-md:max-h-none max-md:overflow-visible md:max-h-[520px] md:overflow-y-auto pr-0 md:pr-1">
                     {collections.length > 0 ? (
-                      collections.map((col) => {
+                      collections.map((col, cIdx) => {
                         const colProjects = sessionProjects.filter(p => p.collectionId === col.id || col.projectIds.includes(p.id));
                         const totalTasks = colProjects.reduce((sum, p) => sum + p.phases.reduce((ps, ph) => ps + ph.tasks.length, 0), 0);
                         const compTasks = colProjects.reduce((sum, p) => sum + p.phases.reduce((ps, ph) => ps + ph.tasks.filter(t => t.completed).length, 0), 0);
@@ -1051,7 +1067,7 @@ export default function SandEngine({
 
                         return (
                           <div
-                            key={col.id}
+                            key={`focus-col-${col.id || cIdx}-${cIdx}`}
                             id={`focus-select-card-${col.id}`}
                             onClick={() => {
                               setSelectedColId(col.id);
@@ -1274,7 +1290,7 @@ export default function SandEngine({
                       <div className="space-y-6">
                         {editPhases.map((phase, pIdx) => (
                           <div 
-                            key={phase.id} 
+                            key={`edit-phase-${phase.id || pIdx}-${pIdx}`} 
                             className={`space-y-3 p-3.5 rounded-2xl border transition-all ${
                               dragOverPhaseIdx === pIdx ? 'border-[#F59E0B] bg-[#F59E0B]/10' : 'bg-black/40 border-white/10'
                             }`}
@@ -1325,7 +1341,7 @@ export default function SandEngine({
                             <div className="space-y-2 pl-0 sm:pl-7 w-full min-w-0">
                               {phase.tasks.map((task, tIdx) => (
                                 <div
-                                  key={task.id}
+                                  key={`edit-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`}
                                   draggable
                                   onDragStart={(e) => handleTaskDragStart(e, pIdx, tIdx)}
                                   onDragOver={(e) => handleTaskDragOver(e, pIdx, tIdx)}
@@ -1401,7 +1417,7 @@ export default function SandEngine({
                         const isPhaseComplete = phase.tasks.length > 0 && phase.tasks.every(t => t.completed);
 
                         return (
-                          <div key={phase.id} className="space-y-3 w-full min-w-0">
+                          <div key={`view-phase-${phase.id || pIdx}-${pIdx}`} className="space-y-3 w-full min-w-0">
                             <div className="flex items-center justify-between">
                               <h3 className="text-xs font-mono font-bold text-white/80 uppercase tracking-wider flex items-center gap-2">
                                 <span className="bg-white/10 text-white/85 w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] shrink-0">
@@ -1421,9 +1437,9 @@ export default function SandEngine({
                             </div>
 
                             <div className="space-y-2 pl-0 sm:pl-7 w-full min-w-0">
-                              {phase.tasks.map((task) => (
+                              {phase.tasks.map((task, tIdx) => (
                                 <div
-                                  key={task.id}
+                                  key={`view-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`}
                                   onClick={() => handleToggleTask(activeProject.id, phase.id, task.id)}
                                   className={`p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 min-w-0 w-full ${
                                     task.completed
@@ -1721,10 +1737,10 @@ export default function SandEngine({
                     </h4>
                     {linkedProjects.length > 0 ? (
                       <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                        {linkedProjects.map((p) => {
+                        {linkedProjects.map((p, pIdx) => {
                           const pProg = getProjectProgress(p);
                           return (
-                            <div key={p.id} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
+                            <div key={`feas-proj-${p.id || pIdx}-${pIdx}`} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
                               <div className="flex justify-between items-center">
                                 <h5 className="text-xs font-bold text-white">{p.title}</h5>
                                 <span className="text-[10px] font-mono bg-black px-2 py-0.5 rounded border border-white/10 text-[#F59E0B] font-bold">
@@ -1735,11 +1751,11 @@ export default function SandEngine({
                                 <div className="bg-[#F59E0B] h-full rounded-full" style={{ width: `${pProg}%` }}></div>
                               </div>
                               {p.phases.map((ph, phIdx) => (
-                                <div key={ph.id} className="space-y-1 pt-1">
+                                <div key={`feas-ph-${p.id || pIdx}-${ph.id || phIdx}-${phIdx}`} className="space-y-1 pt-1">
                                   <span className="text-[9px] font-mono text-white/40 uppercase">Phase {phIdx + 1}: {ph.title}</span>
-                                  {ph.tasks.map((t) => (
+                                  {ph.tasks.map((t, tIdx) => (
                                     <div 
-                                      key={t.id} 
+                                      key={`feas-t-${ph.id || phIdx}-${t.id || tIdx}-${tIdx}`} 
                                       onClick={() => handleToggleTask(p.id, ph.id, t.id)}
                                       className="flex items-center gap-2 text-xs text-white/80 hover:text-white cursor-pointer"
                                     >
