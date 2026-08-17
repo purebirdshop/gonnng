@@ -1,23 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  LogIn, 
-  UserPlus, 
-  Key, 
-  Mail, 
-  Lock, 
-  AlertCircle, 
-  CheckCircle2, 
-  ShieldCheck, 
-  Loader2, 
-  ArrowRight, 
-  ArrowLeft, 
-  X, 
-  Check, 
-  Search
-} from 'lucide-react';
+import { LogIn, UserPlus, Key, Mail, Lock, AlertCircle, CheckCircle2, ShieldCheck, Loader2, ArrowRight, ArrowLeft, X, Check, Search } from 'lucide-react';
 import { authService, UserSession } from '../../services/authService';
 import { CATEGORIES_DATA, getCategoryColor } from '../../data/categoriesData';
-import { GonnngGLogo, GonnngGIcon } from '../GonnngLogo';
+import { GonnngGIcon } from '../GonnngLogo';
 
 interface LoginPageProps {
   initialMode?: 'login' | 'register' | 'forgot' | 'reset';

@@ -3,24 +3,20 @@ import { Recipe, Creator, FeedPost, Project } from '../types';
 import { 
   X, 
   Search, 
-  Download, 
-  GitFork, 
   UserPlus, 
   UserMinus, 
-  Check, 
   Users, 
   ShieldCheck, 
   BookmarkCheck,
   BookOpen,
   FolderKanban,
-  PrinterCheck,
   User,
   Bookmark
 } from 'lucide-react';
 import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
 import RecipeDetailModal from './RecipeDetailModal';
 import { ProcessTile } from './SandEngine';
-import { searchCategories, getCategoryColor } from '../data/categoriesData';
+import { searchCategories } from '../data/categoriesData';
 import { isUserInCircle } from '../utils/followUtils';
 import { IconOnlySubButton, IconWithLabelButton } from './DesignSystemTiles';
 

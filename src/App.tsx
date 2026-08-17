@@ -1,31 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Disc3, 
-  Pencil, 
-  Octagon, 
-  Bell, 
-  BookOpen, 
-  FileSliders,  
-  User, 
-  Plus, 
-  Search,
-  Settings,
-  GitFork,
-  CircleDotDashed,
-  X,
-  BookPlus,
-  Copy,
-  Check
-} from 'lucide-react';
+import { Disc3, Pencil, Octagon, Bell, BookOpen, FileSliders, User, Plus, Search, Settings, GitFork, CircleDotDashed, X, BookPlus, Copy, Check } from 'lucide-react';
 
-import { Recipe, Project, Collection, Creator, FeedPost, Task, Phase, ProfileVisibility } from './types';
-import { GonnngGIcon, GonnngGLogo } from './components/GonnngLogo';
+import { Recipe, Project, Collection, Creator, FeedPost, ProfileVisibility } from './types';
+import { GonnngGIcon } from './components/GonnngLogo';
 import { dataService } from './services/dataService';
-import { uploadService, getPublicMediaUrl } from './services/uploadService';
+import { getPublicMediaUrl } from './services/uploadService';
 import { permissionService } from './services/permissionService';
 import { authService, isAuthFeatureEnabled, UserSession } from './services/authService';
-import { hydrateCreators, isUserInCircle } from './utils/followUtils';
+import { hydrateCreators } from './utils/followUtils';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -1987,7 +1970,7 @@ export default function App() {
 
             {/* Desktop Layout Logo (Gonnng G Logo with text built-in) */}
             <div className="hidden lg:flex items-center justify-center cursor-pointer group-hover:scale-105 transition-transform">
-              <GonnngGLogo className="h-[42px] w-[190px] -my-[4px] text-black" />
+              <GonnngGIcon className="w-8 h-8 text-black" /> <span>Gonnng</span>
             </div>
           </div>
 

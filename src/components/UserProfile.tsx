@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost, Project, Recipe } from '../types';
 import PostTile from './PostTile';
-import { getFollowersOfUser, getFollowingOfUser, getCircleOfUser, isFollowingUser, isFollowedByUser, isUserInCircle } from '../utils/followUtils';
-import { User, Shield, Users, Save, Globe, Lock, Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Camera, Image as ImageIcon, Disc3, Pencil, Octagon, ArrowUpRight, MessageSquare, CircleDotDashed, Album, Cookie, MessageSquareShare } from 'lucide-react';
+import { getFollowersOfUser, getFollowingOfUser, getCircleOfUser, isFollowingUser, isFollowedByUser } from '../utils/followUtils';
+import { User, Shield, Save, Globe,Goal, BookOpen, Star, X, Search, UserPlus, UserCheck, Upload, File, LogOut, Camera, Disc3, MessageSquare, CircleDotDashed, Album, Cookie, MessageSquareShare } from 'lucide-react';
 import Feed from './Feed';
 import FileUploadZone from './FileUploadZone';
 import { UploadedFile, uploadService, getPublicMediaUrl } from '../services/uploadService';
@@ -403,7 +403,7 @@ export default function UserProfile({
         </div>
 
         {/* Middle Section: Bio & Goal */}
-        <div className="my-auto py-4 space-y-3 border p-4 mx-3 mb-3 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 cursor-pointer hover:bg-gray-100/80 transition-colors">
+        <div className="my-auto py-4 space-y-3 border p-4 mx-3 mb-3 rounded-2xl bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100/80 transition-colors">
           <p className="text-xs leading-relaxed italic text-gray-800">
             {currentUser.bio && currentUser.bio.trim() !== '' ? currentUser.bio : "I'm just getting started with Gonnng!"}
           </p>

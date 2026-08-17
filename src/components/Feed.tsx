@@ -5,29 +5,7 @@ import { isFollowingUser, isUserInCircle as checkCircleRelation } from '../utils
 import { getPublicMediaUrl } from '../services/uploadService';
 import CircleCategoryDiscovery from './CircleCategoryDiscovery';
 import PostTile from './PostTile';
-import { 
-  Globe, 
-  CircleDotDashed,
-  Album,
-  Users, 
-  Lock, 
-  Disc3, 
-  Pencil, 
-  Octagon, 
-  MessageSquare, 
-  X, 
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  BookOpen,
-  Heart,
-  CornerDownRight,
-  ArrowUpRight,
-  User,
-  FolderPlus,
-  Sparkles
-} from 'lucide-react';
+import { Disc3, Pencil, Octagon, MessageSquare, X, Send, BookOpen, Heart, CornerDownRight, ArrowUpRight, User, FolderPlus, Sparkles } from 'lucide-react';
 
 export function formatCount(num: number): string {
   if (!num || num <= 0) return '0';

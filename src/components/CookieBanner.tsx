@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Cookie, ShieldCheck, Settings, Check, X, Megaphone, BarChart3, Sliders } from 'lucide-react';
-import { CookiePreferences, AttributionData } from '../services/cookieConsent';
+import { AttributionData } from '../services/cookieConsent';
 
 interface CookieBannerProps {
   isVisible: boolean;

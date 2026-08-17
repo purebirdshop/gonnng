@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckCircle2, XCircle, Info, Hash, FileCode } from 'lucide-react';
+import { X, CheckCircle2, Hash } from 'lucide-react';
 
 interface MarkedSyntaxGuideModalProps {
   isOpen: boolean;

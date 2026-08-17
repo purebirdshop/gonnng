@@ -4,20 +4,7 @@ import { Creator, FeedPost, DirectMessage } from '../types';
 import { isUserInCircle } from '../utils/followUtils';
 import { dataService } from '../services/dataService';
 import { getPublicMediaUrl } from '../services/uploadService';
-import { 
-  X, 
-  Send, 
-  User, 
-  Users, 
-  Link, 
-  ArrowUpRight, 
-  Check, 
-  Clock, 
-  ShieldAlert, 
-  MessageSquare,
-  CheckCircle2,
-  Lock
-} from 'lucide-react';
+import { X, Send, Users, ArrowUpRight, MessageSquare } from 'lucide-react';
 
 interface MessageDrawerProps {
   isOpen: boolean;

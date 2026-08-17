@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, ImageOff, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { ExternalLink, ImageOff, ShieldAlert } from 'lucide-react';
 import { getPublicMediaUrl } from '../services/uploadService';
 
 interface MarkedRendererProps {

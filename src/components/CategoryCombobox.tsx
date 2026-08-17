@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CATEGORIES_DATA, searchCategories, CategoryMatch, CategoryItem, getCategoryByName } from '../data/categoriesData';
+import { searchCategories, CategoryMatch, getCategoryByName } from '../data/categoriesData';
 import { Check, ChevronDown, Search, X, Tag } from 'lucide-react';
 
 interface CategoryComboboxProps {

@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Recipe, Project, Collection, FeedPost, Task, Creator } from '../types';
+import { Recipe, Project, Collection, FeedPost, Creator } from '../types';
 import { 
   X, 
   Camera, 
-  Image as ImageIcon, 
   Plus, 
   Check, 
   AlertCircle, 

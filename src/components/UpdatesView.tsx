@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
 import { resolveImageUrl } from '../lib/apiConfig';
 import { dataService } from '../services/dataService';
-import { isFollowingUser, isUserInCircle } from '../utils/followUtils';
+import { isFollowingUser } from '../utils/followUtils';
 import { 
   Bell, 
   UserPlus, 

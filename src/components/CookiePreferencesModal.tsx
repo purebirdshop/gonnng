@@ -1,18 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, 
-  ShieldCheck, 
-  BarChart3, 
-  Megaphone, 
-  Sliders, 
-  Lock, 
-  Check, 
-  Cookie, 
-  Table, 
-  Info, 
-  ExternalLink 
-} from 'lucide-react';
+import { X, ShieldCheck, BarChart3, Megaphone, Sliders, Lock, Check, Cookie, Table, Info } from 'lucide-react';
 import { CookiePreferences, CookieGovernanceItem } from '../services/cookieConsent';
 
 interface CookiePreferencesModalProps {
