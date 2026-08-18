@@ -16,8 +16,8 @@ import {
   DirectMessage,
   MessageThread
 } from '../types';
-import { getPublicMediaUrl, uploadService } from './uploadService';
-import { authService } from './authService';
+import { getPublicMediaUrl, uploadService } from '../services/uploadService';
+import { authService } from '../services/authService';
 import { hydrateCreators } from '../utils/followUtils';
 import {
   BLT_RECIPE,
@@ -96,7 +96,7 @@ function setLocal<T>(key: string, value: T): void {
 
 export const isUuid = (str?: string): boolean => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
 
-export function toValidUuid(id: string): string {
+export default function toValidUuid(id: string): string {
   if (!id) return '00000000-0000-4000-8000-000000000000';
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(id)) {
