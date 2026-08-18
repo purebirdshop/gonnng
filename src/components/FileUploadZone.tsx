@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, File, Image as ImageIcon, Trash2, CheckCircle2, AlertCircle, Lock, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, File, Trash2, CheckCircle2, AlertCircle, Lock, Loader2 } from 'lucide-react';
 import { uploadService, isFileUploadAllowed, isFileUploadFeatureEnabled, UploadedFile } from '../services/uploadService';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 

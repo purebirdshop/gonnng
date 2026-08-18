@@ -27,7 +27,6 @@
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.110.8",
     "@tailwindcss/vite": "^4.1.14",
-    "@vercel/analytics": "^2.0.1",
     "@vitejs/plugin-react": "^5.0.4",
     "basic-ftp": "^6.2.0",
     "bcryptjs": "^3.0.3",

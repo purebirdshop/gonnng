@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Creator, FeedPost } from '../types';
-import { ArrowLeft, UserPlus, UserCheck, Goal, Link, User, ArrowUpRight, X, Search, CircleDotDashed, MessageSquare, MessageSquareShare } from 'lucide-react';
+import { ArrowLeft, UserPlus, UserCheck, Goal, User, X, Search, CircleDotDashed, MessageSquare, MessageSquareShare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Feed from './Feed';
 import { getFollowersOfUser, getFollowingOfUser, isFollowingUser, isFollowedByUser, isUserInCircle } from '../utils/followUtils';

@@ -65,12 +65,22 @@ header {
   border-color: #E5E7EB !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
   padding-top: env(safe-area-inset-top, 0);
-  padding-left: env(safe-area-inset-left, 0);
-  padding-right: env(safe-area-inset-right, 0);
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
-header > div {
-  padding: 12px 12px 0 12px;
+#mobile-header-progress-bar-container,
+#header-progress-bar-container {
+  padding: 0 !important;
+  margin: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+}
+
+#mobile-header-progress-bar-fill,
+#header-progress-bar-fill {
+  margin: 0 !important;
 }
 
 nav {
@@ -192,13 +202,13 @@ textarea::placeholder {
 }
 
 .safe-area-header {
-  padding-top: env(safe-area-inset-top, 24px);
-  padding-left: env(safe-area-inset-left, 12px);
-  padding-right: env(safe-area-inset-right, 12px);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 .safe-area-bottom-nav {
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 36px)) !important;
   padding-left: calc(0.75rem + env(safe-area-inset-left, 0px)) !important;
   padding-right: calc(0.75rem + env(safe-area-inset-right, 0px)) !important;
 }

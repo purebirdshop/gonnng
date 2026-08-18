@@ -5,29 +5,7 @@ import { isFollowingUser, isUserInCircle as checkCircleRelation } from '../utils
 import { getPublicMediaUrl } from '../services/uploadService';
 import CircleCategoryDiscovery from './CircleCategoryDiscovery';
 import PostTile from './PostTile';
-import { 
-  Globe, 
-  CircleDotDashed,
-  Album,
-  Users, 
-  Lock, 
-  Disc3, 
-  Pencil, 
-  Octagon, 
-  MessageSquare, 
-  X, 
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  BookOpen,
-  Heart,
-  CornerDownRight,
-  ArrowUpRight,
-  User,
-  FolderPlus,
-  Sparkles
-} from 'lucide-react';
+import { Disc3, Pencil, Octagon, MessageSquare, X, Send, BookOpen, Heart, CornerDownRight, ArrowUpRight, User, FolderPlus, Sparkles } from 'lucide-react';
 
 export function formatCount(num: number): string {
   if (!num || num <= 0) return '0';
@@ -472,25 +450,36 @@ export default function Feed({
           )}
         </div>
       ) : filter === 'private' ? (
-        <div className="w-full py-12 flex flex-col items-center justify-center p-8 text-center bg-[#151515] border border-white/10 rounded-3xl space-y-4 my-2">
-          <div className="w-12 h-12 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 text-[#F59E0B] flex items-center justify-center mx-auto">
-            <Sparkles className="w-6 h-6" />
+        <div 
+          id="profile-empty-welcome-tile"
+          className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto sm:min-h-[450px] shrink-0 sm:shrink flex flex-col justify-between items-center relative overflow-hidden p-6 sm:p-10 text-center my-0 sm:my-2 text-black"
+        >
+
+          {/* Centered Content */}
+          <div className="my-auto space-y-4 max-w-md mx-auto py-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 text-[#F59E0B] flex items-center justify-center mx-auto shadow-inner">
+              <Sparkles className="w-8 h-8 stroke-[2.2]" />
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-xl sm:text-2xl font-bold text-white font-display tracking-tight">
+                Welcome to Gonnng<i>!</i>
+              </h4>
+              <p className="text-xs sm:text-sm text-gray-400 leading-relaxed max-w-sm mx-auto">
+                You haven't published any project updates or recipes yet. Start a new project or create a recipe!
+              </p>
+            </div>
           </div>
-          <div className="space-y-1">
-            <h4 className="text-base font-bold text-white font-display">Welcome to your Gonnng Workspace</h4>
-            <p className="text-xs text-white/60 max-w-md mx-auto leading-relaxed">
-              You haven't published any project updates or recipes yet. Start a new project or create a recipe blueprint to build your workspace!
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pb-2 w-full max-w-xs sm:max-w-md mx-auto">
             {onStartProject && (
               <button
                 type="button"
                 id="profile-empty-start-project-btn"
                 onClick={onStartProject}
-                className="px-4 py-2.5 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-extrabold text-xs rounded-xl shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto px-5 py-3 bg-[#F59E0B] hover:bg-[#FF751A] text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
               >
-                <FolderPlus className="w-4 h-4" /> Start Project
+                <FolderPlus className="w-4 h-4 stroke-[2.5]" /> Start Project
               </button>
             )}
             {onCreateRecipe && (
@@ -498,15 +487,15 @@ export default function Feed({
                 type="button"
                 id="profile-empty-create-recipe-btn"
                 onClick={onCreateRecipe}
-                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/15 transition-all inline-flex items-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase tracking-wider rounded-xl border border-white/20 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
               >
-                <BookOpen className="w-4 h-4 text-[#F59E0B]" /> Create Recipe
+                <BookOpen className="w-4 h-4 text-[#F59E0B] stroke-[2.5]" /> Create Recipe
               </button>
             )}
           </div>
         </div>
       ) : (
-        <div className="w-full py-20 flex flex-col items-center justify-center p-8 text-center bg-[#121212] border border-white/10 rounded-3xl">
+        <div className="snap-start snap-always w-full h-[calc(100vh-140px)] sm:h-auto sm:min-h-[400px] shrink-0 sm:shrink flex flex-col items-center justify-center p-8 text-center bg-gray-950 border border-gray-200/80 rounded-2xl my-0 sm:my-2 text-white">
           <BookOpen className="w-10 h-10 text-white/20 mb-3" />
           <p className="text-white/50 text-sm font-sans">
             {filter === 'creator'

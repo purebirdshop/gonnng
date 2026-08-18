@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckSquare, Square, Award, Flame, ChevronRight, Play, ArrowRight, HelpCircle } from 'lucide-react';
+import { CheckSquare, Square, ChevronRight, Play, ArrowRight, HelpCircle } from 'lucide-react';
 
 interface OnboardingProps {
   onCompleteTutorial: () => void;

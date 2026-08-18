@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
 import { resolveImageUrl } from '../lib/apiConfig';
 import { dataService } from '../services/dataService';
-import { isFollowingUser, isUserInCircle } from '../utils/followUtils';
+import { isFollowingUser } from '../utils/followUtils';
 import { 
   Bell, 
   UserPlus, 
@@ -922,7 +922,7 @@ export default function UpdatesView({
                               )}
                               {n.actionType === 'gong_continue' && (
                                 <span className="text-emerald-600 font-bold inline-flex items-center gap-1 flex-wrap">
-                                  <Disc3 className="w-3.5 h-3.5 shrink-0" /> cheered for you on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
+                                  <Disc3 className="w-3.5 h-3.5 shrink-0" /> cheered you on <strong className="text-gray-900 font-semibold">"{n.postTitle}"</strong>
                                 </span>
                               )}
                               {n.actionType === 'gong_refine' && (

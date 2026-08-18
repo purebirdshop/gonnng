@@ -89,9 +89,9 @@
           "listen": "prerequest",
           "script": {
             "exec": [
-              "var ts = Date.now();",
-              "pm.environment.set('dynamicUser', 'qa_user_' + ts);",
-              "pm.environment.set('dynamicEmail', 'qa_user_' + ts + '@gonnng.test');"
+              "// TC-003: User registration disabled/skipped during automated suite runs",
+              "// to avoid generating transient test accounts in the database.",
+              "postman.setNextRequest('4. User Login');"
             ],
             "type": "text/javascript"
           }
@@ -100,12 +100,8 @@
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test('Status code is 200 or 201', function () {",
+              "pm.test.skip('TC-003: User Registration (Skipped in automated suite to prevent test account creation)', function () {",
               "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-              "});",
-              "pm.test('Returns user session details', function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('user');",
               "});"
             ],
             "type": "text/javascript"
@@ -122,7 +118,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"QA Tester\",\n  \"username\": \"{{dynamicUser}}\",\n  \"email\": \"{{dynamicEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+          "raw": "{\n  \"name\": \"QA Tester\",\n  \"username\": \"{{testUsername}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/api/auth/register",
@@ -168,7 +164,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"{{dynamicEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"rememberMe\": true\n}"
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"rememberMe\": true\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/api/auth/login",
@@ -198,7 +194,7 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.authenticated).to.be.true;",
               "    pm.expect(jsonData.user).to.have.property('goals');",
-              "    pm.expect(jsonData.user.email).to.eql(pm.environment.get('dynamicEmail'));",
+              "    pm.expect(jsonData.user.email).to.eql(pm.environment.get('testEmail'));",
               "});"
             ],
             "type": "text/javascript"

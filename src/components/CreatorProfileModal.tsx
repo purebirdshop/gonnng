@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Creator, FeedPost } from '../types';
 import { getPublicMediaUrl } from '../services/uploadService';
-import { X, UserPlus, UserCheck, Users, Goal, BookOpen, Layers, User, MessageSquare } from 'lucide-react';
+import { X, UserPlus, UserCheck, Users, Goal, Layers, User, MessageSquare } from 'lucide-react';
 
 interface CreatorProfileModalProps {
   creator: Creator | null;

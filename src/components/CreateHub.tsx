@@ -1,28 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Recipe, Project, Collection, FeedPost, Task, Creator } from '../types';
+import { Recipe, Project, Collection, FeedPost, Creator } from '../types';
 import { 
   X, 
   Camera, 
-  Image as ImageIcon, 
   Plus, 
   Check, 
-  Trash2, 
   AlertCircle, 
-  Film, 
   Upload, 
-  Info, 
   Globe, 
   CircleDotDashed, 
   Album,
   ArrowLeft,
   ArrowRight,
-  Video,
-  Square,
-  FolderKanban,
   RefreshCw
 } from 'lucide-react';
-import FileUploadZone from './FileUploadZone';
-import { UploadedFile } from '../services/uploadService';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { ENABLE_AREA_OF_FOCUS } from '../featureFlags';
 import CategoryCombobox from './CategoryCombobox';
@@ -106,8 +97,7 @@ export default function CreateHub({
   // Media attachments state (up to 10 items)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [imageError, setImageError] = useState('');
-  const [showMediaModal, setShowMediaModal] = useState(false);
-  const [showLibraryInfoModal, setShowLibraryInfoModal] = useState(false);
+  const [setShowMediaModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Camera & Recording States
@@ -1606,14 +1596,14 @@ export default function CreateHub({
                             if (incompleteInPhase.length === 0) return null;
 
                             return (
-                              <div key={phase.id} className="space-y-1.5">
+                              <div key={`hub-update-phase-${phase.id || pIdx}-${pIdx}`} className="space-y-1.5">
                                 <h5 className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider">
                                   Phase {pIdx + 1}: {phase.title}
                                 </h5>
                                 <div className="space-y-1 pl-1">
-                                  {incompleteInPhase.map((task) => (
+                                  {incompleteInPhase.map((task, tIdx) => (
                                     <label
-                                      key={task.id}
+                                      key={`hub-update-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`}
                                       className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
                                         selectedTaskIds.includes(task.id)
                                           ? 'bg-[#F59E0B]/15 border-[#F59E0B] text-white'
@@ -1761,7 +1751,7 @@ export default function CreateHub({
 
                       <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
                         {customPhases.map((phase, pIdx) => (
-                          <div key={phase.id} className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-2">
+                          <div key={`hub-custom-phase-${phase.id || pIdx}-${pIdx}`} className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-2">
                             <div className="flex items-center gap-2">
                               <input
                                 type="text"
@@ -1774,7 +1764,7 @@ export default function CreateHub({
                             </div>
                             <div className="space-y-1.5 pl-2 border-l-2 border-white/10">
                               {phase.tasks.map((task, tIdx) => (
-                                <div key={task.id} className="flex items-center gap-2">
+                                <div key={`hub-custom-task-${phase.id || pIdx}-${task.id || tIdx}-${tIdx}`} className="flex items-center gap-2">
                                   <input
                                     type="text"
                                     value={task.title}
