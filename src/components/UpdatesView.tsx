@@ -506,6 +506,27 @@ export default function UpdatesView({
     localStorage.setItem('gonnng_appinfo_notifs', JSON.stringify(appInfoNotifications));
   }, [appInfoNotifications]);
 
+  // Listen for real-time background App Info updates (e.g. post upload failures)
+  React.useEffect(() => {
+    const handleAppInfoUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setAppInfoNotifications(e.detail);
+      } else {
+        const saved = localStorage.getItem('gonnng_appinfo_notifs');
+        if (saved) {
+          try {
+            setAppInfoNotifications(JSON.parse(saved));
+          } catch {}
+        }
+      }
+    };
+
+    window.addEventListener('gonnng_appinfo_update', handleAppInfoUpdate);
+    return () => {
+      window.removeEventListener('gonnng_appinfo_update', handleAppInfoUpdate);
+    };
+  }, []);
+
   // Unread Count Calculations
   const unreadUpdatesCount = postNotifications.filter(n => !n.isRead).length;
   const unreadFollowersCount = followerNotifications.filter(n => !n.isRead).length;

@@ -1131,6 +1131,23 @@ export function RecipeExploreModal({
     onConfirm: () => void;
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [localIsSaved, setLocalIsSaved] = useState<boolean>(Boolean(isSaved));
+
+  useEffect(() => {
+    setLocalIsSaved(Boolean(isSaved));
+  }, [isSaved, recipe?.id]);
+
+  const handleToggleBookmark = async () => {
+    const nextSaved = !localIsSaved;
+    setLocalIsSaved(nextSaved);
+
+    if (onToggleSaveRecipe) {
+      onToggleSaveRecipe(recipe.id, recipe);
+    } else {
+      const uid = currentUser?.id || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2';
+      await dataService.toggleBookmarkRecipe(uid, recipe.id, recipe);
+    }
+  };
 
   // Marked mode state
   const [editModeToggle, setEditModeToggle] = useState<'bulleted' | 'marked'>(() => {
@@ -1498,22 +1515,20 @@ export function RecipeExploreModal({
                   )}
 
                   {/* Bookmark Toggle Button */}
-                  {onToggleSaveRecipe && (
-                    isSaved ? (
-                      <IconOnlyTileButton
-                        icon={Bookmark}
-                        onClick={() => onToggleSaveRecipe(recipe.id, recipe)}
-                        collection={COLOR_COLLECTIONS['Gonnng Gold']}
-                        title="Saved in Library (Click to remove)"
-                      />
-                    ) : (
-                      <IconOnlySubButton
-                        icon={Bookmark}
-                        onClick={() => onToggleSaveRecipe(recipe.id, recipe)}
-                        collection={colors}
-                        title="Save to Library"
-                      />
-                    )
+                  {localIsSaved ? (
+                    <IconOnlyTileButton
+                      icon={Bookmark}
+                      onClick={handleToggleBookmark}
+                      collection={COLOR_COLLECTIONS['Gonnng Gold']}
+                      title="Saved in Library (Click to remove)"
+                    />
+                  ) : (
+                    <IconOnlySubButton
+                      icon={Bookmark}
+                      onClick={handleToggleBookmark}
+                      collection={colors}
+                      title="Save to Library"
+                    />
                   )}
 
                   <IconOnlySubButton

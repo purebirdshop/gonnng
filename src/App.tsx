@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Disc3, Pencil, Octagon, Bell, BookOpen, FileSliders, User, Plus, Search, Settings, GitFork, CircleDotDashed, X, BookPlus, Copy, Check } from 'lucide-react';
+import { Disc3, Pencil, Octagon, Bell, BookOpen, FileSliders, User, Plus, Search, Settings, GitFork, CircleDotDashed, X, BookPlus, Copy, Check, AlertTriangle } from 'lucide-react';
 
-import { Recipe, Project, Collection, Creator, FeedPost, ProfileVisibility } from './types';
+import { Recipe, Project, Collection, Creator, FeedPost, PostComment, ProfileVisibility } from './types';
 import { GonnngGIcon } from './components/GonnngLogo';
-import { dataService } from './services/dataService';
+import { dataService, toValidUuid } from './services/dataService';
 import { getPublicMediaUrl } from './services/uploadService';
 import { permissionService } from './services/permissionService';
 import { authService, isAuthFeatureEnabled, UserSession } from './services/authService';
@@ -15,7 +15,8 @@ import { App as CapApp } from '@capacitor/app';
 
 // Component imports
 import Onboarding from './components/Onboarding';
-import UserProfile, { AppPermissions } from './components/UserProfile';
+import UserProfile, { AppPermissions, BackgroundUploadState } from './components/UserProfile';
+import ProfileProgressRing from './components/ProfileProgressRing';
 import SandEngine from './components/SandEngine';
 import Feed from './components/Feed';
 import CreateHub from './components/CreateHub';
@@ -144,7 +145,7 @@ export default function App() {
 
   const handleToggleSaveRecipe = async (recipeId: string, recipeObj?: Recipe) => {
     const uid = currentUser?.id || 'user-current';
-    const isNowSaved = await dataService.toggleBookmarkRecipe(uid, recipeId);
+    const isNowSaved = await dataService.toggleBookmarkRecipe(uid, recipeId, recipeObj);
     if (recipeObj && isNowSaved) {
       setRecipes(prev => {
         if (prev.some(r => r.id === recipeObj.id)) return prev;
@@ -152,9 +153,10 @@ export default function App() {
       });
     }
     setSavedRecipeIds(prev => {
+      const validId = toValidUuid(recipeId);
       const next = isNowSaved
-        ? (prev.includes(recipeId) ? prev : [...prev, recipeId])
-        : prev.filter(id => id !== recipeId);
+        ? Array.from(new Set([...prev, recipeId, validId]))
+        : prev.filter(id => id !== recipeId && id !== validId);
       try {
         localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify(next));
       } catch {}
@@ -685,6 +687,111 @@ export default function App() {
   const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
   const [selectedPostModal, setSelectedPostModal] = useState<FeedPost | null>(null);
   const [recipeModalCopied, setRecipeModalCopied] = useState<boolean>(false);
+
+  // Background post/media upload state for progress wheel & profile notification
+  const [backgroundUpload, setBackgroundUpload] = useState<BackgroundUploadState | null>(null);
+
+  // Background post persistence & media upload processor
+  const handleBackgroundAddPost = (post: FeedPost) => {
+    // 1. Immediate optimistic feed update
+    setPosts(prev => [post, ...prev.filter(p => p.id !== post.id)]);
+
+    // 2. Set background upload process state
+    const hasMedia = Boolean(post.mediaFiles && post.mediaFiles.length > 0);
+    setBackgroundUpload({
+      id: post.id,
+      title: post.title || 'New Post',
+      progress: 10,
+      status: 'uploading',
+      statusText: hasMedia ? 'Uploading media to storage...' : 'Saving post to database...',
+      timestamp: Date.now()
+    });
+
+    // 3. Run background upload and database persistence asynchronously
+    (async () => {
+      try {
+        await dataService.addPost(post, (percent, statusMsg) => {
+          setBackgroundUpload(prev => {
+            if (!prev || prev.id !== post.id) return prev;
+            return {
+              ...prev,
+              progress: Math.min(Math.max(percent, prev.progress), 99),
+              status: percent >= 80 ? 'saving' : 'uploading',
+              statusText: statusMsg
+            };
+          });
+        });
+
+        // Mark complete
+        setBackgroundUpload(prev => {
+          if (!prev || prev.id !== post.id) return prev;
+          return {
+            ...prev,
+            progress: 100,
+            status: 'complete',
+            statusText: 'Post successfully saved!'
+          };
+        });
+
+        // Re-sync posts
+        const freshPosts = await dataService.getPosts();
+        if (freshPosts && freshPosts.length > 0) {
+          setPosts(freshPosts);
+        }
+
+        // Clear progress wheel after 3.5 seconds
+        setTimeout(() => {
+          setBackgroundUpload(prev => (prev?.id === post.id && prev.status === 'complete' ? null : prev));
+        }, 3500);
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Storage upload or database update failed.';
+        console.error('Background post creation failed:', err);
+
+        setBackgroundUpload(prev => {
+          if (!prev || prev.id !== post.id) return prev;
+          return {
+            ...prev,
+            progress: 100,
+            status: 'error',
+            errorMessage: errorMsg,
+            statusText: 'Post upload failed'
+          };
+        });
+
+        // Auto-dismiss error toaster after 8 seconds if not closed manually
+        setTimeout(() => {
+          setBackgroundUpload(prev => (prev?.id === post.id && prev.status === 'error' ? null : prev));
+        }, 8000);
+
+        // Register App Info Notification
+        const newAppInfoNotif = {
+          id: `appinfo-post-fail-${Date.now()}`,
+          title: 'Post Upload Failed',
+          subtitle: `Could not save "${post.title || 'post'}" to database or upload media.`,
+          details: `${errorMsg} Please check your connection and retry creating the post.`,
+          category: 'Account Notice',
+          timeString: 'Just now',
+          timestamp: Date.now(),
+          isRead: false
+        };
+
+        try {
+          const existingStr = localStorage.getItem('gonnng_appinfo_notifs');
+          const existingArr = existingStr ? JSON.parse(existingStr) : [];
+          const updatedNotifs = [newAppInfoNotif, ...existingArr];
+          localStorage.setItem('gonnng_appinfo_notifs', JSON.stringify(updatedNotifs));
+          window.dispatchEvent(new CustomEvent('gonnng_appinfo_update', { detail: updatedNotifs }));
+        } catch (e) {
+          console.warn('Failed saving app info notification to local storage:', e);
+        }
+
+        // Clear error ring after 7 seconds
+        setTimeout(() => {
+          setBackgroundUpload(prev => (prev?.id === post.id && prev.status === 'error' ? null : prev));
+        }, 7000);
+      }
+    })();
+  };
 
   const updateRoute = (
     newViewMode?: 'website' | 'workspace',
@@ -1301,7 +1408,7 @@ export default function App() {
     });
     dataService.getCollections().then(col => col && col.length > 0 && setCollections(col));
     dataService.getProjects(uid).then(p => p && setProjects(p));
-    dataService.getPosts().then(pst => pst && pst.length > 0 && setPosts(pst));
+    dataService.getPosts(uid).then(pst => pst && pst.length > 0 && setPosts(pst));
   }, [currentUser?.id]);
 
   // Persistence side-effects via dataService (handles both Supabase and LocalStorage)
@@ -1645,52 +1752,98 @@ export default function App() {
     handleInstantiateRecipe(recipe);
   };
 
-  // Gong voting calculation for Social Feed
-  const handleUpdatePostGong = (postId: string, voteType: 'continue' | 'refine' | 'reconsider') => {
+  // Gong voting calculation for Social Feed - writes directly to post_feedback table
+  const handleUpdatePostGong = async (postId: string, voteType: 'continue' | 'refine' | 'reconsider') => {
+    const activeUserId = currentUser?.id || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2';
+
+    // 1. Optimistic UI update
     setPosts(prevPosts => prevPosts.map(p => {
       if (p.id !== postId) return p;
 
-      const currentVote = p.gongs.userVoted;
+      const currentVote = p.gongs?.userVoted;
       const updatedGongs = { ...p.gongs };
 
       // Deduct previous vote if any
-      if (currentVote) {
-        updatedGongs[currentVote] = Math.max(0, updatedGongs[currentVote] - 1);
+      if (currentVote && (currentVote === 'continue' || currentVote === 'refine' || currentVote === 'reconsider')) {
+        updatedGongs[currentVote] = Math.max(0, (updatedGongs[currentVote] || 0) - 1);
       }
 
       // If user is clicking the same option, they are toggling/removing it
       if (currentVote === voteType) {
         updatedGongs.userVoted = undefined;
       } else {
-        updatedGongs[voteType] += 1;
+        updatedGongs[voteType] = (updatedGongs[voteType] || 0) + 1;
         updatedGongs.userVoted = voteType;
       }
 
       return { ...p, gongs: updatedGongs };
     }));
+
+    // 2. Persist to post_feedback table in database
+    try {
+      const result = await dataService.givePostFeedback(postId, activeUserId, voteType);
+      if (result) {
+        setPosts(prevPosts => prevPosts.map(p => {
+          if (p.id !== postId) return p;
+          return {
+            ...p,
+            gongs: {
+              continue: result.continue,
+              refine: result.refine,
+              reconsider: result.reconsider,
+              userVoted: result.userVoted as any
+            }
+          };
+        }));
+      }
+    } catch (err) {
+      console.error('Error persisting feedback to post_feedback table:', err);
+    }
   };
 
-  const handleAddComment = (postId: string, commentContent: string, parentId?: string, replyToUser?: string) => {
+  const handleAddComment = async (postId: string, commentContent: string, parentId?: string, replyToUser?: string) => {
+    if (!commentContent.trim()) return;
+    const tempId = `comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const activeUserId = currentUser?.id || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2';
+
+    const optimisticComment: PostComment = {
+      id: tempId,
+      userId: activeUserId,
+      userName: currentUser?.name || 'Creator',
+      userAvatar: currentUser?.avatarUrl || '',
+      content: commentContent,
+      body: commentContent,
+      timeString: 'Just now',
+      likes: 0,
+      userLiked: false,
+      parentId,
+      replyToUser
+    };
+
     setPosts(prevPosts => prevPosts.map(p => {
       if (p.id !== postId) return p;
       const currentComments = p.comments || [];
-      const newComment = {
-        id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        userId: currentUser?.id || 'user-current',
-        userName: currentUser?.name || 'Creator',
-        userAvatar: currentUser?.avatarUrl || '',
-        content: commentContent,
-        timeString: 'Just now',
-        likes: 0,
-        userLiked: false,
-        parentId,
-        replyToUser
-      };
       return {
         ...p,
-        comments: [...currentComments, newComment]
+        comments: [...currentComments, optimisticComment]
       };
     }));
+
+    try {
+      const savedComment = await dataService.addComment(postId, activeUserId, commentContent, parentId);
+      if (savedComment) {
+        setPosts(prevPosts => prevPosts.map(p => {
+          if (p.id !== postId) return p;
+          const currentComments = (p.comments || []).map(c => c.id === tempId ? { ...savedComment, replyToUser } : c);
+          return {
+            ...p,
+            comments: currentComments
+          };
+        }));
+      }
+    } catch (err) {
+      console.error('Error persisting comment to comments table:', err);
+    }
   };
 
   const handleToggleCommentHeart = (postId: string, commentId: string) => {
@@ -1993,16 +2146,23 @@ export default function App() {
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-300/60 border border-transparent'
               }`}
             >
-              {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
-                <img 
-                  src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
-                  alt={currentUser.name || 'Profile'} 
-                  className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <User className="w-4 h-4" />
-              )}
+              <ProfileProgressRing
+                progress={backgroundUpload ? backgroundUpload.progress : null}
+                status={backgroundUpload ? backgroundUpload.status : 'idle'}
+                size={20}
+                strokeWidth={2}
+              >
+                {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
+                  <img 
+                    src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
+                    alt={currentUser.name || 'Profile'} 
+                    className="w-full h-full rounded-full object-cover shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User className="w-3.5 h-3.5" />
+                )}
+              </ProfileProgressRing>
               <span>Profile</span>
             </button>
             <button
@@ -2142,16 +2302,23 @@ export default function App() {
           {activeTab === 'profile' && !showTutorial && (
             <span className="absolute -top-1 w-2 h-2 rounded-full bg-[#F59E0B] shadow-[0_0_8px_#F59E0B]" />
           )}
-          {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
-            <img 
-              src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
-              alt={currentUser.name || 'Profile'} 
-              className="w-4.5 h-4.5 rounded-full object-cover border border-white/30 shrink-0"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <User className="w-4.5 h-4.5" />
-          )}
+          <ProfileProgressRing
+            progress={backgroundUpload ? backgroundUpload.progress : null}
+            status={backgroundUpload ? backgroundUpload.status : 'idle'}
+            size={22}
+            strokeWidth={2}
+          >
+            {currentUser?.avatarUrl && currentUser.avatarUrl.trim() !== '' ? (
+              <img 
+                src={getPublicMediaUrl('Gonnng', currentUser.avatarUrl.trim())} 
+                alt={currentUser.name || 'Profile'} 
+                className="w-full h-full rounded-full object-cover shrink-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <User className="w-4 h-4" />
+            )}
+          </ProfileProgressRing>
           <span>Profile</span>
         </button>
         <button 
@@ -2420,6 +2587,11 @@ export default function App() {
                   recipes={recipes}
                   onStartProject={handleOpenNewBlankProjectModal}
                   onCreateRecipe={handleOpenCreateRecipeModal}
+                  backgroundUpload={backgroundUpload}
+                  onNavigateToAppInfo={() => {
+                    setActiveTab('updates');
+                    handleUpdatesCategoryChange('appinfo');
+                  }}
                 />
               </motion.div>
             )}
@@ -2448,6 +2620,7 @@ export default function App() {
           currentUser={currentUser}
           onClose={() => setEditingBlankProject(null)}
           onAddRecipe={handleAddRecipe}
+          onUpdateRecipe={handleUpdateRecipe}
           onUpdateProject={(updated) => {
             handleUpdateProject(updated);
             setSelectedProjectId(updated.id);
@@ -2471,6 +2644,8 @@ export default function App() {
             await handleUpdateRecipe(updated);
             setEditingRecipeForExploreModal(null);
           }}
+          isSaved={(savedRecipeIds || []).includes(editingRecipeForExploreModal.id) || (savedRecipeIds || []).includes(toValidUuid(editingRecipeForExploreModal.id))}
+          onToggleSaveRecipe={handleToggleSaveRecipe}
           currentUser={currentUser}
           initialEditMode={true}
         />
@@ -2500,18 +2675,7 @@ export default function App() {
             setCollections(prev => [col, ...prev]);
           }}
           onUpdateProject={handleUpdateProject}
-          onAddPost={async (post) => {
-            setPosts(prev => [post, ...prev]);
-            try {
-              await dataService.addPost(post);
-              const freshPosts = await dataService.getPosts();
-              if (freshPosts && freshPosts.length > 0) {
-                setPosts(freshPosts);
-              }
-            } catch (err) {
-              console.error('Failed to persist post to Supabase database/storage:', err);
-            }
-          }}
+          onAddPost={handleBackgroundAddPost}
           forkInitialData={forkInitialData}
           editingRecipe={editingRecipe}
         />
@@ -2858,6 +3022,39 @@ export default function App() {
         onSavePreferences={handleSaveCookiePreferences}
         onAcceptAll={handleAcceptAllCookies}
       />
+
+      {/* Floating Failure Toaster Popup */}
+      <AnimatePresence>
+        {backgroundUpload && backgroundUpload.status === 'error' && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.96 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 max-w-sm w-[calc(100vw-2rem)] bg-red-950/95 text-white border border-red-800/90 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md flex items-start gap-3"
+          >
+            <div className="p-2 rounded-xl bg-red-600/25 text-red-400 shrink-0 mt-0.5 border border-red-500/30">
+              <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div className="flex-1 min-w-0 pr-1">
+              <h4 className="text-xs font-bold font-display text-white">
+                Post upload failed
+              </h4>
+              <p className="text-[11px] text-red-200/90 font-sans mt-0.5 leading-snug line-clamp-2">
+                {backgroundUpload.errorMessage || 'Unable to upload media to storage or save post to database.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBackgroundUpload(null)}
+              className="p-1 text-red-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer shrink-0"
+              title="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

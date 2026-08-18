@@ -124,6 +124,7 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
     relativePath = relativePath.substring(6).replace(/^\/+/, '');
   }
 
+  console.log(resolveImageUrl(`${mediaBase}/${relativePath}`));
   return resolveImageUrl(`${mediaBase}/${relativePath}`);
 };
 
@@ -168,34 +169,48 @@ export const uploadService = {
     const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
     const uniqueKey = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${sanitizedFilename}`;
     const storageBucket = BUCKETS.POST_MEDIA; // 'post-media'
+    const fallbackBucket = BUCKETS.AVATARS; // 'Gonnng'
     const storagePath = `${userPublicId}/${postId}/${uniqueKey}`;
 
     // 1. Client-side Supabase Storage Upload
     if (isSupabaseConfigured() && supabase) {
       try {
-        const { data: storageData, error: storageErr } = await supabase.storage
-          .from(storageBucket)
+        let bucketToUse = storageBucket;
+        let { data: storageData, error: storageErr } = await supabase.storage
+          .from(bucketToUse)
           .upload(storagePath, file, {
             cacheControl: '3600',
             upsert: false
           });
 
+        if (storageErr && (storageErr.message?.toLowerCase().includes('not found') || storageErr.message?.toLowerCase().includes('bucket'))) {
+          bucketToUse = fallbackBucket;
+          const retry = await supabase.storage
+            .from(bucketToUse)
+            .upload(storagePath, file, {
+              cacheControl: '3600',
+              upsert: true
+            });
+          storageData = retry.data;
+          storageErr = retry.error;
+        }
+
         if (!storageErr && storageData) {
           const finalPath = storageData?.path || storagePath;
           const mediaRecordId = crypto.randomUUID();
-          const publicUrl = getPublicMediaUrl(storageBucket, finalPath);
+          const publicUrl = getPublicMediaUrl(bucketToUse, finalPath);
 
           const postMediaRow: Partial<PostMediaRow> = {
             id: mediaRecordId,
             post_id: postId,
-            storage_bucket: storageBucket,
+            storage_bucket: bucketToUse,
             storage_path: finalPath,
             media_type: mediaType,
             position
           };
 
           try {
-            await supabase.from('post_media').insert(postMediaRow as PostMediaRow);
+            await supabase.from('post_media').upsert(postMediaRow as PostMediaRow);
           } catch (pmErr) {
             console.warn('Post media DB insert note:', pmErr);
           }
@@ -203,7 +218,7 @@ export const uploadService = {
           return {
             id: mediaRecordId,
             postId,
-            storageBucket,
+            storageBucket: bucketToUse,
             storagePath: finalPath,
             mediaType,
             position,
@@ -288,16 +303,28 @@ export const uploadService = {
   async uploadMultiplePostMedia(
     files: File[],
     postId: string,
-    maxSizeBytes = 50 * 1024 * 1024
+    maxSizeBytes = 50 * 1024 * 1024,
+    onProgress?: (progressPercent: number) => void
   ): Promise<{ successful: UploadedMediaResult[]; failed: Array<{ file: File; error: string }> }> {
     const successful: UploadedMediaResult[] = [];
     const failed: Array<{ file: File; error: string }> = [];
 
+    let completedCount = 0;
+    const totalCount = files.length;
+
     const uploadPromises = files.map(async (file, index) => {
       try {
         const result = await this.uploadPostMedia(file, postId, index, maxSizeBytes);
+        completedCount++;
+        if (onProgress && totalCount > 0) {
+          onProgress(Math.round((completedCount / totalCount) * 100));
+        }
         return { status: 'fulfilled' as const, value: result, file };
       } catch (err: any) {
+        completedCount++;
+        if (onProgress && totalCount > 0) {
+          onProgress(Math.round((completedCount / totalCount) * 100));
+        }
         return { status: 'rejected' as const, reason: err?.message || 'Upload failed', file };
       }
     });
