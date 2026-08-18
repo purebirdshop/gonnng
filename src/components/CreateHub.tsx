@@ -768,12 +768,26 @@ export default function CreateHub({
     }
   };
 
+  // Helper to extract File instances for all media items (uploads, camera snapshots, recorded video, etc.)
+  const collectMediaFiles = async (): Promise<File[]> => {
+    const files: File[] = [];
+    for (const item of mediaItems) {
+      try {
+        const f = await mediaItemToFile(item);
+        if (f) files.push(f);
+      } catch (err) {
+        console.warn('Failed converting media item to file:', err);
+      }
+    }
+    return files;
+  };
+
   // -------------------------------------------------------------
   // Form Submit Handlers
   // -------------------------------------------------------------
 
   // A. CREATE FOCUS (Area of FOCUS)
-  const handleCreateFocus = (e?: React.FormEvent) => {
+  const handleCreateFocus = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!focusTitle.trim()) return;
 
@@ -791,7 +805,7 @@ export default function CreateHub({
 
     // Feed Post
     const mainImage = mediaItems[0]?.url;
-    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
+    const selectedFiles = await collectMediaFiles();
     const newPost: FeedPost = {
       id: crypto.randomUUID(),
       type: 'project_created',
@@ -817,7 +831,7 @@ export default function CreateHub({
   };
 
   // B. CREATE PROJECT
-  const handleCreateProject = (e?: React.FormEvent) => {
+  const handleCreateProject = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!projTitle.trim()) return;
 
@@ -903,7 +917,7 @@ export default function CreateHub({
     onAddProject(newProject);
 
     const mainImage = mediaItems[0]?.url;
-    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
+    const selectedFiles = await collectMediaFiles();
     const newPost: FeedPost = {
       id: crypto.randomUUID(),
       type: 'project_created',
@@ -930,7 +944,7 @@ export default function CreateHub({
   };
 
   // C. CREATE RECIPE (STANDALONE BLUEPRINT)
-  const handleCreateRecipe = (e?: React.FormEvent) => {
+  const handleCreateRecipe = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!recipeTitle.trim()) return;
 
@@ -995,7 +1009,7 @@ export default function CreateHub({
     }
 
     const mainImage = mediaItems[0]?.url;
-    const selectedFiles = mediaItems.map(m => m.file).filter((f): f is File => Boolean(f));
+    const selectedFiles = await collectMediaFiles();
     const newPost: FeedPost = {
       id: crypto.randomUUID(),
       type: 'project_created',
@@ -1028,11 +1042,7 @@ export default function CreateHub({
     setIsSubmitting(true);
     try {
       // Convert all media items to File objects
-      const selectedFiles: File[] = [];
-      for (const item of mediaItems) {
-        const f = await mediaItemToFile(item);
-        if (f) selectedFiles.push(f);
-      }
+      const selectedFiles = await collectMediaFiles();
 
       if (updateProjId && activeUpdateProject) {
         // Check off selected tasks on active project

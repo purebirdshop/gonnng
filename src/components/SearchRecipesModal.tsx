@@ -19,6 +19,7 @@ import { ProcessTile } from './SandEngine';
 import { searchCategories } from '../data/categoriesData';
 import { isUserInCircle } from '../utils/followUtils';
 import { IconOnlySubButton, IconWithLabelButton } from './DesignSystemTiles';
+import { toValidUuid } from '../services/dataService';
 
 interface SearchRecipesModalProps {
   onClose: () => void;
@@ -161,7 +162,7 @@ export default function SearchRecipesModal({
   });
 
   const isRecipeSavedInLib = (recipe: Recipe) => {
-    return (savedRecipeIds || []).includes(recipe.id);
+    return (savedRecipeIds || []).includes(recipe.id) || (savedRecipeIds || []).includes(toValidUuid(recipe.id));
   };
 
   const handleToggleBookmark = (recipe: Recipe) => {
@@ -631,7 +632,8 @@ export default function SearchRecipesModal({
                 onClick={() => {
                   const targetId = unbookmarkRecipeTarget.id;
                   if (onToggleSaveRecipe) {
-                    onToggleSaveRecipe(targetId);
+                    const targetObj = (recipes || []).find(r => r.id === targetId || toValidUuid(r.id) === targetId);
+                    onToggleSaveRecipe(targetId, targetObj);
                   }
                   setSuccessMessage(`Removed "${unbookmarkRecipeTarget.title}" from your saved library.`);
                   setTimeout(() => setSuccessMessage(null), 3000);

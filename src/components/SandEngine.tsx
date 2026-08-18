@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Collection, Project, Recipe, Phase } from '../types';
-import { AlertCircle, ShieldAlert, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, BookOpenCheck, Target, GripVertical, Plus, LibraryBig, BookOpen, PrinterCheck, FolderKanban } from 'lucide-react';
+import { AlertCircle, ShieldAlert, Hourglass, ShieldCheck, Trash2, CheckCircle, X, Edit2, Save, BookOpenCheck, Target, GripVertical, Plus, Search, LibraryBig, BookOpen, PrinterCheck, FolderKanban, Bookmark, Pencil, Sparkles } from 'lucide-react';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import PrintPreviewModal, { PrintableItem } from './PrintPreviewModal';
 import RecipeDetailModal from './RecipeDetailModal';
@@ -17,6 +17,7 @@ import {
   IconOnlyPrimaryButton
 } from './DesignSystemTiles';
 import { ProjectExploreModal, RecipeExploreModal } from './ExploreModals';
+import { toValidUuid } from '../services/dataService';
 
 export { RecipeTile, ProjectTile, CategoryBadge, IconOnlyTileButton, IconOnlySubButton, IconOnlyPrimaryButton };
 
@@ -384,8 +385,8 @@ export default function SandEngine({
       const isAuthor = Boolean(
         recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
       );
-      const isSaved = (savedRecipeIds || []).includes(recipe.id);
-      const isKeptInSession = sessionKeptUnbookmarkedIds.includes(recipe.id);
+      const isSaved = (savedRecipeIds || []).includes(recipe.id) || (savedRecipeIds || []).includes(toValidUuid(recipe.id));
+      const isKeptInSession = sessionKeptUnbookmarkedIds.includes(recipe.id) || sessionKeptUnbookmarkedIds.includes(toValidUuid(recipe.id));
       return isAuthor || isSaved || isKeptInSession;
     });
     const seen = new Set<string>();
@@ -838,7 +839,7 @@ export default function SandEngine({
             {userLibraryRecipes && userLibraryRecipes.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {userLibraryRecipes.map((recipe, rIdx) => {
-                  const isSaved = (savedRecipeIds || []).includes(recipe.id);
+                  const isSaved = (savedRecipeIds || []).includes(recipe.id) || (savedRecipeIds || []).includes(toValidUuid(recipe.id));
                   const isAuthor = Boolean(
                     recipe.authorId && currentUser?.id && recipe.authorId === currentUser.id
                   );
@@ -2053,7 +2054,7 @@ export default function SandEngine({
             setSelectedPreviewRecipe(updated);
             setPreviewInitialEditMode(false);
           }}
-          isSaved={(savedRecipeIds || []).includes(selectedPreviewRecipe.id)}
+          isSaved={(savedRecipeIds || []).includes(selectedPreviewRecipe.id) || (savedRecipeIds || []).includes(toValidUuid(selectedPreviewRecipe.id))}
           onToggleSaveRecipe={onToggleSaveRecipe}
           onOpenCreatorProfile={onOpenCreatorProfile}
           onPrintRecipe={(rec) => handleOpenPrintModal({

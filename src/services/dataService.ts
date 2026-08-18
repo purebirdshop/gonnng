@@ -94,6 +94,8 @@ function setLocal<T>(key: string, value: T): void {
   }
 }
 
+export const isUuid = (str?: string): boolean => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
 export function toValidUuid(id: string): string {
   if (!id) return '00000000-0000-4000-8000-000000000000';
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -178,11 +180,11 @@ export const dataService = {
       }
     } else {
       creators = hydrateCreators(getLocal<Creator[]>(KEYS.CREATORS, []));
+      if (!creators.some(c => c.id === GONNNG_OFFICIAL_CREATOR.id || c.id === GONNNG_OFFICIAL_ID)) {
+        creators = [GONNNG_OFFICIAL_CREATOR, ...creators];
+      }
     }
 
-    if (!creators.some(c => c.id === GONNNG_OFFICIAL_CREATOR.id || c.id === GONNNG_OFFICIAL_ID)) {
-      creators = [GONNNG_OFFICIAL_CREATOR, ...creators];
-    }
     return creators;
   },
 
@@ -385,6 +387,8 @@ export const dataService = {
               updatedAt: r.updated_at
             };
           });
+          setLocal(KEYS.RECIPES, dbRecipes);
+          return dbRecipes;
         }
       } catch (err) {
         console.warn('Error fetching recipes from Supabase:', err);
@@ -392,16 +396,10 @@ export const dataService = {
     }
 
     const localRecipes = getLocal<Recipe[]>(KEYS.RECIPES, []);
-    const combinedMap = new Map<string, Recipe>();
-
-    // Always ensure the hardcoded BLT recipe is available
-    combinedMap.set(BLT_RECIPE.id, BLT_RECIPE);
-    localRecipes.forEach(r => combinedMap.set(r.id, r));
-    dbRecipes.forEach(r => combinedMap.set(r.id, r));
-
-    const finalRecipes = Array.from(combinedMap.values());
-    setLocal(KEYS.RECIPES, finalRecipes);
-    return finalRecipes;
+    if (localRecipes.length > 0) {
+      return localRecipes;
+    }
+    return [BLT_RECIPE];
   },
 
   async saveRecipe(recipe: Recipe, userId?: string): Promise<Recipe> {
@@ -651,15 +649,29 @@ export const dataService = {
   async ensureUserExistsInSupabase(validUserId: string, userDetails?: Partial<Creator>): Promise<void> {
     if (!this.isSupabaseActive() || !supabase) return;
     try {
-      const { data } = await supabase.from('users').select('id').eq('id', validUserId).maybeSingle();
+      const { data } = await supabase.from('users').select('id, email').eq('id', validUserId).maybeSingle();
       if (!data) {
-        await supabase.from('users').upsert({
+        const session = authService.getCurrentSession();
+        const email = userDetails?.email || (session?.id === validUserId ? session.email : null) || `user_${validUserId.slice(0, 8)}@gonnng.app`;
+        const username = userDetails?.username || (session?.id === validUserId ? session.username : null) || `user_${validUserId.slice(0, 8)}`;
+        const name = userDetails?.name || (session?.id === validUserId ? session.name : null) || 'User';
+        const spaceIdx = name.indexOf(' ');
+        const firstName = spaceIdx === -1 ? name : name.substring(0, spaceIdx);
+        const lastName = spaceIdx === -1 ? '' : name.substring(spaceIdx + 1).trim();
+
+        const { error } = await supabase.from('users').upsert({
           id: validUserId,
           public_id: validUserId,
-          username: userDetails?.username || `user_${validUserId.slice(0, 8)}`,
-          first_name: userDetails?.name || 'User',
-          last_name: ''
+          username: username,
+          first_name: firstName,
+          last_name: lastName,
+          email: email,
+          profile_visibility: 'public'
         }, { onConflict: 'id' });
+
+        if (error) {
+          console.warn('Error creating user record in Supabase:', error);
+        }
       }
     } catch (err) {
       console.warn('Error ensuring user in Supabase:', err);
@@ -671,14 +683,54 @@ export const dataService = {
     try {
       const { data } = await supabase.from('recipes').select('id').eq('id', validRecipeId).maybeSingle();
       if (!data) {
-        await supabase.from('recipes').upsert({
+        let targetRecipe = recipeObj;
+        if (!targetRecipe || !targetRecipe.title) {
+          const allRecipes = await this.getRecipes();
+          targetRecipe = allRecipes.find(r => r.id === validRecipeId || toValidUuid(r.id) === validRecipeId) || BLT_RECIPE;
+        }
+
+        const authorUserId = targetRecipe.authorId ? toValidUuid(targetRecipe.authorId) : validUserId;
+        await this.ensureUserExistsInSupabase(authorUserId, { id: authorUserId, name: targetRecipe.authorName || 'Creator' });
+
+        const { error: recipeErr } = await supabase.from('recipes').upsert({
           id: validRecipeId,
-          user_id: validUserId,
-          title: recipeObj?.title || 'Saved Recipe',
-          description: recipeObj?.description || '',
-          category: recipeObj?.category || 'General',
-          visibility: 'public'
+          user_id: authorUserId,
+          title: targetRecipe.title || 'Saved Recipe',
+          description: targetRecipe.description || '',
+          category: targetRecipe.category || 'General',
+          visibility: (targetRecipe.visibility as RecipeVisibility) || 'public'
         }, { onConflict: 'id' });
+
+        if (recipeErr) {
+          console.warn('Error inserting recipe into Supabase recipes table:', recipeErr);
+        }
+
+        // Also persist phases and tasks if present
+        if (targetRecipe.phases && Array.isArray(targetRecipe.phases)) {
+          for (let pIndex = 0; pIndex < targetRecipe.phases.length; pIndex++) {
+            const ph = targetRecipe.phases[pIndex];
+            const phaseId = isUuid(ph.id) ? ph.id : toValidUuid(ph.id || `${validRecipeId}-ph-${pIndex}`);
+            await supabase.from('recipe_phases').upsert({
+              id: phaseId,
+              recipe_id: validRecipeId,
+              title: ph.title,
+              position: ph.position ?? pIndex + 1
+            }, { onConflict: 'id' });
+
+            if (ph.tasks && Array.isArray(ph.tasks)) {
+              for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
+                const t = ph.tasks[tIndex];
+                const taskId = isUuid(t.id) ? t.id : toValidUuid(t.id || `${phaseId}-tk-${tIndex}`);
+                await supabase.from('recipe_tasks').upsert({
+                  id: taskId,
+                  phase_id: phaseId,
+                  title: t.title,
+                  position: t.position ?? tIndex + 1
+                }, { onConflict: 'id' });
+              }
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn('Error ensuring recipe in Supabase:', err);
@@ -690,7 +742,6 @@ export const dataService = {
    */
   async getUserSavedRecipeIds(userId: string): Promise<string[]> {
     const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
-    let supabaseIds: string[] = [];
     if (this.isSupabaseActive() && supabase) {
       try {
         const { data, error } = await supabase
@@ -698,7 +749,20 @@ export const dataService = {
           .select('recipe_id')
           .eq('user_id', validUserId);
         if (!error && data) {
-          supabaseIds = data.map(b => b.recipe_id);
+          const ids = data.map(b => b.recipe_id);
+          const allRecipes = await this.getRecipes();
+          const expandedIds = new Set<string>(ids);
+          allRecipes.forEach(r => {
+            if (ids.includes(toValidUuid(r.id)) || ids.includes(r.id)) {
+              expandedIds.add(r.id);
+              expandedIds.add(toValidUuid(r.id));
+            }
+          });
+          const result = Array.from(expandedIds);
+          try {
+            localStorage.setItem('gonnng_recipe_bookmarks', JSON.stringify(result));
+          } catch {}
+          return result;
         }
       } catch (err) {
         console.warn('Error fetching bookmarks from Supabase:', err);
@@ -717,29 +781,11 @@ export const dataService = {
       .filter(Boolean);
 
     const stringSaved = getLocal<string[]>('gonnng_recipe_bookmarks', []);
-
-    const allKnownRecipes = await this.getRecipes();
-    const uuidToOrigMap = new Map<string, string>();
-    allKnownRecipes.forEach(r => {
-      if (!r) return;
-      uuidToOrigMap.set(toValidUuid(r.id), r.id);
-      uuidToOrigMap.set(r.id, r.id);
-    });
-
-    const mappedSupabaseIds: string[] = [];
-    supabaseIds.forEach(sid => {
-      mappedSupabaseIds.push(sid);
-      const orig = uuidToOrigMap.get(sid);
-      if (orig) mappedSupabaseIds.push(orig);
-    });
-
     const combined = Array.from(new Set([
-      BLT_RECIPE.id,
-      ...mappedSupabaseIds,
       ...localIds,
       ...(Array.isArray(stringSaved) ? stringSaved : [])
     ]));
-    return combined;
+    return combined.length > 0 ? combined : [BLT_RECIPE.id, toValidUuid(BLT_RECIPE.id)];
   },
 
   async toggleBookmarkRecipe(userId: string, recipeId: string, recipeObj?: Recipe): Promise<boolean> {
@@ -789,23 +835,56 @@ export const dataService = {
         await this.ensureUserExistsInSupabase(validUserId);
         await this.ensureRecipeExistsInSupabase(validRecipeId, validUserId, recipeObj);
 
-        const { data: existing } = await supabase
+        const { data: existing, error: selectErr } = await supabase
           .from('recipe_bookmarks')
-          .select('*')
+          .select('id')
           .eq('user_id', validUserId)
           .eq('recipe_id', validRecipeId)
           .maybeSingle();
 
+        if (selectErr) {
+          console.warn('Supabase select bookmark warning:', selectErr);
+        }
+
         if (existing) {
-          await supabase.from('recipe_bookmarks').delete().eq('id', existing.id);
+          const { error: delErr } = await supabase
+            .from('recipe_bookmarks')
+            .delete()
+            .eq('id', existing.id);
+          if (delErr) {
+            console.error('Supabase error removing from recipe_bookmarks:', delErr);
+          } else {
+            console.log('Successfully removed bookmark from recipe_bookmarks table:', { user_id: validUserId, recipe_id: validRecipeId });
+          }
+          isNowBookmarked = false;
         } else {
-          await supabase.from('recipe_bookmarks').upsert(
-            { user_id: validUserId, recipe_id: validRecipeId },
-            { onConflict: 'user_id, recipe_id' }
-          );
+          const { error: insErr } = await supabase
+            .from('recipe_bookmarks')
+            .insert({
+              user_id: validUserId,
+              recipe_id: validRecipeId
+            });
+
+          if (insErr) {
+            console.warn('Supabase insert into recipe_bookmarks failed, attempting upsert:', insErr);
+            const { error: upsertErr } = await supabase
+              .from('recipe_bookmarks')
+              .upsert(
+                { user_id: validUserId, recipe_id: validRecipeId },
+                { onConflict: 'user_id, recipe_id' }
+              );
+            if (upsertErr) {
+              console.error('Supabase error upserting to recipe_bookmarks table:', upsertErr);
+            } else {
+              console.log('Successfully upserted bookmark to recipe_bookmarks table:', { user_id: validUserId, recipe_id: validRecipeId });
+            }
+          } else {
+            console.log('Successfully inserted bookmark into recipe_bookmarks table:', { user_id: validUserId, recipe_id: validRecipeId });
+          }
+          isNowBookmarked = true;
         }
       } catch (err) {
-        console.warn('Supabase bookmark sync error:', err);
+        console.error('Supabase recipe_bookmarks sync error:', err);
       }
     }
 
@@ -871,18 +950,18 @@ export const dataService = {
 
   // ================= PROJECTS (Recipe execution) =================
   async getProjects(userId?: string): Promise<Project[]> {
-    let projectList: Project[] = [];
     if (this.isSupabaseActive() && supabase) {
       let query = supabase.from('projects').select('*');
       if (userId) {
         query = query.eq('user_id', userId);
       }
       const { data: projectRows, error } = await query;
-      if (!error && projectRows && projectRows.length > 0) {
+      if (!error && projectRows) {
+        if (projectRows.length === 0) return [];
         const { data: phasesData } = await supabase.from('project_phases').select('*').order('position');
         const { data: tasksData } = await supabase.from('project_tasks').select('*').order('position');
 
-        projectList = projectRows.map(p => {
+        return projectRows.map(p => {
           const pPhases = (phasesData || []).filter(ph => ph.project_id === p.id);
           const phases: Phase[] = pPhases.map(ph => {
             const phTasks = (tasksData || []).filter(t => t.project_phase_id === ph.id);
@@ -916,21 +995,19 @@ export const dataService = {
       }
     }
 
-    if (projectList.length === 0) {
-      const all = getLocal<Project[]>(KEYS.PROJECTS, []);
-      const safeAll = Array.isArray(all) ? all.filter(Boolean) : [];
-      if (userId) {
-        projectList = safeAll.filter(p => p && (!p.userId && !(p as any).user_id || p.userId === userId || (p as any).user_id === userId));
-      } else {
-        projectList = safeAll;
-      }
+    const all = getLocal<Project[]>(KEYS.PROJECTS, []);
+    const safeAll = Array.isArray(all) ? all.filter(Boolean) : [];
+    let projectList: Project[] = [];
+    if (userId) {
+      projectList = safeAll.filter(p => p && (!p.userId && !(p as any).user_id || p.userId === userId || (p as any).user_id === userId));
+    } else {
+      projectList = safeAll;
     }
 
-    // If still empty for the user, auto-seed the default BLT project
+    // If still empty for the user in local mode, auto-seed the default BLT project
     if (projectList.length === 0) {
       const defaultProj = createBLTProjectForUser(userId || 'user-current');
-      const all = getLocal<Project[]>(KEYS.PROJECTS, []);
-      setLocal(KEYS.PROJECTS, [...all.filter(p => p.id !== defaultProj.id), defaultProj]);
+      setLocal(KEYS.PROJECTS, [...safeAll.filter(p => p.id !== defaultProj.id), defaultProj]);
       projectList = [defaultProj];
     }
 
@@ -947,7 +1024,52 @@ export const dataService = {
   },
 
   async updateProject(project: Project, userId?: string): Promise<Project> {
-    // 1. Update in local storage
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const ownerId = userId || project.userId;
+    const validOwnerId = toValidUuid(ownerId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+
+    // Guarantee linked Recipe UUID
+    const recipeUuid = (project.recipeId && isUuid(project.recipeId))
+      ? project.recipeId
+      : (project.recipeId ? toValidUuid(project.recipeId) : crypto.randomUUID());
+    project.recipeId = recipeUuid;
+
+    // 1. Build & automatically sync linked recipe in recipes, recipe_phases, and recipe_tasks
+    const linkedRecipe: Recipe = {
+      id: recipeUuid,
+      title: project.title || 'Untitled Project',
+      category: project.category || 'General',
+      description: `Recipe process blueprint for: ${project.title || 'Untitled Project'}`,
+      authorId: validOwnerId,
+      authorName: (project as any).authorName || 'Creator',
+      visibility: project.privacy || 'public',
+      tags: ['project-recipe', 'custom'],
+      phases: (project.phases || []).map((p, pIdx) => ({
+        id: (p.sourcePhaseId && isUuid(p.sourcePhaseId)) ? p.sourcePhaseId : ((p.id && isUuid(p.id)) ? p.id : crypto.randomUUID()),
+        title: p.title,
+        position: p.position ?? pIdx + 1,
+        tasks: (p.tasks || []).map((t, tIdx) => ({
+          id: (t.sourceTaskId && isUuid(t.sourceTaskId)) ? t.sourceTaskId : ((t.id && isUuid(t.id)) ? t.id : crypto.randomUUID()),
+          title: t.title,
+          completed: false,
+          position: t.position ?? tIdx + 1,
+          estimatedHours: t.estimatedHours,
+          body_markdown: t.body_markdown
+        }))
+      })),
+      createdAt: project.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isCustom: true
+    };
+
+    let savedRecipeObj: Recipe | null = null;
+    try {
+      savedRecipeObj = await this.saveRecipe(linkedRecipe, validOwnerId);
+    } catch (rErr) {
+      console.warn('Error syncing linked recipe in updateProject:', rErr);
+    }
+
+    // 2. Update in local storage
     const all = getLocal<Project[]>(KEYS.PROJECTS, []);
     const exists = all.some(p => p.id === project.id);
     const updatedAll = exists
@@ -955,12 +1077,9 @@ export const dataService = {
       : [project, ...all];
     setLocal(KEYS.PROJECTS, updatedAll);
 
-    // 2. Update/Insert in Supabase if active
+    // 3. Update/Insert in Supabase if active
     if (this.isSupabaseActive() && supabase) {
       try {
-        const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
-        const ownerId = userId || project.userId;
-        const validOwnerId = toValidUuid(ownerId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
         await this.ensureUserExistsInSupabase(validOwnerId);
 
         let existingDbId: string | null = null;
@@ -969,7 +1088,7 @@ export const dataService = {
           if (found) existingDbId = found.id;
         }
 
-        const validRecipeId = project.recipeId && isUuid(project.recipeId) ? project.recipeId : (project.recipeId ? toValidUuid(project.recipeId) : null);
+        const validRecipeId = recipeUuid;
 
         if (existingDbId) {
           // UPDATE existing project row
@@ -984,6 +1103,7 @@ export const dataService = {
             for (let pIndex = 0; pIndex < project.phases.length; pIndex++) {
               const ph = project.phases[pIndex];
               let realPhaseId: string | null = null;
+              const sourcePhaseId = savedRecipeObj?.phases[pIndex]?.id || ph.sourcePhaseId || (isUuid(ph.id) ? ph.id : null);
 
               if (isUuid(ph.id)) {
                 const { data: foundPh } = await supabase.from('project_phases').select('id').eq('id', ph.id).maybeSingle();
@@ -991,6 +1111,7 @@ export const dataService = {
                   realPhaseId = foundPh.id;
                   await supabase.from('project_phases').update({
                     title: ph.title,
+                    source_phase_id: sourcePhaseId,
                     position: ph.position ?? pIndex + 1
                   }).eq('id', realPhaseId);
                 }
@@ -999,6 +1120,7 @@ export const dataService = {
               if (!realPhaseId) {
                 const { data: newPhRow } = await supabase.from('project_phases').insert({
                   project_id: existingDbId,
+                  source_phase_id: sourcePhaseId,
                   title: ph.title,
                   position: ph.position ?? pIndex + 1,
                   is_complete: false
@@ -1013,6 +1135,7 @@ export const dataService = {
                 for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
                   const t = ph.tasks[tIndex];
                   let realTaskId: string | null = null;
+                  const sourceTaskId = savedRecipeObj?.phases[pIndex]?.tasks[tIndex]?.id || t.sourceTaskId || (isUuid(t.id) ? t.id : null);
 
                   if (isUuid(t.id)) {
                     const { data: foundTk } = await supabase.from('project_tasks').select('id').eq('id', t.id).maybeSingle();
@@ -1020,6 +1143,7 @@ export const dataService = {
                       realTaskId = foundTk.id;
                       await supabase.from('project_tasks').update({
                         title: t.title,
+                        source_task_id: sourceTaskId,
                         position: t.position ?? tIndex + 1,
                         is_complete: Boolean(t.completed)
                       }).eq('id', realTaskId);
@@ -1029,6 +1153,7 @@ export const dataService = {
                   if (!realTaskId) {
                     const { data: newTkRow } = await supabase.from('project_tasks').insert({
                       project_phase_id: realPhaseId,
+                      source_task_id: sourceTaskId,
                       title: t.title,
                       position: t.position ?? tIndex + 1,
                       is_complete: Boolean(t.completed)
@@ -1046,7 +1171,7 @@ export const dataService = {
           const insertPayload: any = {
             title: project.title,
             category: project.category || 'General',
-            recipe_id: isUuid(project.recipeId) ? project.recipeId : null
+            recipe_id: validRecipeId
           };
           if (ownerId && isUuid(ownerId)) {
             insertPayload.user_id = ownerId;
@@ -1068,8 +1193,11 @@ export const dataService = {
             if (project.phases) {
               for (let pIndex = 0; pIndex < project.phases.length; pIndex++) {
                 const ph = project.phases[pIndex];
+                const sourcePhaseId = savedRecipeObj?.phases[pIndex]?.id || ph.sourcePhaseId || (isUuid(ph.id) ? ph.id : null);
+
                 const { data: newPhRow } = await supabase.from('project_phases').insert({
                   project_id: newProjRow.id,
+                  source_phase_id: sourcePhaseId,
                   title: ph.title,
                   position: ph.position ?? pIndex + 1,
                   is_complete: false
@@ -1080,8 +1208,11 @@ export const dataService = {
                   if (ph.tasks) {
                     for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
                       const t = ph.tasks[tIndex];
+                      const sourceTaskId = savedRecipeObj?.phases[pIndex]?.tasks[tIndex]?.id || t.sourceTaskId || (isUuid(t.id) ? t.id : null);
+
                       const { data: newTkRow } = await supabase.from('project_tasks').insert({
                         project_phase_id: newPhRow.id,
+                        source_task_id: sourceTaskId,
                         title: t.title,
                         position: t.position ?? tIndex + 1,
                         is_complete: Boolean(t.completed)
@@ -1106,6 +1237,7 @@ export const dataService = {
 
   /**
    * Custom Project creation with Title, Category, Cover Image, Phases & Steps, and Privacy
+   * Always creates a linked Recipe and writes to recipes, recipe_phases, recipe_tasks as well as projects, project_phases, project_tasks.
    */
   async createProject(
     userId: string,
@@ -1120,17 +1252,47 @@ export const dataService = {
     }
   ): Promise<Project> {
     const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
-    const recipeId = data.recipeId || `custom-${Date.now()}`;
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    const recipeUuid = (data.recipeId && isUuid(data.recipeId)) ? data.recipeId : crypto.randomUUID();
     const recipeTitle = data.recipeTitle || data.title;
     const category = data.category || 'General';
     const privacy = data.privacy || 'public';
+
+    // 1. Create linked Recipe first
+    const newRecipe: Recipe = {
+      id: recipeUuid,
+      title: data.title,
+      category: category,
+      description: `Recipe process blueprint for: ${data.title}`,
+      phases: data.phases.map((ph, pIdx) => ({
+        id: (ph.id && isUuid(ph.id)) ? ph.id : crypto.randomUUID(),
+        title: ph.title,
+        position: ph.position ?? pIdx + 1,
+        tasks: ph.tasks.map((t, tIdx) => ({
+          id: (t.id && isUuid(t.id)) ? t.id : crypto.randomUUID(),
+          title: t.title,
+          position: t.position ?? tIdx + 1,
+          estimatedHours: t.estimatedHours || 1,
+          body_markdown: t.body_markdown
+        }))
+      })),
+      authorId: validUserId,
+      authorName: 'Creator',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      visibility: privacy,
+      tags: ['project-recipe', 'custom'],
+      isCustom: true
+    };
+
+    const savedRecipe = await this.saveRecipe(newRecipe, validUserId);
 
     if (this.isSupabaseActive() && supabase) {
       const { data: projectRow, error: pErr } = await supabase
         .from('projects')
         .insert({
-          user_id: userId,
-          recipe_id: isUuid(recipeId) ? recipeId : null,
+          user_id: validUserId,
+          recipe_id: savedRecipe.id,
           title: data.title,
           category: category
         })
@@ -1141,10 +1303,13 @@ export const dataService = {
         const createdPhases: Phase[] = [];
         for (let pIndex = 0; pIndex < data.phases.length; pIndex++) {
           const ph = data.phases[pIndex];
+          const sourcePhaseId = savedRecipe.phases[pIndex]?.id || null;
+
           const { data: phaseRow } = await supabase
             .from('project_phases')
             .insert({
               project_id: projectRow.id,
+              source_phase_id: sourcePhaseId,
               title: ph.title,
               position: ph.position ?? pIndex + 1,
               is_complete: false
@@ -1157,10 +1322,13 @@ export const dataService = {
           const createdTasks: Task[] = [];
           for (let tIndex = 0; tIndex < ph.tasks.length; tIndex++) {
             const t = ph.tasks[tIndex];
+            const sourceTaskId = savedRecipe.phases[pIndex]?.tasks[tIndex]?.id || null;
+
             const { data: taskRow } = await supabase
               .from('project_tasks')
               .insert({
                 project_phase_id: phaseRow.id,
+                source_task_id: sourceTaskId,
                 title: t.title,
                 position: t.position ?? tIndex + 1,
                 is_complete: false
@@ -1173,6 +1341,7 @@ export const dataService = {
                 id: taskRow.id,
                 title: taskRow.title,
                 completed: false,
+                sourceTaskId: sourceTaskId,
                 position: taskRow.position
               });
             }
@@ -1181,6 +1350,7 @@ export const dataService = {
           createdPhases.push({
             id: phaseRow.id,
             title: phaseRow.title,
+            sourcePhaseId: sourcePhaseId,
             position: phaseRow.position,
             tasks: createdTasks
           });
@@ -1189,7 +1359,7 @@ export const dataService = {
         const newProj: Project = {
           id: projectRow.id,
           title: projectRow.title,
-          recipeId,
+          recipeId: savedRecipe.id,
           recipeTitle,
           category,
           phases: createdPhases,
@@ -1211,10 +1381,12 @@ export const dataService = {
       id: p.id || `phase-local-${pIdx}-${Date.now()}`,
       title: p.title,
       position: pIdx + 1,
+      sourcePhaseId: savedRecipe.phases[pIdx]?.id,
       tasks: p.tasks.map((t, tIdx) => ({
         id: t.id || `task-local-${tIdx}-${Date.now()}`,
         title: t.title,
         completed: false,
+        sourceTaskId: savedRecipe.phases[pIdx]?.tasks[tIdx]?.id,
         position: tIdx + 1
       }))
     }));
@@ -1222,7 +1394,7 @@ export const dataService = {
     const newProj: Project = {
       id: `project-${Date.now()}`,
       title: data.title,
-      recipeId,
+      recipeId: savedRecipe.id,
       recipeTitle,
       category,
       phases,
@@ -1358,7 +1530,7 @@ export const dataService = {
   },
 
   // ================= POSTS & MEDIA =================
-  async getPosts(): Promise<FeedPost[]> {
+  async getPosts(currentUserId?: string): Promise<FeedPost[]> {
     if (this.isSupabaseActive() && supabase) {
       const { data: postRows, error } = await supabase
         .from('posts')
@@ -1372,6 +1544,7 @@ export const dataService = {
         const { data: usersRows } = await supabase.from('users').select('*');
 
         const usersMap = new Map((usersRows || []).map(u => [u.id, u]));
+        const validCurrentUserId = currentUserId ? toValidUuid(currentUserId) : null;
 
         return postRows
           .filter(Boolean)
@@ -1382,11 +1555,21 @@ export const dataService = {
             const pFeedback = (feedbackRows || []).filter(f => f && f.post_id === p.id);
             const pComments = (commentsRows || []).filter(c => c && c.post_id === p.id);
 
+            // Determine user vote if current user is provided
+            const userVoteRow = validCurrentUserId ? pFeedback.find(f => f && f.user_id === validCurrentUserId) : null;
+            let userVotedType: 'continue' | 'refine' | 'reconsider' | undefined = undefined;
+            if (userVoteRow) {
+              if (userVoteRow.feedback_type === 'success') userVotedType = 'continue';
+              else if (userVoteRow.feedback_type === 'promise') userVotedType = 'refine';
+              else if (userVoteRow.feedback_type === 'potential') userVotedType = 'reconsider';
+            }
+
             // Calculate feedback counts from post_feedback rows (never counter increments)
             const gongs = {
               continue: pFeedback.filter(f => f && f.feedback_type === 'success').length,
               refine: pFeedback.filter(f => f && f.feedback_type === 'promise').length,
-              reconsider: pFeedback.filter(f => f && f.feedback_type === 'potential').length
+              reconsider: pFeedback.filter(f => f && f.feedback_type === 'potential').length,
+              userVoted: userVotedType
             };
 
             // Build post media items with dynamically resolved URLs
@@ -1440,9 +1623,12 @@ export const dataService = {
     setLocal(KEYS.POSTS, posts);
   },
 
-  async addPost(post: FeedPost): Promise<void> {
+  async addPost(
+    post: FeedPost,
+    onProgress?: (progressPercent: number, statusText: string) => void
+  ): Promise<void> {
     if (this.isSupabaseActive() && supabase) {
-      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      onProgress?.(10, 'Validating session...');
 
       // 1. Sanitize & ensure valid post.id UUID
       if (!isUuid(post.id)) {
@@ -1457,29 +1643,19 @@ export const dataService = {
         : (session?.id && isUuid(session.id) ? session.id : '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
       post.userId = validUserId;
 
-      // Ensure user exists in Supabase 'users' table
+      // Ensure user exists in Supabase 'users' table with full non-null constraints
       try {
-        const { data: userRow } = await supabase.from('users').select('id, email, about, profile_visibility').eq('id', validUserId).maybeSingle();
-        if (!userRow) {
-          const rawSessName = (session?.name || '').trim();
-          const sSpaceIdx = rawSessName.indexOf(' ');
-          const sFirstName = sSpaceIdx === -1 ? rawSessName : rawSessName.substring(0, sSpaceIdx);
-          const sLastName = sSpaceIdx === -1 ? '' : rawSessName.substring(sSpaceIdx + 1).trim();
-
-          await supabase.from('users').upsert({
-            id: validUserId,
-            public_id: session?.publicId || session?.username || validUserId,
-            username: session?.username || (rawSessName ? rawSessName.toLowerCase().replace(/[^a-z0-9_]/g, '') : '') || `user_${validUserId.substring(0, 6)}`,
-            first_name: sFirstName,
-            last_name: sLastName,
-            email: userRow?.email || session?.email,
-            about: userRow?.about,
-            profile_visibility: userRow?.profile_visibility
-          });
-        }
+        await this.ensureUserExistsInSupabase(validUserId, {
+          id: validUserId,
+          name: session?.name || post.userName || 'Creator',
+          username: session?.username || post.username || `user_${validUserId.slice(0, 8)}`,
+          email: session?.email || `user_${validUserId.slice(0, 8)}@gonnng.app`
+        });
       } catch (uErr) {
         console.warn('Note verifying user row in Supabase:', uErr);
       }
+
+      onProgress?.(25, 'Saving post to database...');
 
       // 3. Sanitize project_id UUID
       const rawProjectId = post.projectId || post.attachedId;
@@ -1498,26 +1674,44 @@ export const dataService = {
       }
       post.projectId = validProjectId || undefined;
 
-      // 4. Create posts row FIRST in Supabase with correct database columns
-      const { error: postErr } = await supabase.from('posts').insert({
+      // 4. Create/upsert posts row FIRST in Supabase with correct database columns
+      const { error: postErr } = await supabase.from('posts').upsert({
         id: post.id,
         user_id: post.userId,
         project_id: validProjectId,
         description: post.content || post.description || post.title
-      });
+      }, { onConflict: 'id' });
 
       if (postErr) {
         console.error('Failed to create post row in Supabase:', postErr);
+        throw new Error(`Database error saving post: ${postErr.message}`);
       } else {
         console.log('Successfully created post row in Supabase posts table with ID:', post.id);
       }
 
-      // 5. Upload media files directly to storage path {user_id}/{post_id}/{filename} in post-media bucket
+      // 5. Upload media files directly to storage path {user_id}/{post_id}/{filename} in post-media/Gonnng bucket
       if (post.mediaFiles && post.mediaFiles.length > 0) {
-        const { successful, failed } = await uploadService.uploadMultiplePostMedia(post.mediaFiles, post.id);
+        onProgress?.(40, 'Uploading media to storage...');
+
+        const { successful, failed } = await uploadService.uploadMultiplePostMedia(
+          post.mediaFiles,
+          post.id,
+          50 * 1024 * 1024,
+          (filePct) => {
+            const overall = Math.round(40 + (filePct * 0.5));
+            onProgress?.(Math.min(overall, 90), 'Uploading media files to storage...');
+          }
+        );
+
         if (failed.length > 0) {
           console.warn('Some media files failed to upload independently:', failed);
         }
+
+        if (successful.length === 0 && post.mediaFiles.length > 0) {
+          const errMsg = failed[0]?.error || 'Failed to upload media files to storage.';
+          throw new Error(`Storage upload failed: ${errMsg}`);
+        }
+
         if (successful.length > 0) {
           post.media = successful.map(s => ({
             id: s.id,
@@ -1534,9 +1728,11 @@ export const dataService = {
       }
     }
 
+    onProgress?.(95, 'Finalizing post...');
     const existing = await this.getPosts();
-    const updated = [post, ...existing];
+    const updated = [post, ...existing.filter(p => p.id !== post.id)];
     await this.savePosts(updated);
+    onProgress?.(100, 'Complete!');
   },
 
   /**
@@ -1561,118 +1757,238 @@ export const dataService = {
   },
 
   /**
-   * Post Feedback: UPSERT into post_feedback table with unique constraint on (post_id, user_id)
-   * NO client-side counter increments!
+   * Post Feedback: UPSERT or DELETE into post_feedback table with unique constraint on (post_id, user_id)
+   * Supports: 'continue' (success), 'refine' (promise), 'reconsider' (potential)
+   * Toggles off if the user clicks their existing feedback.
    */
-  async givePostFeedback(postId: string, userId: string, feedbackType: FeedbackType): Promise<{
+  async givePostFeedback(
+    postId: string,
+    userId: string,
+    feedbackType: 'continue' | 'refine' | 'reconsider' | FeedbackType
+  ): Promise<{
     continue: number;
     refine: number;
     reconsider: number;
-    userVoted: FeedbackType;
+    userVoted?: 'continue' | 'refine' | 'reconsider';
   }> {
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+
+    // Map input feedback to PostgreSQL enum ('success' | 'promise' | 'potential')
+    const dbFeedbackType: 'success' | 'promise' | 'potential' = 
+      (feedbackType === 'continue' || feedbackType === 'success') ? 'success' :
+      (feedbackType === 'refine' || feedbackType === 'promise') ? 'promise' : 'potential';
+
+    const uiFeedbackType: 'continue' | 'refine' | 'reconsider' =
+      dbFeedbackType === 'success' ? 'continue' :
+      dbFeedbackType === 'promise' ? 'refine' : 'reconsider';
+
+    let finalUserVoted: 'continue' | 'refine' | 'reconsider' | undefined = uiFeedbackType;
+
     if (this.isSupabaseActive() && supabase) {
-      const { error } = await supabase.from('post_feedback').upsert(
-        {
-          post_id: postId,
-          user_id: userId,
-          feedback_type: feedbackType
-        },
-        { onConflict: 'post_id, user_id' }
-      );
+      try {
+        await this.ensureUserExistsInSupabase(validUserId);
 
-      if (error) {
-        console.error('Error upserting feedback:', error);
+        const validPostId = isUuid(postId) ? postId : toValidUuid(postId);
+
+        // Check if user has an existing reaction for this post
+        const { data: existing } = await supabase
+          .from('post_feedback')
+          .select('*')
+          .eq('post_id', validPostId)
+          .eq('user_id', validUserId)
+          .maybeSingle();
+
+        if (existing && existing.feedback_type === dbFeedbackType) {
+          // Toggle off: remove reaction
+          const { error: delErr } = await supabase
+            .from('post_feedback')
+            .delete()
+            .eq('id', existing.id);
+
+          if (delErr) {
+            console.error('Error deleting feedback from post_feedback:', delErr);
+          }
+          finalUserVoted = undefined;
+        } else {
+          // Add or change reaction
+          const { error: upsertErr } = await supabase
+            .from('post_feedback')
+            .upsert(
+              {
+                post_id: validPostId,
+                user_id: validUserId,
+                feedback_type: dbFeedbackType
+              },
+              { onConflict: 'post_id, user_id' }
+            );
+
+          if (upsertErr) {
+            console.error('Error upserting feedback into post_feedback table:', upsertErr);
+          }
+          finalUserVoted = uiFeedbackType;
+        }
+
+        // Re-fetch all feedback rows for post to derive exact totals from post_feedback
+        const { data: allFb } = await supabase
+          .from('post_feedback')
+          .select('*')
+          .eq('post_id', validPostId);
+
+        const fbList = allFb || [];
+        const resultCounts = {
+          continue: fbList.filter(f => f.feedback_type === 'success').length,
+          refine: fbList.filter(f => f.feedback_type === 'promise').length,
+          reconsider: fbList.filter(f => f.feedback_type === 'potential').length,
+          userVoted: finalUserVoted
+        };
+
+        // Sync local cache
+        const localFb = getLocal<any[]>(KEYS.FEEDBACK, []);
+        let arr = Array.isArray(localFb) ? [...localFb] : [];
+        const matchIdx = arr.findIndex(f => f && (f.postId === validPostId || f.post_id === validPostId) && (f.userId === validUserId || f.user_id === validUserId));
+
+        if (finalUserVoted === undefined) {
+          if (matchIdx >= 0) arr.splice(matchIdx, 1);
+        } else {
+          if (matchIdx >= 0) {
+            arr[matchIdx].feedbackType = dbFeedbackType;
+            arr[matchIdx].feedback_type = dbFeedbackType;
+          } else {
+            arr.push({
+              postId: validPostId,
+              post_id: validPostId,
+              userId: validUserId,
+              user_id: validUserId,
+              feedbackType: dbFeedbackType,
+              feedback_type: dbFeedbackType
+            });
+          }
+        }
+        setLocal(KEYS.FEEDBACK, arr);
+
+        const localPosts = getLocal<FeedPost[]>(KEYS.POSTS, []);
+        const targetPost = localPosts.find(p => p.id === postId || p.id === validPostId);
+        if (targetPost) {
+          targetPost.gongs = resultCounts;
+          setLocal(KEYS.POSTS, localPosts);
+        }
+
+        return resultCounts;
+      } catch (err) {
+        console.error('Database error in givePostFeedback:', err);
       }
-
-      // Re-fetch all feedback rows for post to derive exact totals
-      const { data: allFb } = await supabase.from('post_feedback').select('*').eq('post_id', postId);
-
-      const fbList = allFb || [];
-      return {
-        continue: fbList.filter(f => f.feedback_type === 'success').length,
-        refine: fbList.filter(f => f.feedback_type === 'promise').length,
-        reconsider: fbList.filter(f => f.feedback_type === 'potential').length,
-        userVoted: feedbackType
-      };
-    } else {
-      // Local fallback using UPSERT logic in LocalStorage
-      const localFb = getLocal<any[]>(KEYS.FEEDBACK, []);
-      const arr = Array.isArray(localFb) ? localFb : [];
-      const idx = arr.findIndex(f => f && (f.postId || f.post_id) === postId && (f.userId || f.user_id) === userId);
-
-      if (idx >= 0) {
-        arr[idx].feedbackType = feedbackType;
-        arr[idx].feedback_type = feedbackType;
-      } else {
-        arr.push({ postId, userId, feedbackType, post_id: postId, user_id: userId, feedback_type: feedbackType });
-      }
-      setLocal(KEYS.FEEDBACK, arr);
-
-      const postFb = arr.filter(f => f && (f.postId || f.post_id) === postId);
-      return {
-        continue: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'success').length,
-        refine: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'promise').length,
-        reconsider: postFb.filter(f => f && (f.feedbackType || f.feedback_type) === 'potential').length,
-        userVoted: feedbackType
-      };
     }
+
+    // Local fallback using UPSERT/DELETE logic in LocalStorage
+    const localFb = getLocal<any[]>(KEYS.FEEDBACK, []);
+    let arr = Array.isArray(localFb) ? [...localFb] : [];
+    const idx = arr.findIndex(f => f && (f.postId === postId || f.post_id === postId) && (f.userId === validUserId || f.user_id === validUserId));
+
+    if (idx >= 0 && (arr[idx].feedback_type === dbFeedbackType || arr[idx].feedbackType === dbFeedbackType || arr[idx].feedbackType === uiFeedbackType)) {
+      arr.splice(idx, 1);
+      finalUserVoted = undefined;
+    } else if (idx >= 0) {
+      arr[idx].feedbackType = dbFeedbackType;
+      arr[idx].feedback_type = dbFeedbackType;
+      finalUserVoted = uiFeedbackType;
+    } else {
+      arr.push({
+        postId,
+        post_id: postId,
+        userId: validUserId,
+        user_id: validUserId,
+        feedbackType: dbFeedbackType,
+        feedback_type: dbFeedbackType
+      });
+      finalUserVoted = uiFeedbackType;
+    }
+    setLocal(KEYS.FEEDBACK, arr);
+
+    const postFb = arr.filter(f => f && (f.postId === postId || f.post_id === postId));
+    const fallbackResult = {
+      continue: postFb.filter(f => f && (f.feedbackType === 'success' || f.feedback_type === 'success' || f.feedbackType === 'continue')).length,
+      refine: postFb.filter(f => f && (f.feedbackType === 'promise' || f.feedback_type === 'promise' || f.feedbackType === 'refine')).length,
+      reconsider: postFb.filter(f => f && (f.feedbackType === 'potential' || f.feedback_type === 'potential' || f.feedbackType === 'reconsider')).length,
+      userVoted: finalUserVoted
+    };
+
+    const localPosts = getLocal<FeedPost[]>(KEYS.POSTS, []);
+    const targetPost = localPosts.find(p => p.id === postId);
+    if (targetPost) {
+      targetPost.gongs = fallbackResult;
+      setLocal(KEYS.POSTS, localPosts);
+    }
+
+    return fallbackResult;
   },
 
   // ================= COMMENTS & SUB-COMMENTS =================
   async addComment(postId: string, userId: string, body: string, parentCommentId?: string): Promise<PostComment> {
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const validUserId = toValidUuid(userId || '4c0ab90e-6ec5-4a14-bb46-f10d4dc7bcb2');
+    const validPostId = isUuid(postId) ? postId : toValidUuid(postId);
+    const validParentId = parentCommentId && isUuid(parentCommentId) ? parentCommentId : null;
+
     if (this.isSupabaseActive() && supabase) {
-      const { data: commentRow, error } = await supabase
-        .from('comments')
-        .insert({
-          post_id: postId,
-          user_id: userId,
-          parent_comment_id: parentCommentId || null,
-          body
-        })
-        .select()
-        .single();
+      try {
+        await this.ensureUserExistsInSupabase(validUserId);
 
-      if (error || !commentRow) {
-        throw new Error(`Failed to add comment: ${error?.message || 'Unknown error'}`);
+        const { data: commentRow, error } = await supabase
+          .from('comments')
+          .insert({
+            post_id: validPostId,
+            user_id: validUserId,
+            parent_comment_id: validParentId,
+            body
+          })
+          .select()
+          .single();
+
+        if (!error && commentRow) {
+          const { data: user } = await supabase.from('users').select('*').eq('id', validUserId).maybeSingle();
+
+          return {
+            id: commentRow.id,
+            userId: commentRow.user_id,
+            userName: user?.username || user?.first_name || 'Creator',
+            userAvatar: user?.avatar_storage_path ? getPublicMediaUrl('Gonnng', user.avatar_storage_path) : '',
+            body: commentRow.body,
+            content: commentRow.body,
+            timeString: 'Just now',
+            parentId: commentRow.parent_comment_id,
+            createdAt: commentRow.created_at,
+            children: []
+          };
+        } else if (error) {
+          console.error('Supabase error inserting comment:', error);
+        }
+      } catch (e) {
+        console.error('Database error in addComment:', e);
       }
-
-      const { data: user } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
-
-      return {
-        id: commentRow.id,
-        userId: commentRow.user_id,
-        userName: user?.username || user?.first_name || 'Creator',
-        userAvatar: user?.avatar_storage_path ? getPublicMediaUrl('Gonnng', user.avatar_storage_path) : '',
-        body: commentRow.body,
-        content: commentRow.body,
-        timeString: 'Just now',
-        parentId: commentRow.parent_comment_id,
-        createdAt: commentRow.created_at,
-        children: []
-      };
-    } else {
-      const posts = await this.getPosts();
-      const newComment: PostComment = {
-        id: `c-${Date.now()}`,
-        userId,
-        userName: 'You',
-        userAvatar: '',
-        body,
-        content: body,
-        timeString: 'Just now',
-        parentId: parentCommentId || null,
-        createdAt: new Date().toISOString(),
-        children: []
-      };
-
-      const targetPost = posts.find(p => p && p.id === postId);
-      if (targetPost) {
-        targetPost.comments = targetPost.comments || [];
-        targetPost.comments.push(newComment);
-        await this.savePosts(posts);
-      }
-      return newComment;
     }
+
+    const posts = await this.getPosts();
+    const newComment: PostComment = {
+      id: `c-${Date.now()}`,
+      userId: validUserId,
+      userName: 'You',
+      userAvatar: '',
+      body,
+      content: body,
+      timeString: 'Just now',
+      parentId: parentCommentId || null,
+      createdAt: new Date().toISOString(),
+      children: []
+    };
+
+    const targetPost = posts.find(p => p && (p.id === postId || p.id === validPostId));
+    if (targetPost) {
+      targetPost.comments = targetPost.comments || [];
+      targetPost.comments.push(newComment);
+      await this.savePosts(posts);
+    }
+    return newComment;
   },
 
   buildCommentsTree(commentsList: any[], usersMap: Map<string, any>): PostComment[] {
