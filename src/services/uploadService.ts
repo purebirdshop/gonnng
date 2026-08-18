@@ -124,7 +124,6 @@ export const getPublicMediaUrl = (_bucket: string, path: string): string => {
     relativePath = relativePath.substring(6).replace(/^\/+/, '');
   }
 
-  console.log(resolveImageUrl(`${mediaBase}/${relativePath}`));
   return resolveImageUrl(`${mediaBase}/${relativePath}`);
 };
 
